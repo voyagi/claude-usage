@@ -74,7 +74,42 @@
 
 ## Traceability
 
-(Populated by roadmap — maps each requirement to a phase)
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SB-01 | Phase 3 | Pending |
+| SB-02 | Phase 3 | Pending |
+| SB-03 | Phase 3 | Pending |
+| SB-04 | Phase 3 | Pending |
+| SB-05 | Phase 3 | Pending |
+| SP-01 | Phase 5 | Pending |
+| SP-02 | Phase 5 | Pending |
+| SP-03 | Phase 5 | Pending |
+| SP-04 | Phase 5 | Pending |
+| SP-05 | Phase 5 | Pending |
+| SP-06 | Phase 5 | Pending |
+| RL-01 | Phase 4 | Pending |
+| RL-02 | Phase 4 | Pending |
+| RL-03 | Phase 4 | Pending |
+| RL-04 | Phase 4 | Pending |
+| RL-05 | Phase 4 | Pending |
+| RL-06 | Phase 4 | Pending |
+| DP-01 | Phase 2 | Pending |
+| DP-02 | Phase 2 | Pending |
+| DP-03 | Phase 2 | Pending |
+| DP-04 | Phase 1 | Pending |
+| DP-05 | Phase 2 | Pending |
+| DP-06 | Phase 1 | Pending |
+| TP-01 | Phase 3 | Pending |
+| TP-02 | Phase 5 | Pending |
+| TP-03 | Phase 6 | Pending |
+| TP-04 | Phase 1 | Pending |
+| CX-01 | Phase 6 | Pending |
+| CX-02 | Phase 6 | Pending |
+| CX-03 | Phase 1 | Pending |
+| CX-04 | Phase 6 | Pending |
+| CX-05 | Phase 6 | Pending |
+
+**Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after requirements definition*
+*Last updated: 2026-02-07 after roadmap creation*
