@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 
 ## Current Position
 
-Phase: 5 of 6 (Webview Dashboard) — IN PROGRESS
-Plan: 5 of 6 in current phase
-Status: Session tab and full dashboard wiring complete
-Last activity: 2026-02-07 — Completed 05-05-PLAN.md (Session tab, all tabs wired)
+Phase: 5 of 6 (Webview Dashboard) — COMPLETE ✓
+Plan: 6 of 6 in current phase (all plans complete)
+Status: Phase 5 complete - full dashboard with real-time data pipeline
+Last activity: 2026-02-07 — Completed 05-06-PLAN.md (Dashboard integration)
 
-Progress: [████████░░] ~81%
+Progress: [█████████░] ~85%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 20
+- Total plans completed: 21
 - Average duration: 3.7 minutes
 - Total execution time: 1.3 hours
 
@@ -31,11 +31,11 @@ Progress: [████████░░] ~81%
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
 | 04 - Rate Limiting | 6 | 28min | 4.7min |
-| 05 - Webview Dashboard | 5 | 19min | 3.8min |
+| 05 - Webview Dashboard | 6 | 23min | 3.8min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 4min, 4min, 4min, 3min
-- Trend: Phase 5 averaging 3.8min, slightly faster than earlier React plans
+- Last 5 plans: 4min, 4min, 4min, 3min, 4min
+- Trend: Phase 5 complete at 3.8min average, maintaining fast execution
 
 *Updated after each plan completion*
 
@@ -106,6 +106,10 @@ Recent decisions affecting current work:
 - Comparison bar scaling (05-05): Visual comparison bars scale to max(current, average) for clear relative sizing
 - Session duration derivation (05-05): Calculated from timeRemaining field (300 - remaining) rather than new DashboardData field
 - Separate edge case messaging (05-05): Distinguish "no active session" from "not enough sessions for comparison"
+- Session averages from all history (05-06): averageSessionTokens computed as mean of ALL sessions' outputTokens (not just recent)
+- Period switching via cached buckets (05-06): DashboardProvider caches TimeBuckets and rebuilds trend data on period change (no extension re-query)
+- Cache tokens from daily bucket (05-06): Extract cacheCreationTokens and cacheReadTokens from today's daily bucket for Overview tab
+- Status bar opens dashboard (05-06): Both metricsItem and cooldownItem click commands changed to openDashboard (sidebar focus)
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -136,7 +140,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07 20:41
-Stopped at: Completed 05-05-PLAN.md (Session tab and dashboard completion)
+Last session: 2026-02-07 19:48
+Stopped at: Completed 05-06-PLAN.md (Dashboard integration - Phase 5 complete)
 Resume file: None
-Next: Continue Phase 5 (05-06 Integration - final plan in phase)
+Next: Phase 6 - Polish & Documentation
