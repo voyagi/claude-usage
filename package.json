@@ -63,6 +63,45 @@
           "type": "boolean",
           "default": false,
           "description": "Use compact status bar display (shorter text for narrow windows)"
+        },
+        "claude-usage.rateLimits.session.threshold": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Override estimated 5-hour session output token limit. Set to 0 to use auto-detected value from your plan tier."
+        },
+        "claude-usage.rateLimits.weekly.threshold": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Override estimated weekly output token limit. Set to 0 to use auto-detected value."
+        },
+        "claude-usage.rateLimits.weeklySonnet.threshold": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Override estimated weekly Sonnet model output token limit. Set to 0 to use auto-detected value."
+        },
+        "claude-usage.rateLimits.warnings.yellow": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Yellow warning threshold (percentage of limit)"
+        },
+        "claude-usage.rateLimits.warnings.red": {
+          "type": "number",
+          "default": 95,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Red warning threshold (percentage of limit)"
+        },
+        "claude-usage.burnRate.windowMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "maximum": 60,
+          "description": "Lookback window for burn rate calculation (minutes)"
         }
       }
     }
