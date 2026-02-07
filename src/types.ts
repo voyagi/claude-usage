@@ -48,12 +48,16 @@ export interface TimeBuckets {
 export type PlanType = 'pro' | 'max5' | 'max20';
 
 /**
- * Plan configuration with pricing
+ * Plan configuration with pricing and rate limits
  */
 export interface PlanConfig {
   type: PlanType;
   displayName: string;
   monthlyPrice: number;
+  // Token limits (estimates based on community reports)
+  sessionTokenLimit?: number;  // 5hr rolling window limit (output tokens)
+  weeklyTokenLimit?: number;    // Weekly limit (output tokens)
+  weeklySonnetLimit?: number;   // Weekly model-specific limit (output tokens)
 }
 
 /**
@@ -96,4 +100,42 @@ export interface FileParseResult {
   records: TokenUsage[];
   linesSkipped: number;
   errors: string[];
+}
+
+/**
+ * Rate limit information for a single limit window
+ */
+export interface RateLimitInfo {
+  name: string;                    // e.g. "Session (5hr)", "Weekly", "Weekly Sonnet"
+  currentTokens: number;           // billable tokens consumed in this window
+  estimatedLimit: number;          // estimated token cap for this limit
+  percentage: number;              // 0-100, currentTokens/estimatedLimit * 100, capped at 100
+  resetTime: Date | null;          // when this limit window resets
+  isHit: boolean;                  // percentage >= 100
+}
+
+/**
+ * Aggregate of all three rate limits
+ */
+export interface RateLimitStatus {
+  session5h: RateLimitInfo;
+  weekly: RateLimitInfo;
+  weeklySonnet: RateLimitInfo;
+  worstPercentage: number;         // max of all three percentages (drives color coding)
+}
+
+/**
+ * Everything the status bar needs to render
+ */
+export interface StatusBarData {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+  todayCost: number;
+  monthCost: number;
+  burnRate: number;                // tokens per minute, 0 if no recent activity
+  rateLimits: RateLimitStatus;
+  lastUpdated: Date;
+  filesProcessed: number;
+  linesSkipped: number;
 }
