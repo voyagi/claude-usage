@@ -66,10 +66,12 @@ Plans:
   4. Status bar displays cooldown timer counting down to session window expiry
   5. Status bar adapts to narrow widths with compact mode
   6. Extension activates lazily and doesn't slow VS Code startup
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+- [ ] 03-01-PLAN.md — Rate limit types, calculation engine, and display formatting utilities
+- [ ] 03-02-PLAN.md — StatusBarManager class with two items and quick pick menu
+- [ ] 03-03-PLAN.md — Wire StatusBarManager into extension.ts, register commands, update package.json
 
 ### Phase 4: Rate Limiting & Burn Rate
 **Goal**: User knows when they'll hit rate limits and can plan usage accordingly
@@ -129,7 +131,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
 | 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
-| 3. Basic UI (Status Bar) | 0/TBD | Not started | - |
+| 3. Basic UI (Status Bar) | 0/3 | Not started | - |
 | 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |
 | 5. Webview Dashboard | 0/TBD | Not started | - |
 | 6. Polish & Trust Features | 0/TBD | Not started | - |
