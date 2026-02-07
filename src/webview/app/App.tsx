@@ -7,6 +7,7 @@ import { OverviewTab } from './components/OverviewTab';
 import { TrendsTab } from './components/TrendsTab';
 import { SessionTab } from './components/SessionTab';
 import { TrustIndicator } from './components/TrustIndicator';
+import { WelcomeCard } from './components/WelcomeCard';
 import { DashboardData, WebviewMessage, ExtensionMessage } from './types';
 import { vscode } from './index';
 
@@ -19,6 +20,7 @@ interface AppState {
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [data, setData] = useState<DashboardData | null>(null);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Restore tab from saved state on mount
   useEffect(() => {
@@ -39,6 +41,10 @@ export function App() {
       const message = event.data;
       if (message.type === 'usageData') {
         setData(message.payload);
+        // Show welcome card if first run
+        if (message.payload.isFirstRun) {
+          setShowWelcome(true);
+        }
       }
     };
 
@@ -55,6 +61,8 @@ export function App() {
   return (
     <div className="app-container">
       <TrustIndicator />
+
+      {showWelcome && <WelcomeCard onDismiss={() => setShowWelcome(false)} />}
 
       <nav className="tabs">
         <button
@@ -103,6 +111,20 @@ export function App() {
           </>
         )}
       </main>
+
+      {data && (
+        <footer style={{
+          padding: '8px 0',
+          marginTop: '12px',
+          borderTop: '1px solid var(--vscode-panel-border)',
+          fontSize: '10px',
+          opacity: 0.5,
+          textAlign: 'center',
+          wordBreak: 'break-all',
+        }}>
+          Data source: {data.dataSourcePath}
+        </footer>
+      )}
     </div>
   );
 }

@@ -99,6 +99,20 @@ export function OverviewTab({ data }: OverviewTabProps) {
         </div>
       </div>
 
+      {/* Custom pricing badge */}
+      {data.hasCustomPricing && (
+        <div style={{
+          fontSize: '10px',
+          opacity: 0.6,
+          textAlign: 'center',
+          marginTop: '4px',
+          marginBottom: '8px',
+          fontStyle: 'italic',
+        }}>
+          Using custom pricing overrides
+        </div>
+      )}
+
       {/* Section 2: Token Breakdown */}
       <div className="card">
         <h3 className="card-title">Token Breakdown</h3>
