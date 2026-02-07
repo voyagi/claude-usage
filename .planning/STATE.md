@@ -9,18 +9,18 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 
 ## Current Position
 
-Phase: 3 of 6 (Basic UI - Status Bar)
-Plan: 3 of 3 in current phase
-Status: Phase complete — verified (6/6 success criteria passed)
-Last activity: 2026-02-07 — Phase 3 verified and complete
+Phase: 4 of 6 (Rate Limiting & Burn Rate)
+Plan: 2 of 4 in current phase
+Status: In progress
+Last activity: 2026-02-07 — Completed 04-02-PLAN.md
 
-Progress: [█████░░░░░] ~50%
+Progress: [█████░░░░░] ~52%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 3.9 minutes
+- Total plans completed: 10
+- Average duration: 3.8 minutes
 - Total execution time: 0.6 hours
 
 **By Phase:**
@@ -30,9 +30,10 @@ Progress: [█████░░░░░] ~50%
 | 01 - Foundation | 4 | 20min | 5.0min |
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
+| 04 - Rate Limiting | 2 | 6min | 3.0min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 3min, 2min, 3min, 4min
+- Last 5 plans: 3min, 2min, 3min, 4min, 3min
 - Trend: Consistent velocity (3-4 min range)
 
 *Updated after each plan completion*
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - Command registration pattern (03-03): Register all commands in activate() with inline handlers for closure access to context
 - Config change auto-refresh (03-03): Auto-refresh on any claude-usage.* config change to ensure UI consistency
 - Legacy clearData kept (03-03): Maintain backwards compatibility for early adopters with keyboard shortcuts
+- Urgency scoring for rate limits (04-02): Use percentage * 1/sqrt(hoursUntilReset) to identify most critical limit
+- Optional burn rate override (04-02): buildStatusBarData accepts EMA-smoothed burn rate while keeping simple fallback
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -100,7 +103,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07
-Stopped at: Phase 3 verified and complete
+Last session: 2026-02-07 15:30
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
-Next: Phase 4 planning (Rate Limiting & Burn Rate)
+Next: Continue Phase 4 (plans 03-04 remaining)
