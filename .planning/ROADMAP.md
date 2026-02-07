@@ -106,10 +106,14 @@ Plans:
   5. User can switch between daily, weekly, and monthly aggregation views
   6. User sees how current session compares to their average
   7. Panel displays "Local Only" trust indicator
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] TBD
+- [ ] 05-01-PLAN.md -- Build infrastructure: deps, dual esbuild config, package.json contributions, JSX support
+- [ ] 05-02-PLAN.md -- DashboardProvider (WebviewViewProvider) + message type definitions
+- [ ] 05-03-PLAN.md -- React scaffold + Overview tab (token breakdown, rate limits, session timing, trust indicator)
+- [ ] 05-04-PLAN.md -- Trends tab (Recharts stacked bar chart, segmented control, data table)
+- [ ] 05-05-PLAN.md -- Session tab + wiring (session comparison, extension.ts integration, data flow)
 
 ### Phase 6: Polish & Trust Features
 **Goal**: Extension demonstrates trustworthiness and provides power-user features
@@ -138,5 +142,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
 | 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
 | 4. Rate Limiting & Burn Rate | 6/6 | Complete | 2026-02-07 |
-| 5. Webview Dashboard | 0/TBD | Not started | - |
+| 5. Webview Dashboard | 0/5 | Not started | - |
 | 6. Polish & Trust Features | 0/TBD | Not started | - |
