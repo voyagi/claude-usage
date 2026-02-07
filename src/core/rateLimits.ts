@@ -60,9 +60,14 @@ export function calculateRateLimits(
     isHit: plan.weeklyTokenLimit ? (weeklyTokens / plan.weeklyTokenLimit) >= 1.0 : false,
   };
 
-  // Weekly Sonnet limit: Same as weekly for now (no per-model aggregation yet)
-  // TODO: Filter by model name once per-model weekly aggregation exists in TimeBuckets
-  const weeklySonnetTokens = weekData?.outputTokens ?? 0;
+  // Weekly Sonnet limit: Sum output tokens only from claude-sonnet-* models this week
+  let weeklySonnetTokens = 0;
+  for (const [key, agg] of buckets.modelWeekly.entries()) {
+    // Key format: "YYYY-WII:model-name"
+    if (key.startsWith(weekKey + ':') && key.includes('claude-sonnet')) {
+      weeklySonnetTokens += agg.outputTokens;
+    }
+  }
 
   const weeklySonnet: RateLimitInfo = {
     name: 'Weekly Sonnet',
