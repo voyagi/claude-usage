@@ -84,10 +84,13 @@ Plans:
   4. User can manually override rate limit settings if auto-detection is inaccurate
   5. Extension tracks weekly usage limits and shows proximity
   6. Extension learns actual rate limits from observed rate-limit events over time
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] TBD
+- [ ] 04-01-PLAN.md -- Burn rate engine (EMA) + tier detection from credentials.json (TDD)
+- [ ] 04-02-PLAN.md -- Enhance rateLimits.ts with urgency weighting + formatting.ts with time-until-limit
+- [ ] 04-03-PLAN.md -- CredentialsWatcher + rate limit event detector + package.json config schema
+- [ ] 04-04-PLAN.md -- Wire all Phase 4 components into extension.ts + enhance status bar display
 
 ### Phase 5: Webview Dashboard
 **Goal**: User can view detailed usage breakdown, historical trends, and session analysis
@@ -132,6 +135,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
 | 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
 | 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
-| 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |
+| 4. Rate Limiting & Burn Rate | 0/4 | Not started | - |
 | 5. Webview Dashboard | 0/TBD | Not started | - |
 | 6. Polish & Trust Features | 0/TBD | Not started | - |
