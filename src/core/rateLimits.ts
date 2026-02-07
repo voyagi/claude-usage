@@ -3,7 +3,7 @@
  * Computes rate limit percentages from time buckets and plan configuration
  */
 
-import { startOfWeek, addDays, differenceInMinutes, subHours } from 'date-fns';
+import { startOfWeek, addDays, addHours, differenceInMinutes, differenceInHours, subHours } from 'date-fns';
 import type { TimeBuckets, RateLimitInfo, RateLimitStatus, StatusBarData, PlanType } from '../types.js';
 import { getPlanConfig } from '../pricing/plans.js';
 import { format } from 'date-fns';
@@ -39,14 +39,9 @@ export function calculateRateLimits(
     percentage: plan.sessionTokenLimit
       ? Math.min(100, Math.round((sessionTokens / plan.sessionTokenLimit) * 100))
       : 0,
-    resetTime: oldestSessionTime ? addDays(oldestSessionTime, 0).setHours(oldestSessionTime.getHours() + 5, 0, 0, 0) as any : null,
+    resetTime: oldestSessionTime ? addHours(oldestSessionTime, 5) : null,
     isHit: plan.sessionTokenLimit ? (sessionTokens / plan.sessionTokenLimit) >= 1.0 : false,
   };
-
-  // Fix resetTime to be proper Date object
-  if (session5h.resetTime) {
-    session5h.resetTime = new Date(session5h.resetTime);
-  }
 
   // Weekly limit: Sum output tokens from current ISO week
   const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
@@ -95,6 +90,25 @@ export function calculateRateLimits(
 }
 
 /**
+ * Calculate urgency score for a rate limit
+ * Higher score = more urgent (high percentage + imminent reset)
+ * Formula: percentage * (1 / sqrt(max(1, hoursUntilReset)))
+ * Returns 0 if limit is idle or no reset time
+ */
+export function calculateUrgencyScore(limit: RateLimitInfo, now: Date): number {
+  if (limit.percentage === 0 || !limit.resetTime) {
+    return 0;
+  }
+
+  const hoursUntilReset = differenceInHours(limit.resetTime, now);
+  if (hoursUntilReset <= 0) {
+    return 0;
+  }
+
+  return limit.percentage * (1 / Math.sqrt(Math.max(1, hoursUntilReset)));
+}
+
+/**
  * Calculate burn rate (tokens per minute) from recent session activity
  */
 export function calculateBurnRate(buckets: TimeBuckets): number {
@@ -128,11 +142,13 @@ export function calculateBurnRate(buckets: TimeBuckets): number {
 
 /**
  * Build complete StatusBarData from time buckets
+ * @param burnRateOverride - Optional EMA-smoothed burn rate (defaults to simple 10-min calculation)
  */
 export function buildStatusBarData(
   buckets: TimeBuckets,
   stats: { filesProcessed: number; linesSkipped: number },
-  planType: PlanType
+  planType: PlanType,
+  burnRateOverride?: number
 ): StatusBarData {
   const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
@@ -158,7 +174,7 @@ export function buildStatusBarData(
     totalCost,
     todayCost: todayData?.totalCost ?? 0,
     monthCost: monthData?.totalCost ?? 0,
-    burnRate: calculateBurnRate(buckets),
+    burnRate: burnRateOverride !== undefined ? burnRateOverride : calculateBurnRate(buckets),
     rateLimits: calculateRateLimits(buckets, planType),
     lastUpdated: now,
     filesProcessed: stats.filesProcessed,
