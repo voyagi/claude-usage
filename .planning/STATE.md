@@ -10,28 +10,29 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 2 of 6 (File Watching & Integration)
-Plan: 0 of TBD in current phase
-Status: Not started (needs planning)
-Last activity: 2026-02-07 — Completed Phase 1
+Plan: 1 of TBD in current phase
+Status: In progress
+Last activity: 2026-02-07 — Completed 02-01-PLAN.md
 
-Progress: [██░░░░░░░░] ~17%
+Progress: [██░░░░░░░░] ~20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 5.0 minutes
-- Total execution time: 0.33 hours
+- Total plans completed: 5
+- Average duration: 4.6 minutes
+- Total execution time: 0.38 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 - Foundation | 4 | 20min | 5.0min |
+| 02 - File Watching | 1 | 3min | 3.0min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 5min, 5min, 6min
-- Trend: Consistent velocity (~5min/plan)
+- Last 5 plans: 5min, 5min, 6min, 3min
+- Trend: Improving velocity (Phase 2 start)
 
 *Updated after each plan completion*
 
@@ -57,6 +58,8 @@ Recent decisions affecting current work:
 - Local timezone for calendar boundaries (01-03): Users think "today" in local time, not UTC
 - ISO week standard (01-03): Monday start aligns with international business week conventions
 - Cached data first (01-04): Load globalState on activation for instant status bar, then reparse
+- globalState for offset persistence (02-01): Tracks per-file byte offsets across VS Code reloads for incremental parsing
+- Simple byte counting for offset tracking (02-01): Accept rare incomplete line edge case, mitigated by full reparse on activation
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -85,7 +88,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07T11:45:00Z
-Stopped at: Completed Phase 1 (Foundation & Core Parsing) — all 4 plans done, verified
+Last session: 2026-02-07T11:32:54Z
+Stopped at: Completed 02-01-PLAN.md (Incremental Parsing Foundation)
 Resume file: None
-Next: Phase 2 planning (File Watching & Integration)
+Next: Plan 02-02 (SessionWatcher implementation)
