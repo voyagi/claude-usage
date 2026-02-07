@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 4 of 6 (Rate Limiting & Burn Rate)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-02-07 — Completed 04-04-PLAN.md
+Plan: 6 of 6 in current phase (gap closure plans 05-06 added post-verification)
+Status: In progress (gap closure)
+Last activity: 2026-02-07 — Completed 04-06-PLAN.md
 
-Progress: [██████░░░░] ~63%
+Progress: [███████░░░] ~68%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 3.4 minutes
-- Total execution time: 0.7 hours
+- Total plans completed: 13
+- Average duration: 3.5 minutes
+- Total execution time: 0.8 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [██████░░░░] ~63%
 | 01 - Foundation | 4 | 20min | 5.0min |
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
-| 04 - Rate Limiting | 4 | 12min | 3.0min |
+| 04 - Rate Limiting | 5 | 17min | 3.4min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 4min, 3min, 2min, 4min
-- Trend: Consistent velocity (2-4 min range)
+- Last 5 plans: 4min, 3min, 2min, 4min, 5min
+- Trend: Consistent velocity (2-5 min range)
 
 *Updated after each plan completion*
 
@@ -81,6 +81,8 @@ Recent decisions affecting current work:
 - User override precedence (04-04): Explicit user planType setting takes precedence over auto-detected tier from credentials.json
 - Config thresholds at display time (04-04): Warning thresholds read from config on every update() call for live config changes
 - Urgency score visibility (04-04): Shown in tooltip alongside each rate limit for power user context
+- Composite map key for modelWeekly (04-06): "YYYY-WII:model-name" enables per-model queries without schema changes
+- Optional serialized field for backward compat (04-06): SerializedTimeBuckets.modelWeekly uses ? for existing persisted data
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -111,7 +113,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07 15:45
-Stopped at: Completed 04-04-PLAN.md (Phase 4 complete)
+Last session: 2026-02-07 16:25
+Stopped at: Completed 04-06-PLAN.md (gap closure)
 Resume file: None
-Next: Phase 5 - Dashboard Webview
+Next: 04-05-PLAN.md (gap closure) or Phase 5 - Dashboard Webview
