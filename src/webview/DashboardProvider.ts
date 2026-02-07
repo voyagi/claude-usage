@@ -5,15 +5,144 @@
 
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import type { DashboardData, WebviewMessage, ExtensionMessage } from './app/types.js';
+import { format } from 'date-fns';
+import { subHours } from 'date-fns';
+import type { DashboardData, WebviewMessage, ExtensionMessage, RateLimitData, TrendDataPoint } from './app/types.js';
+import type { TimeBuckets, StatusBarData, RateLimitInfo } from '../types.js';
 
 export class DashboardProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'claude-usage.dashboardView';
 
   private _view?: vscode.WebviewView;
   private _currentData?: DashboardData;
+  private _buckets?: TimeBuckets;
+  private _statusBarData?: StatusBarData;
+  private _planType: string = 'pro';
+  private _activePeriod: 'daily' | 'weekly' | 'monthly' = 'daily';
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
+
+  /**
+   * Transform internal TimeBuckets + StatusBarData into webview-safe DashboardData.
+   * This is the core data transformation pipeline for the dashboard.
+   */
+  public static buildDashboardData(
+    buckets: TimeBuckets,
+    statusBarData: StatusBarData,
+    planType: string,
+    activePeriod: 'daily' | 'weekly' | 'monthly' = 'daily'
+  ): DashboardData {
+    const now = new Date();
+    const today = format(now, 'yyyy-MM-dd');
+
+    // 1. Token breakdown - get cache tokens from today's daily bucket
+    const todayBucket = buckets.daily.get(today);
+    const cacheCreationTokens = todayBucket?.cacheCreationTokens ?? 0;
+    const cacheReadTokens = todayBucket?.cacheReadTokens ?? 0;
+
+    // 2. Cost data - direct from statusBarData
+    const todayCost = statusBarData.todayCost;
+    const monthCost = statusBarData.monthCost;
+    const totalCost = statusBarData.totalCost;
+
+    // 3. Rate limits - convert each RateLimitInfo to RateLimitData (serialization-safe)
+    const convertRateLimit = (info: RateLimitInfo): RateLimitData => ({
+      name: info.name,
+      currentTokens: info.currentTokens,
+      estimatedLimit: info.estimatedLimit,
+      percentage: info.percentage,
+      resetTime: info.resetTime?.toISOString() ?? null,
+      isHit: info.isHit,
+    });
+
+    const session5h = convertRateLimit(statusBarData.rateLimits.session5h);
+    const weekly = convertRateLimit(statusBarData.rateLimits.weekly);
+    const weeklySonnet = convertRateLimit(statusBarData.rateLimits.weeklySonnet);
+
+    // 4. Session timing - compute from session5h resetTime
+    let windowStart: string | null = null;
+    let windowExpiry: string | null = null;
+    let timeRemainingMinutes: number | null = null;
+
+    if (statusBarData.rateLimits.session5h.resetTime) {
+      const resetTime = statusBarData.rateLimits.session5h.resetTime;
+      windowExpiry = resetTime.toISOString();
+      windowStart = new Date(resetTime.getTime() - 5 * 60 * 60 * 1000).toISOString();
+      timeRemainingMinutes = Math.max(0, Math.round((resetTime.getTime() - now.getTime()) / 60000));
+    }
+
+    // 5. Burn rate
+    const tokensPerMinute = statusBarData.burnRate;
+    let minutesUntilLimit: number | null = null;
+    if (tokensPerMinute > 0 && session5h.estimatedLimit > 0) {
+      const remainingTokens = session5h.estimatedLimit - session5h.currentTokens;
+      if (remainingTokens > 0) {
+        minutesUntilLimit = Math.round(remainingTokens / tokensPerMinute);
+      }
+    }
+
+    // 6. Trend data - convert appropriate bucket Map to TrendDataPoint[]
+    const bucketMap = buckets[activePeriod];
+    const trendData: TrendDataPoint[] = Array.from(bucketMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, agg]) => ({
+        period,
+        inputTokens: agg.inputTokens,
+        outputTokens: agg.outputTokens,
+        cacheCreationTokens: agg.cacheCreationTokens,
+        cacheReadTokens: agg.cacheReadTokens,
+        totalCost: agg.totalCost,
+      }));
+
+    // 7. Session comparison - CRITICAL for Session tab
+    // Current session: Sum output tokens from all sessions active in last 5 hours
+    const fiveHoursAgo = subHours(now, 5);
+    let currentSessionTokens = 0;
+    for (const [sessionId, agg] of buckets.session.entries()) {
+      if (agg.lastMessage && agg.lastMessage >= fiveHoursAgo) {
+        currentSessionTokens += agg.outputTokens;
+      }
+    }
+
+    // Average session: Mean of ALL sessions' output tokens (historical)
+    let totalOutputAcrossAllSessions = 0;
+    for (const agg of buckets.session.values()) {
+      totalOutputAcrossAllSessions += agg.outputTokens;
+    }
+    const sessionCount = buckets.session.size;
+    const averageSessionTokens = sessionCount > 0 ? Math.round(totalOutputAcrossAllSessions / sessionCount) : 0;
+
+    // 8. Metadata
+    const lastUpdated = statusBarData.lastUpdated.toISOString();
+    const filesProcessed = statusBarData.filesProcessed;
+    const linesSkipped = statusBarData.linesSkipped;
+
+    return {
+      inputTokens: statusBarData.totalInputTokens,
+      outputTokens: statusBarData.totalOutputTokens,
+      cacheCreationTokens,
+      cacheReadTokens,
+      todayCost,
+      monthCost,
+      totalCost,
+      session5h,
+      weekly,
+      weeklySonnet,
+      windowStart,
+      windowExpiry,
+      timeRemainingMinutes,
+      tokensPerMinute,
+      minutesUntilLimit,
+      trendData,
+      currentSessionTokens,
+      averageSessionTokens,
+      sessionCount,
+      lastUpdated,
+      filesProcessed,
+      linesSkipped,
+      planType,
+    };
+  }
 
   /**
    * Called when the view first becomes visible.
@@ -46,8 +175,17 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
           break;
 
         case 'changePeriod':
-          // Store period preference (extension will handle data refresh)
-          // For now, we just acknowledge - future plans will implement period switching
+          // Update period and rebuild data with new trend aggregation
+          this._activePeriod = message.period;
+          if (this._buckets && this._statusBarData) {
+            const data = DashboardProvider.buildDashboardData(
+              this._buckets,
+              this._statusBarData,
+              this._planType,
+              this._activePeriod
+            );
+            this.updateData(data);
+          }
           break;
       }
     });
@@ -63,6 +201,19 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     webviewView.onDidDispose(() => {
       this._view = undefined;
     });
+  }
+
+  /**
+   * Public method for extension.ts to push buckets + statusBarData.
+   * Transforms data via buildDashboardData and caches for visibility refresh.
+   */
+  public updateBuckets(buckets: TimeBuckets, statusBarData: StatusBarData, planType: string): void {
+    this._buckets = buckets;
+    this._statusBarData = statusBarData;
+    this._planType = planType;
+
+    const data = DashboardProvider.buildDashboardData(buckets, statusBarData, planType, this._activePeriod);
+    this.updateData(data);
   }
 
   /**
