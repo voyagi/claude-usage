@@ -20,6 +20,7 @@ import { formatTokens } from './ui/formatting.js';
 import { CredentialsWatcher } from './storage/credentialsWatcher.js';
 import { createBurnRateTracker, calculateBurnRateEMA } from './core/burnRate.js';
 import { refineLimitEstimate } from './parser/rateLimitDetector.js';
+import { DashboardProvider } from './webview/DashboardProvider.js';
 import type { RateLimitEvent } from './parser/incrementalParser.js';
 import type { BurnRateTracker } from './core/burnRate.js';
 import type { PlanType, RefinedLimits } from './types.js';
@@ -28,6 +29,7 @@ const logger = Logger.create('Claude Usage Monitor');
 
 // Module-level references
 let sessionWatcher: SessionWatcher | null = null;
+let dashboardProvider: DashboardProvider | null = null;
 let burnRateTracker: BurnRateTracker | null = null;
 let detectedTier: PlanType | null = null;
 let refinedLimits: RefinedLimits | null = null;
@@ -45,6 +47,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Create StatusBarManager
   const statusBar = new StatusBarManager(context);
+
+  // Create and register DashboardProvider
+  dashboardProvider = new DashboardProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      DashboardProvider.viewType,
+      dashboardProvider
+    )
+  );
 
   // Helper to read current plan selection with auto-detection
   function getSelectedPlan(): PlanType {
@@ -142,6 +153,11 @@ export function activate(context: vscode.ExtensionContext) {
     const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits);
     statusBar.update(data);
 
+    // Update dashboard with new data
+    if (dashboardProvider) {
+      dashboardProvider.updateBuckets(buckets, data, getSelectedPlan());
+    }
+
     // Track current token levels for rate limit refinement
     lastKnownSessionTokens = data.rateLimits.session5h.currentTokens;
     lastKnownWeeklyTokens = data.rateLimits.weekly.currentTokens;
@@ -168,6 +184,13 @@ export function activate(context: vscode.ExtensionContext) {
   // Register showMenu command
   context.subscriptions.push(
     vscode.commands.registerCommand('claude-usage.showMenu', () => showUsageMenu())
+  );
+
+  // Register openDashboard command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.openDashboard', () => {
+      vscode.commands.executeCommand('claude-usage.dashboardView.focus');
+    })
   );
 
   // Register refresh command
@@ -317,6 +340,10 @@ async function performInitialParse(
     burnRateTracker = burnResult.tracker;
     const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan(), burnResult.rate, refinedLimits);
     statusBar.update(data);
+    // Update dashboard with cached data
+    if (dashboardProvider) {
+      dashboardProvider.updateBuckets(cached.buckets, data, getSelectedPlan());
+    }
   }
 
   logger.info('Starting full JSONL parse...');
@@ -370,6 +397,11 @@ async function performInitialParse(
   // Update status bar with fresh data
   const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits);
   statusBar.update(data);
+
+  // Update dashboard with fresh data
+  if (dashboardProvider) {
+    dashboardProvider.updateBuckets(buckets, data, getSelectedPlan());
+  }
 
   // Seed watcher with baseline data for incremental updates
   watcher.setInitialBuckets(buckets, stats);

@@ -31,7 +31,7 @@ export class StatusBarManager {
       vscode.StatusBarAlignment.Right,
       100
     );
-    this.metricsItem.command = 'claude-usage.showMenu';
+    this.metricsItem.command = 'claude-usage.openDashboard';
     context.subscriptions.push(this.metricsItem);
 
     // Create cooldown item (slightly lower priority, appears to left of metrics)
@@ -40,7 +40,7 @@ export class StatusBarManager {
       vscode.StatusBarAlignment.Right,
       99
     );
-    this.cooldownItem.command = 'claude-usage.showMenu';
+    this.cooldownItem.command = 'claude-usage.openDashboard';
     context.subscriptions.push(this.cooldownItem);
 
     // Read compact mode setting
