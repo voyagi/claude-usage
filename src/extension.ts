@@ -9,12 +9,14 @@ import { Logger } from './utils/logger.js';
 import { getClaudeProjectsDir } from './utils/paths.js';
 import { parseAllSessions } from './parser/jsonlParser.js';
 import { loadPricingFromConfig, calculateCost } from './pricing/pricingEngine.js';
-import { aggregateUsage, getTimeBucketSummary } from './aggregation/timeBuckets.js';
+import { aggregateUsage } from './aggregation/timeBuckets.js';
 import { UsageStore } from './storage/usageStore.js';
-import { getPlanConfig } from './pricing/plans.js';
 import { SessionWatcher } from './watcher/sessionWatcher.js';
-import { format } from 'date-fns';
-import type { TimeBuckets, PlanType } from './types.js';
+import { StatusBarManager } from './ui/statusBar.js';
+import { showUsageMenu, showPlanPicker } from './ui/quickPick.js';
+import { buildStatusBarData } from './core/rateLimits.js';
+import { formatTokens } from './ui/formatting.js';
+import type { PlanType } from './types.js';
 
 const logger = Logger.create('Claude Usage Monitor');
 
@@ -30,20 +32,20 @@ export function activate(context: vscode.ExtensionContext) {
   // Create UsageStore for globalState persistence
   const store = new UsageStore(context);
 
-  // Create status bar item
-  const statusBarItem = vscode.window.createStatusBarItem(
-    vscode.StatusBarAlignment.Right,
-    100
-  );
-  statusBarItem.text = '$(loading~spin) Claude Usage: Loading...';
-  statusBarItem.tooltip = 'Claude Usage Monitor is parsing session files...';
-  statusBarItem.show();
-  context.subscriptions.push(statusBarItem);
+  // Create StatusBarManager
+  const statusBar = new StatusBarManager(context);
+
+  // Helper to read current plan selection
+  function getSelectedPlan(): PlanType {
+    const config = vscode.workspace.getConfiguration('claude-usage');
+    return config.get<PlanType>('planType', 'max5');
+  }
 
   // Create SessionWatcher with onUpdate callback
   sessionWatcher = new SessionWatcher(context, (buckets, stats) => {
-    // Update status bar with new data
-    updateStatusBar(statusBarItem, buckets, stats);
+    // Transform buckets into StatusBarData and update display
+    const data = buildStatusBarData(buckets, stats, getSelectedPlan());
+    statusBar.update(data);
     // Persist to globalState
     store.saveUsageData(buckets, stats).catch((err) => {
       logger.error(`Failed to save usage data: ${err.message}`, err instanceof Error ? err : undefined);
@@ -53,28 +55,94 @@ export function activate(context: vscode.ExtensionContext) {
   // Start watching for file changes
   sessionWatcher.start();
 
-  // Register Clear Data command
-  const clearDataCommand = vscode.commands.registerCommand(
-    'claude-usage.clearData',
-    async () => {
+  // Register showMenu command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.showMenu', () => showUsageMenu())
+  );
+
+  // Register refresh command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.refresh', async () => {
+      statusBar.showRefreshing();
+      try {
+        await performInitialParse(store, statusBar, sessionWatcher!);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error(`Refresh failed: ${message}`, err instanceof Error ? err : undefined);
+        statusBar.showError(message);
+      }
+    })
+  );
+
+  // Register switchPlan command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.switchPlan', async () => {
+      const plan = await showPlanPicker();
+      if (plan) {
+        const config = vscode.workspace.getConfiguration('claude-usage');
+        await config.update('planType', plan, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`Plan changed to ${plan}. Refreshing...`);
+        // Trigger refresh to recalculate rate limits
+        await vscode.commands.executeCommand('claude-usage.refresh');
+      }
+    })
+  );
+
+  // Register viewSummary command (placeholder for Phase 5)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.viewSummary', () => {
+      vscode.window.showInformationMessage('Usage summary dashboard coming in Phase 5.');
+    })
+  );
+
+  // Register resetSession command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.resetSession', async () => {
+      const confirm = await vscode.window.showWarningMessage(
+        'Reset all session tracking data? This will clear cached data and reparse all JSONL files.',
+        'Yes',
+        'No'
+      );
+      if (confirm === 'Yes') {
+        await store.clearUsageData();
+        if (sessionWatcher) {
+          await sessionWatcher.resetState();
+        }
+        statusBar.showNoData();
+        vscode.window.showInformationMessage('Session data cleared. Refreshing...');
+        await vscode.commands.executeCommand('claude-usage.refresh');
+      }
+    })
+  );
+
+  // Register clearData command (legacy, kept for backwards compatibility)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.clearData', async () => {
       await store.clearUsageData();
       if (sessionWatcher) {
         await sessionWatcher.resetState();
       }
-      statusBarItem.text = 'Claude Usage: No data';
-      statusBarItem.tooltip = 'All usage data cleared. Reload window to reparse.';
+      statusBar.showNoData();
       vscode.window.showInformationMessage(
         'Claude Usage: Data cleared. Reload window to reparse JSONL files.'
       );
-    }
+    })
   );
-  context.subscriptions.push(clearDataCommand);
+
+  // Listen for configuration changes to re-render status bar
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('claude-usage')) {
+        // Trigger refresh to apply new settings (plan type or compact mode)
+        vscode.commands.executeCommand('claude-usage.refresh');
+      }
+    })
+  );
 
   // Perform initial parse asynchronously (non-blocking)
-  performInitialParse(store, statusBarItem, sessionWatcher).catch((err) => {
+  performInitialParse(store, statusBar, sessionWatcher).catch((err) => {
     logger.error(`Initial parse failed: ${err.message}`, err instanceof Error ? err : undefined);
-    statusBarItem.text = '$(warning) Claude Usage: Error';
-    statusBarItem.tooltip = `Parse failed: ${err.message}`;
+    statusBar.showError(err instanceof Error ? err.message : String(err));
   });
 
   logger.info('Claude Usage Monitor activated');
@@ -87,71 +155,6 @@ export function deactivate() {
   logger.info('Claude Usage Monitor deactivated');
 }
 
-/**
- * Format large numbers with K/M suffixes for display
- */
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return (tokens / 1_000_000).toFixed(1) + 'M';
-  } else if (tokens >= 1_000) {
-    return (tokens / 1_000).toFixed(0) + 'K';
-  }
-  return tokens.toString();
-}
-
-/**
- * Read the user's plan selection from VS Code settings
- */
-function getSelectedPlan(): { type: PlanType; displayName: string; monthlyPrice: number } {
-  const config = vscode.workspace.getConfiguration('claude-usage');
-  const planType = config.get<PlanType>('planType', 'max5');
-  return getPlanConfig(planType);
-}
-
-/**
- * Update status bar with aggregated usage data
- */
-function updateStatusBar(
-  statusBarItem: vscode.StatusBarItem,
-  buckets: TimeBuckets,
-  parseStats: { filesProcessed: number; linesSkipped: number }
-): void {
-  const summary = getTimeBucketSummary(buckets);
-  const plan = getSelectedPlan();
-
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const thisMonth = format(new Date(), 'yyyy-MM');
-  const todayData = buckets.daily.get(today);
-  const monthData = buckets.monthly.get(thisMonth);
-
-  // Total tokens across all days
-  let totalTokens = 0;
-  for (const agg of buckets.daily.values()) {
-    totalTokens += agg.inputTokens + agg.outputTokens + agg.cacheCreationTokens;
-  }
-
-  statusBarItem.text = `$(cloud) Claude: $${summary.totalCost.toFixed(2)} | ${formatTokens(totalTokens)} tok`;
-
-  const todayTokens = todayData
-    ? todayData.inputTokens + todayData.outputTokens + todayData.cacheCreationTokens
-    : 0;
-  const monthTokens = monthData
-    ? monthData.inputTokens + monthData.outputTokens + monthData.cacheCreationTokens
-    : 0;
-
-  const tooltipLines = [
-    'Claude Usage Monitor',
-    `Plan: ${plan.displayName}`,
-    '',
-    `Today: $${(todayData?.totalCost ?? 0).toFixed(2)} (${formatTokens(todayTokens)} tokens)`,
-    `This month: $${(monthData?.totalCost ?? 0).toFixed(2)} (${formatTokens(monthTokens)} tokens)`,
-    '',
-    `Sessions parsed: ${summary.totalSessions}`,
-    `Files processed: ${parseStats.filesProcessed} (${parseStats.linesSkipped} lines skipped)`,
-    `Last updated: ${new Date().toLocaleString()}`,
-  ];
-  statusBarItem.tooltip = tooltipLines.join('\n');
-}
 
 /**
  * Perform initial JSONL parse and populate status bar
@@ -159,14 +162,21 @@ function updateStatusBar(
  */
 async function performInitialParse(
   store: UsageStore,
-  statusBarItem: vscode.StatusBarItem,
+  statusBar: StatusBarManager,
   watcher: SessionWatcher
 ): Promise<void> {
+  // Helper to read current plan selection (inline to avoid module-level dependency)
+  function getSelectedPlan(): PlanType {
+    const config = vscode.workspace.getConfiguration('claude-usage');
+    return config.get<PlanType>('planType', 'max5');
+  }
+
   // Try cached data first for instant status bar update
   const cached = await store.loadUsageData();
   if (cached) {
     logger.info('Loaded cached usage data, showing immediately');
-    updateStatusBar(statusBarItem, cached.buckets, cached.stats);
+    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan());
+    statusBar.update(data);
   }
 
   logger.info('Starting full JSONL parse...');
@@ -178,8 +188,7 @@ async function performInitialParse(
   } catch {
     logger.info('Projects directory not found, no data to display');
     if (!cached) {
-      statusBarItem.text = '$(cloud) Claude Usage: No data';
-      statusBarItem.tooltip = 'Claude projects directory not found.\nPath: ' + projectsDir;
+      statusBar.showNoData();
     }
     return;
   }
@@ -190,8 +199,7 @@ async function performInitialParse(
   if (parseResult.records.length === 0) {
     logger.info('No usage records found in session files');
     if (!cached) {
-      statusBarItem.text = '$(cloud) Claude Usage: No data';
-      statusBarItem.tooltip = 'No usage records found in JSONL files';
+      statusBar.showNoData();
     }
     return;
   }
@@ -207,31 +215,26 @@ async function performInitialParse(
   // Aggregate into time buckets
   const buckets = aggregateUsage(parseResult.records);
 
-  // Save to globalState
-  await store.saveUsageData(buckets, {
+  const stats = {
     filesProcessed: parseResult.filesProcessed,
     linesSkipped: parseResult.linesSkipped,
-  });
+  };
+
+  // Save to globalState
+  await store.saveUsageData(buckets, stats);
 
   // Update status bar with fresh data
-  updateStatusBar(statusBarItem, buckets, {
-    filesProcessed: parseResult.filesProcessed,
-    linesSkipped: parseResult.linesSkipped,
-  });
+  const data = buildStatusBarData(buckets, stats, getSelectedPlan());
+  statusBar.update(data);
 
   // Seed watcher with baseline data for incremental updates
-  watcher.setInitialBuckets(buckets, {
-    filesProcessed: parseResult.filesProcessed,
-    linesSkipped: parseResult.linesSkipped,
-  });
+  watcher.setInitialBuckets(buckets, stats);
 
   // Log summary to output channel
-  const summary = getTimeBucketSummary(buckets);
   let totalTokens = 0;
   for (const agg of buckets.daily.values()) {
     totalTokens += agg.inputTokens + agg.outputTokens + agg.cacheCreationTokens;
   }
   logger.info(`Parse complete: ${parseResult.filesProcessed} files, ${parseResult.records.length} records`);
-  logger.info(`Total cost: $${summary.totalCost.toFixed(2)}, Total tokens: ${formatTokens(totalTokens)}`);
-  logger.info(`Sessions: ${summary.totalSessions}, Days active: ${summary.totalDays}`);
+  logger.info(`Total cost: $${data.totalCost.toFixed(2)}, Total tokens: ${formatTokens(totalTokens)}`);
 }
