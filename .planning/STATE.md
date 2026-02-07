@@ -58,13 +58,29 @@ Recent decisions affecting current work:
 - ISO week standard (01-03): Monday start aligns with international business week conventions
 - Cached data first (01-04): Load globalState on activation for instant status bar, then reparse
 
+### Local Data Sources Discovery (2026-02-07)
+
+Investigated what Claude Code caches locally (relevant to Phases 2-4):
+
+**~/.claude/.credentials.json** — contains `rateLimitTier: "default_claude_max_5x"` and `subscriptionType: "max"`.
+→ Can auto-detect plan instead of manual setting. Affects Phase 3-4 design.
+
+**~/.claude/stats-cache.json** — daily message counts, session counts, per-model token breakdowns.
+→ Complementary to our JSONL parsing. Could cross-validate or supplement.
+
+**Rate limit structure** (from VS Code "Account & Usage" panel):
+- 3 separate limits: Session (5hr), Weekly (7 day), Weekly Sonnet (model-specific)
+- Each has its own reset countdown
+- Percentages and reset timers are **fetched from API in real-time** — NOT cached locally
+→ Phase 4 must estimate proximity from observed tokens, cannot read exact % without network calls.
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-- Phase 4 uncertainty: Claude Code JSONL format for rate-limit events is undocumented. May require experimental approach and iteration based on real session data.
+- Phase 4 rate limit estimation: Exact % and reset timers require API calls (violates zero-network). Must estimate from token counts + known tier structure. Three separate limits (session/weekly/model-weekly) are more complex than originally assumed.
 - Token aggregation accuracy is critical from Phase 1. Must verify against Claude.ai web UI to avoid 5-10x inflation errors seen in other extensions.
 
 ## Session Continuity
