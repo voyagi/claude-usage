@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 5 of 6 (Webview Dashboard) — IN PROGRESS
-Plan: 4 of 6 in current phase
-Status: Trends tab with Recharts visualization complete
-Last activity: 2026-02-07 — Completed 05-04-PLAN.md (Trends tab with charts)
+Plan: 5 of 6 in current phase
+Status: Session tab and full dashboard wiring complete
+Last activity: 2026-02-07 — Completed 05-05-PLAN.md (Session tab, all tabs wired)
 
-Progress: [████████░░] ~77%
+Progress: [████████░░] ~81%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 19
+- Total plans completed: 20
 - Average duration: 3.7 minutes
-- Total execution time: 1.2 hours
+- Total execution time: 1.3 hours
 
 **By Phase:**
 
@@ -31,11 +31,11 @@ Progress: [████████░░] ~77%
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
 | 04 - Rate Limiting | 6 | 28min | 4.7min |
-| 05 - Webview Dashboard | 4 | 16min | 4.0min |
+| 05 - Webview Dashboard | 5 | 19min | 3.8min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 4min, 4min, 4min, 4min
-- Trend: Consistent 4min for React component plans
+- Last 5 plans: 4min, 4min, 4min, 4min, 3min
+- Trend: Phase 5 averaging 3.8min, slightly faster than earlier React plans
 
 *Updated after each plan completion*
 
@@ -103,6 +103,9 @@ Recent decisions affecting current work:
 - Cost summary as separate card (05-04): Cost displayed in dedicated card below chart for clear visual hierarchy
 - Data table collapsed by default (05-04): Expandable table starts collapsed to prioritize visual trend understanding
 - Extension-side data aggregation (05-04): Period selection messages extension which handles aggregation and returns appropriate data
+- Comparison bar scaling (05-05): Visual comparison bars scale to max(current, average) for clear relative sizing
+- Session duration derivation (05-05): Calculated from timeRemaining field (300 - remaining) rather than new DashboardData field
+- Separate edge case messaging (05-05): Distinguish "no active session" from "not enough sessions for comparison"
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -133,7 +136,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07 20:35
-Stopped at: Completed 05-04-PLAN.md (Trends tab with Recharts charts)
+Last session: 2026-02-07 20:41
+Stopped at: Completed 05-05-PLAN.md (Session tab and dashboard completion)
 Resume file: None
-Next: Continue Phase 5 (05-05 Session tab, 05-06 Integration queued)
+Next: Continue Phase 5 (05-06 Integration - final plan in phase)
