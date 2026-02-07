@@ -10,29 +10,29 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 2 of 6 (File Watching & Integration)
-Plan: 1 of TBD in current phase
-Status: In progress
-Last activity: 2026-02-07 — Completed 02-01-PLAN.md
+Plan: 2 of 2 in current phase (Phase 2 complete)
+Status: Phase complete
+Last activity: 2026-02-07 — Completed 02-02-PLAN.md
 
-Progress: [██░░░░░░░░] ~20%
+Progress: [███░░░░░░░] ~30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 4.6 minutes
-- Total execution time: 0.38 hours
+- Total plans completed: 6
+- Average duration: 4.5 minutes
+- Total execution time: 0.45 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 - Foundation | 4 | 20min | 5.0min |
-| 02 - File Watching | 1 | 3min | 3.0min |
+| 02 - File Watching | 2 | 7min | 3.5min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 5min, 6min, 3min
-- Trend: Improving velocity (Phase 2 start)
+- Last 5 plans: 5min, 6min, 3min, 4min
+- Trend: Consistent velocity (3-6 min range)
 
 *Updated after each plan completion*
 
@@ -60,6 +60,8 @@ Recent decisions affecting current work:
 - Cached data first (01-04): Load globalState on activation for instant status bar, then reparse
 - globalState for offset persistence (02-01): Tracks per-file byte offsets across VS Code reloads for incremental parsing
 - Simple byte counting for offset tracking (02-01): Accept rare incomplete line edge case, mitigated by full reparse on activation
+- 500ms debounce for file changes (02-02): Balances responsiveness vs duplicate parsing during rapid JSONL writes
+- Callback-based watcher architecture (02-02): SessionWatcher notifies extension via onUpdate callback for separation of concerns
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -88,7 +90,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07T11:32:54Z
-Stopped at: Completed 02-01-PLAN.md (Incremental Parsing Foundation)
+Last session: 2026-02-07T12:41:45Z
+Stopped at: Completed 02-02-PLAN.md (Live File Watching) — Phase 2 complete
 Resume file: None
-Next: Plan 02-02 (SessionWatcher implementation)
+Next: Phase 3 - Rate Limit Estimation (not yet planned)
