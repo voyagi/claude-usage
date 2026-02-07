@@ -21,12 +21,12 @@
 
 ### Rate Limiting (RL)
 
-- [ ] **RL-01**: Extension tracks the 5-hour rolling session window with accurate first-message detection and expiry calculation
-- [ ] **RL-02**: Extension auto-detects rate limits from observed rate-limit events in JSONL files and builds a model of the user's actual limits over time
-- [ ] **RL-03**: User can manually set/override rate limit thresholds via settings
-- [ ] **RL-04**: Extension calculates burn rate and predicts time until rate limit hit ("~45 min remaining at current pace")
-- [ ] **RL-05**: Extension tracks weekly usage limits (active hours, not wall-clock) and shows proximity
-- [ ] **RL-06**: Extension shows proximity warnings (notifications at configurable thresholds: 75%, 80%, 90%)
+- [x] **RL-01**: Extension tracks the 5-hour rolling session window with accurate first-message detection and expiry calculation
+- [x] **RL-02**: Extension auto-detects rate limits from observed rate-limit events in JSONL files and builds a model of the user's actual limits over time
+- [x] **RL-03**: User can manually set/override rate limit thresholds via settings
+- [x] **RL-04**: Extension calculates burn rate and predicts time until rate limit hit ("~45 min remaining at current pace")
+- [x] **RL-05**: Extension tracks weekly usage limits (active hours, not wall-clock) and shows proximity
+- [x] **RL-06**: Extension shows proximity warnings (notifications at configurable thresholds: 75%, 80%, 90%)
 
 ### Data & Parsing (DP)
 
@@ -87,12 +87,12 @@
 | SP-04 | Phase 5 | Pending |
 | SP-05 | Phase 5 | Pending |
 | SP-06 | Phase 5 | Pending |
-| RL-01 | Phase 4 | Pending |
-| RL-02 | Phase 4 | Pending |
-| RL-03 | Phase 4 | Pending |
-| RL-04 | Phase 4 | Pending |
-| RL-05 | Phase 4 | Pending |
-| RL-06 | Phase 4 | Pending |
+| RL-01 | Phase 4 | Done |
+| RL-02 | Phase 4 | Done |
+| RL-03 | Phase 4 | Done |
+| RL-04 | Phase 4 | Done |
+| RL-05 | Phase 4 | Done |
+| RL-06 | Phase 4 | Done |
 | DP-01 | Phase 2 | Done |
 | DP-02 | Phase 2 | Done |
 | DP-03 | Phase 2 | Done |
@@ -112,4 +112,4 @@
 **Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after Phase 3 completion*
+*Last updated: 2026-02-07 after Phase 4 completion*

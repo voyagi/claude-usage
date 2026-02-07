@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation & Core Parsing** - Domain models, JSONL parser, data aggregation, state store
 - [x] **Phase 2: File Watching & Integration** - Real-time file monitoring, cross-platform path handling, data pipeline integration
 - [x] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
-- [ ] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
+- [x] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
 - [ ] **Phase 5: Webview Dashboard** - Detailed sidebar panel with charts, tables, historical views, session breakdown
 - [ ] **Phase 6: Polish & Trust Features** - Privacy indicators, command palette, export, configuration UI, trust differentiators
 
@@ -91,8 +91,8 @@ Plans:
 - [x] 04-02-PLAN.md -- Enhance rateLimits.ts with urgency weighting + formatting.ts with time-until-limit
 - [x] 04-03-PLAN.md -- CredentialsWatcher + rate limit event detector + package.json config schema
 - [x] 04-04-PLAN.md -- Wire all Phase 4 components into extension.ts + enhance status bar display
-- [ ] 04-05-PLAN.md -- [GAP] Wire orphaned rateLimitDetector into parsing pipeline with persistence
-- [ ] 04-06-PLAN.md -- [GAP] Per-model weekly aggregation for accurate Sonnet limit tracking
+- [x] 04-05-PLAN.md -- [GAP] Wire orphaned rateLimitDetector into parsing pipeline with persistence
+- [x] 04-06-PLAN.md -- [GAP] Per-model weekly aggregation for accurate Sonnet limit tracking
 
 ### Phase 5: Webview Dashboard
 **Goal**: User can view detailed usage breakdown, historical trends, and session analysis
@@ -137,6 +137,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
 | 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
 | 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
-| 4. Rate Limiting & Burn Rate | 4/6 | Gap closure | - |
+| 4. Rate Limiting & Burn Rate | 6/6 | Complete | 2026-02-07 |
 | 5. Webview Dashboard | 0/TBD | Not started | - |
 | 6. Polish & Trust Features | 0/TBD | Not started | - |
