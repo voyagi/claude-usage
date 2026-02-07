@@ -49,10 +49,11 @@ Plans:
   3. Extension handles file changes on Windows, macOS, and Linux correctly
   4. Extension reads files incrementally without re-parsing entire history on each change
   5. Extension properly disposes watchers when extension deactivates (no memory leaks)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] TBD
+- [ ] 02-01-PLAN.md -- OffsetTracker + incremental JSONL parser with byte offset support
+- [ ] 02-02-PLAN.md -- SessionWatcher with debounced file watching + extension lifecycle wiring
 
 ### Phase 3: Basic UI (Status Bar)
 **Goal**: User sees their Claude usage at a glance in the status bar
@@ -127,7 +128,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
-| 2. File Watching & Integration | 0/TBD | Not started | - |
+| 2. File Watching & Integration | 0/2 | Planned | - |
 | 3. Basic UI (Status Bar) | 0/TBD | Not started | - |
 | 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |
 | 5. Webview Dashboard | 0/TBD | Not started | - |
