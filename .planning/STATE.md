@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 1 of 6 (Foundation & Core Parsing)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-07 — Completed 01-02-PLAN.md
+Last activity: 2026-02-07 — Completed 01-03-PLAN.md
 
-Progress: [██░░░░░░░░] ~20%
+Progress: [███░░░░░░░] ~30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 4.5 minutes
-- Total execution time: 0.15 hours
+- Total plans completed: 3
+- Average duration: 4.7 minutes
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 - Foundation | 2 | 9min | 4.5min |
+| 01 - Foundation | 3 | 14min | 4.7min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 5min
-- Trend: Consistent velocity
+- Last 5 plans: 4min, 5min, 5min
+- Trend: Consistent velocity (~5min/plan)
 
 *Updated after each plan completion*
 
@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 - Streaming parser approach (01-02): readline + createReadStream avoids file locks and memory issues
 - Skip corrupt lines (01-02): Active sessions write incomplete JSON; parser continues instead of failing
 - Cache-aware billable tokens (01-02): Exclude cache reads from rate limit calculations per Claude 4.x behavior
+- Configurable pricing (01-03): VS Code settings allow users to update rates without extension updates
+- Local timezone for calendar boundaries (01-03): Users think "today" in local time, not UTC
+- ISO week standard (01-03): Monday start aligns with international business week conventions
 
 ### Pending Todos
 
@@ -65,7 +68,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07T10:17:38Z
-Stopped at: Completed 01-02-PLAN.md (JSONL Parser Implementation)
+Last session: 2026-02-07T11:18:24Z
+Stopped at: Completed 01-03-PLAN.md (Pricing Engine & Time Buckets)
 Resume file: None
-Next: Plan 01-03 (Aggregation & Time Buckets)
+Next: Plan 01-04 (State Management & Data Flow)
