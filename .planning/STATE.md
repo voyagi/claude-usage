@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 
 ## Current Position
 
-Phase: 4 of 6 (Rate Limiting & Burn Rate) — COMPLETE
-Plan: 6 of 6 in current phase
-Status: Phase verified ✓ (6/6 must-haves passed)
-Last activity: 2026-02-07 — Phase 4 verified, all gap closures done
+Phase: 5 of 6 (Webview Dashboard) — IN PROGRESS
+Plan: 1 of 4 in current phase (05-02 complete, 05-01/03/04 in progress)
+Status: Building sidebar dashboard provider
+Last activity: 2026-02-07 — Completed 05-02-PLAN.md (DashboardProvider + message types)
 
-Progress: [███████░░░] ~67%
+Progress: [████████░░] ~70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
+- Total plans completed: 16
 - Average duration: 3.8 minutes
-- Total execution time: 0.9 hours
+- Total execution time: 1.0 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [███████░░░] ~67%
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
 | 04 - Rate Limiting | 6 | 28min | 4.7min |
+| 05 - Webview Dashboard | 1 | 3min | 3.0min |
 
 **Recent Trend:**
-- Last 5 plans: 2min, 4min, 5min, 5min, 11min
-- Trend: Gap closure plans slightly longer due to cross-cutting changes
+- Last 5 plans: 4min, 5min, 5min, 11min, 3min
+- Trend: Stable execution times, simple file creation plans ~3min
 
 *Updated after each plan completion*
 
@@ -85,6 +86,10 @@ Recent decisions affecting current work:
 - Optional serialized field for backward compat (04-06): SerializedTimeBuckets.modelWeekly uses ? for existing persisted data
 - Separate rate limit event callback (04-05): onRateLimitEvent is third optional param to SessionWatcher, not merged into onUpdate
 - Effective limit pattern (04-05): refinedLimits?.X ?? plan.X for all three limit types in calculateRateLimits
+- Discriminated union messages (05-02): WebviewMessage and ExtensionMessage use type field for type-safe postMessage communication
+- ISO string serialization (05-02): DashboardData uses ISO timestamps not Date objects for safe JSON serialization across iframe boundary
+- Visibility-aware refresh (05-02): DashboardProvider caches data and sends immediately when webview becomes visible
+- CSP with unsafe-inline styles (05-02): Allow React inline styles while nonce-protecting scripts
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -115,7 +120,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07 17:45
-Stopped at: Phase 4 verified ✓ — all 6 plans complete, 6/6 must-haves passed
+Last session: 2026-02-07 19:25
+Stopped at: Completed 05-02-PLAN.md (DashboardProvider + message types)
 Resume file: None
-Next: Phase 5 - Webview Dashboard
+Next: Continue Phase 5 (05-01, 05-03, 05-04 in progress or queued)
