@@ -40,6 +40,8 @@ export interface TimeBuckets {
   daily: Map<string, AggregatedUsage>;
   weekly: Map<string, AggregatedUsage>;
   monthly: Map<string, AggregatedUsage>;
+  /** Per-model weekly aggregation. Key format: "YYYY-WII:model-name" */
+  modelWeekly: Map<string, AggregatedUsage>;
 }
 
 /**
@@ -90,6 +92,7 @@ export interface SerializedTimeBuckets {
   daily: [string, AggregatedUsage][];
   weekly: [string, AggregatedUsage][];
   monthly: [string, AggregatedUsage][];
+  modelWeekly?: [string, AggregatedUsage][];  // Optional for backward compat with existing persisted data
 }
 
 /**
@@ -122,6 +125,14 @@ export interface RateLimitStatus {
   weekly: RateLimitInfo;
   weeklySonnet: RateLimitInfo;
   worstPercentage: number;         // max of all three percentages (drives color coding)
+}
+
+/** Persisted refined limit estimates from observed 429 events */
+export interface RefinedLimits {
+  sessionTokenLimit?: number;
+  weeklyTokenLimit?: number;
+  weeklySonnetLimit?: number;
+  lastUpdated: string; // ISO timestamp
 }
 
 /**

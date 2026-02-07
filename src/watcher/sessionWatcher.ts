@@ -34,6 +34,7 @@ export class SessionWatcher {
     daily: new Map(),
     weekly: new Map(),
     monthly: new Map(),
+    modelWeekly: new Map(),
   };
   private readonly processedFiles = new Set<string>();
   private totalLinesSkipped = 0;
@@ -198,6 +199,7 @@ export class SessionWatcher {
       daily: new Map(),
       weekly: new Map(),
       monthly: new Map(),
+      modelWeekly: new Map(),
     };
 
     this.processedFiles.clear();
