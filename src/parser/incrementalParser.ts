@@ -6,14 +6,19 @@
 import * as fs from 'fs';
 import * as readline from 'readline';
 import { parseAssistantMessage } from './schemas.js';
+import { parseRateLimitEvent } from './rateLimitDetector.js';
+import type { RateLimitEvent } from './rateLimitDetector.js';
 import type { Logger } from '../utils/logger.js';
 import type { TokenUsage } from '../types.js';
+
+export type { RateLimitEvent } from './rateLimitDetector.js';
 
 /**
  * Result from incremental parsing
  */
 export interface IncrementalParseResult {
   records: TokenUsage[];
+  rateLimitEvents: RateLimitEvent[];
   newOffset: number;
   linesSkipped: number;
 }
@@ -31,6 +36,7 @@ export async function parseIncremental(
   logger: Logger
 ): Promise<IncrementalParseResult> {
   const records: TokenUsage[] = [];
+  const rateLimitEvents: RateLimitEvent[] = [];
   let linesSkipped = 0;
 
   try {
@@ -52,6 +58,7 @@ export async function parseIncremental(
       logger.info(`No new data in ${filePath} (offset ${actualStart} === size ${fileSize})`);
       return {
         records: [],
+        rateLimitEvents: [],
         newOffset: actualStart,
         linesSkipped: 0,
       };
@@ -85,6 +92,15 @@ export async function parseIncremental(
         // Parse JSON - expect errors on truncated lines during active sessions
         const parsed = JSON.parse(line);
 
+        // Check for rate limit error events BEFORE filtering to assistant-only
+        if (parsed.type === 'error') {
+          const rlEvent = parseRateLimitEvent(line);
+          if (rlEvent) {
+            rateLimitEvents.push(rlEvent);
+          }
+          continue; // Error events don't have token usage
+        }
+
         // Only process assistant messages (skip user, system, etc.)
         if (parsed.type !== 'assistant') {
           continue;
@@ -117,6 +133,7 @@ export async function parseIncremental(
 
     return {
       records,
+      rateLimitEvents,
       newOffset: bytesRead,
       linesSkipped,
     };
@@ -131,6 +148,7 @@ export async function parseIncremental(
     // Return empty result with original offset (don't advance)
     return {
       records: [],
+      rateLimitEvents: [],
       newOffset: startOffset,
       linesSkipped,
     };

@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { OffsetTracker } from './offsetTracker.js';
 import { parseIncremental } from '../parser/incrementalParser.js';
+import type { RateLimitEvent } from '../parser/incrementalParser.js';
 import { aggregateUsage, mergeTimeBuckets } from '../aggregation/timeBuckets.js';
 import { loadPricingFromConfig, calculateCost } from '../pricing/pricingEngine.js';
 import { getClaudeProjectsDir } from '../utils/paths.js';
@@ -25,6 +26,7 @@ export class SessionWatcher {
     buckets: TimeBuckets,
     stats: { filesProcessed: number; linesSkipped: number }
   ) => void;
+  private readonly onRateLimitEvent?: (event: RateLimitEvent) => void;
   private watcher: vscode.FileSystemWatcher | null = null;
   private readonly offsetTracker: OffsetTracker;
   private readonly recentlyCreated = new Set<string>();
@@ -45,10 +47,12 @@ export class SessionWatcher {
     onUpdate: (
       buckets: TimeBuckets,
       stats: { filesProcessed: number; linesSkipped: number }
-    ) => void
+    ) => void,
+    onRateLimitEvent?: (event: RateLimitEvent) => void
   ) {
     this.context = context;
     this.onUpdate = onUpdate;
+    this.onRateLimitEvent = onRateLimitEvent;
     this.offsetTracker = new OffsetTracker(context);
   }
 
@@ -125,7 +129,14 @@ export class SessionWatcher {
       // Parse incrementally from offset
       const result = await parseIncremental(filePath, offset, logger);
 
-      // Early return if no new data
+      // Notify rate limit events if callback provided
+      if (this.onRateLimitEvent && result.rateLimitEvents.length > 0) {
+        for (const event of result.rateLimitEvents) {
+          this.onRateLimitEvent(event);
+        }
+      }
+
+      // Early return if no new data (rate limit events already notified above)
       if (result.records.length === 0 && result.linesSkipped === 0) {
         logger.info(`No new data in ${path.basename(filePath)}`);
         return;
