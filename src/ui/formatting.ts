@@ -101,3 +101,33 @@ export function formatBurnRate(tokensPerMin: number): string {
 
   return `${formatTokens(tokensPerMin)}/min`;
 }
+
+/**
+ * Format estimated time until hitting a rate limit
+ * null: '' (idle, can't predict)
+ * 0: 'LIMIT HIT'
+ * < 1 min: '<1m at current pace'
+ * < 60 min: 'Xm at current pace' (e.g. '45m at current pace')
+ * >= 60 min: 'Xh Ym at current pace' (e.g. '2h 15m at current pace')
+ */
+export function formatTimeUntilLimit(minutes: number | null): string {
+  if (minutes === null) {
+    return '';
+  }
+
+  if (minutes === 0) {
+    return 'LIMIT HIT';
+  }
+
+  if (minutes < 1) {
+    return '<1m at current pace';
+  }
+
+  if (minutes < 60) {
+    return `${Math.round(minutes)}m at current pace`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  return `${hours}h ${mins}m at current pace`;
+}
