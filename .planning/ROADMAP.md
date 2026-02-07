@@ -31,10 +31,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Extension aggregates usage into time buckets (session, daily, weekly, monthly) with correct totals
   4. Extension handles incomplete JSONL writes without crashing (graceful error handling)
   5. Extension persists state across VS Code restarts using globalState
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] TBD
+- [ ] 01-01-PLAN.md — Scaffold VS Code extension project, domain types, Zod schemas, utility modules
+- [ ] 01-02-PLAN.md — Streaming JSONL parser with error recovery, token extraction
+- [ ] 01-03-PLAN.md — Configurable pricing engine, plan selection, time bucket aggregation
+- [ ] 01-04-PLAN.md — UsageStore persistence, extension entry point wiring, integration verification
 
 ### Phase 2: File Watching & Integration
 **Goal**: Extension monitors all Claude Code projects and updates usage in real-time
@@ -123,7 +126,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Core Parsing | 0/TBD | Not started | - |
+| 1. Foundation & Core Parsing | 0/4 | Planned | - |
 | 2. File Watching & Integration | 0/TBD | Not started | - |
 | 3. Basic UI (Status Bar) | 0/TBD | Not started | - |
 | 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |
