@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 1 of 6 (Foundation & Core Parsing)
-Plan: 1 of TBD in current phase
+Plan: 2 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-07 — Completed 01-01-PLAN.md
+Last activity: 2026-02-07 — Completed 01-02-PLAN.md
 
-Progress: [█░░░░░░░░░] ~10%
+Progress: [██░░░░░░░░] ~20%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 4 minutes
-- Total execution time: 0.07 hours
+- Total plans completed: 2
+- Average duration: 4.5 minutes
+- Total execution time: 0.15 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 - Foundation | 1 | 4min | 4min |
+| 01 - Foundation | 2 | 9min | 4.5min |
 
 **Recent Trend:**
-- Last 5 plans: 4min
-- Trend: Just started
+- Last 5 plans: 4min, 5min
+- Trend: Consistent velocity
 
 *Updated after each plan completion*
 
@@ -50,6 +50,9 @@ Recent decisions affecting current work:
 - Strict TypeScript from Day 1 (01-01): Enabled strict mode for early error detection
 - Named exports only (01-01): Explicit dependency tracking across all modules
 - Zod for runtime validation (01-01): Ensures JSONL parsing handles schema changes gracefully
+- Streaming parser approach (01-02): readline + createReadStream avoids file locks and memory issues
+- Skip corrupt lines (01-02): Active sessions write incomplete JSON; parser continues instead of failing
+- Cache-aware billable tokens (01-02): Exclude cache reads from rate limit calculations per Claude 4.x behavior
 
 ### Pending Todos
 
@@ -62,7 +65,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07T10:08:46Z
-Stopped at: Completed 01-01-PLAN.md (VS Code Extension Scaffold)
+Last session: 2026-02-07T10:17:38Z
+Stopped at: Completed 01-02-PLAN.md (JSONL Parser Implementation)
 Resume file: None
-Next: Plan 01-02 (JSONL Parser Implementation)
+Next: Plan 01-03 (Aggregation & Time Buckets)
