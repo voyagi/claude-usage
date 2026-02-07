@@ -19,6 +19,26 @@
       {
         "command": "claude-usage.clearData",
         "title": "Claude Usage: Clear Usage Data"
+      },
+      {
+        "command": "claude-usage.showMenu",
+        "title": "Claude Usage: Show Menu"
+      },
+      {
+        "command": "claude-usage.refresh",
+        "title": "Claude Usage: Refresh Data"
+      },
+      {
+        "command": "claude-usage.switchPlan",
+        "title": "Claude Usage: Switch Plan Tier"
+      },
+      {
+        "command": "claude-usage.viewSummary",
+        "title": "Claude Usage: View Usage Summary"
+      },
+      {
+        "command": "claude-usage.resetSession",
+        "title": "Claude Usage: Reset Session Tracking"
       }
     ],
     "configuration": {
@@ -38,6 +58,11 @@
           "type": "object",
           "description": "Per-model pricing overrides (inputPerMillion, outputPerMillion, cache5mWriteMultiplier, cache1hWriteMultiplier, cacheReadMultiplier)",
           "default": {}
+        },
+        "claude-usage.compactMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use compact status bar display (shorter text for narrow windows)"
         }
       }
     }
