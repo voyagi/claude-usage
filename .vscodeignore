@@ -1,0 +1,10 @@
+src/
+.planning/
+node_modules/
+.git/
+.gitignore
+tsconfig.json
+esbuild.config.mjs
+*.map
+.vscode/
+.eslintrc.json

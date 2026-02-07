@@ -1,0 +1,62 @@
+{
+  "name": "claude-usage-monitor",
+  "displayName": "Claude Usage Monitor",
+  "description": "Local-only Claude Code usage monitoring — zero network calls",
+  "version": "0.1.0",
+  "publisher": "voyagi",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "claude-usage.clearData",
+        "title": "Claude Usage: Clear Usage Data"
+      }
+    ],
+    "configuration": {
+      "title": "Claude Usage Monitor",
+      "properties": {
+        "claude-usage.planType": {
+          "type": "string",
+          "enum": [
+            "pro",
+            "max5",
+            "max20"
+          ],
+          "default": "max5",
+          "description": "Your Claude plan type (affects cost calculations)"
+        },
+        "claude-usage.pricing": {
+          "type": "object",
+          "description": "Per-model pricing overrides (inputPerMillion, outputPerMillion, cache5mWriteMultiplier, cache1hWriteMultiplier, cacheReadMultiplier)",
+          "default": {}
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "compile": "tsc --noEmit",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.96.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "zod": "^3.24.0"
+  }
+}
