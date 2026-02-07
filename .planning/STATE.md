@@ -5,32 +5,32 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Accurate, trustworthy usage visibility — the user always knows where they stand against their plan limits without trusting third-party code with their data.
-**Current focus:** Phase 1 - Foundation & Core Parsing
+**Current focus:** Phase 2 - File Watching & Integration
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation & Core Parsing)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-02-07 — Completed 01-03-PLAN.md
+Phase: 2 of 6 (File Watching & Integration)
+Plan: 0 of TBD in current phase
+Status: Not started (needs planning)
+Last activity: 2026-02-07 — Completed Phase 1
 
-Progress: [███░░░░░░░] ~30%
+Progress: [██░░░░░░░░] ~17%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 4.7 minutes
-- Total execution time: 0.23 hours
+- Total plans completed: 4
+- Average duration: 5.0 minutes
+- Total execution time: 0.33 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 - Foundation | 3 | 14min | 4.7min |
+| 01 - Foundation | 4 | 20min | 5.0min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 5min, 5min
+- Last 5 plans: 4min, 5min, 5min, 6min
 - Trend: Consistent velocity (~5min/plan)
 
 *Updated after each plan completion*
@@ -56,6 +56,7 @@ Recent decisions affecting current work:
 - Configurable pricing (01-03): VS Code settings allow users to update rates without extension updates
 - Local timezone for calendar boundaries (01-03): Users think "today" in local time, not UTC
 - ISO week standard (01-03): Monday start aligns with international business week conventions
+- Cached data first (01-04): Load globalState on activation for instant status bar, then reparse
 
 ### Pending Todos
 
@@ -68,7 +69,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07T11:18:24Z
-Stopped at: Completed 01-03-PLAN.md (Pricing Engine & Time Buckets)
+Last session: 2026-02-07T11:45:00Z
+Stopped at: Completed Phase 1 (Foundation & Core Parsing) — all 4 plans done, verified
 Resume file: None
-Next: Plan 01-04 (State Management & Data Flow)
+Next: Phase 2 planning (File Watching & Integration)

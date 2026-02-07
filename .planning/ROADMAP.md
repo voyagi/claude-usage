@@ -12,7 +12,7 @@ Build a VS Code extension that monitors Claude Code API usage in real-time by re
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Core Parsing** - Domain models, JSONL parser, data aggregation, state store
+- [x] **Phase 1: Foundation & Core Parsing** - Domain models, JSONL parser, data aggregation, state store
 - [ ] **Phase 2: File Watching & Integration** - Real-time file monitoring, cross-platform path handling, data pipeline integration
 - [ ] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
 - [ ] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
@@ -36,8 +36,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md — Scaffold VS Code extension project, domain types, Zod schemas, utility modules
 - [x] 01-02-PLAN.md — Streaming JSONL parser with error recovery, token extraction
-- [ ] 01-03-PLAN.md — Configurable pricing engine, plan selection, time bucket aggregation
-- [ ] 01-04-PLAN.md — UsageStore persistence, extension entry point wiring, integration verification
+- [x] 01-03-PLAN.md — Configurable pricing engine, plan selection, time bucket aggregation
+- [x] 01-04-PLAN.md — UsageStore persistence, extension entry point wiring, integration verification
 
 ### Phase 2: File Watching & Integration
 **Goal**: Extension monitors all Claude Code projects and updates usage in real-time
@@ -126,7 +126,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Core Parsing | 2/4 | In progress | - |
+| 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
 | 2. File Watching & Integration | 0/TBD | Not started | - |
 | 3. Basic UI (Status Bar) | 0/TBD | Not started | - |
 | 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |

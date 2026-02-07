@@ -33,22 +33,22 @@
 - [ ] **DP-01**: Extension reads JSONL session files from ~/.claude/projects/ across all project subdirectories (account-wide)
 - [ ] **DP-02**: Extension auto-refreshes by watching for file changes (30-60 second intervals, configurable)
 - [ ] **DP-03**: Extension handles cross-platform path resolution (Windows %USERPROFILE%, macOS/Linux ~)
-- [ ] **DP-04**: Extension detects and supports multiple JSONL format versions (legacy + current) gracefully
+- [x] **DP-04**: Extension detects and supports multiple JSONL format versions (legacy + current) gracefully
 - [ ] **DP-05**: Extension handles race conditions when reading JSONL files being actively written by Claude Code
-- [ ] **DP-06**: Extension aggregates usage data correctly, distinguishing cached tokens (not rate-limited) from billable tokens (rate-limited)
+- [x] **DP-06**: Extension aggregates usage data correctly, distinguishing cached tokens (not rate-limited) from billable tokens (rate-limited)
 
 ### Trust & Privacy (TP)
 
 - [ ] **TP-01**: Extension makes zero network calls — all data stays local, no telemetry, no analytics
 - [ ] **TP-02**: Extension displays a visible "Local Only" indicator in the sidebar panel
 - [ ] **TP-03**: Extension shows data source path in settings so user can verify what files are being read
-- [ ] **TP-04**: Extension uses configurable pricing tables (not hardcoded) so rates can be updated without code changes
+- [x] **TP-04**: Extension uses configurable pricing tables (not hardcoded) so rates can be updated without code changes
 
 ### Configuration & UX (CX)
 
 - [ ] **CX-01**: Extension registers command palette commands for: manual refresh, plan selection, toggle views, export data
 - [ ] **CX-02**: User can export usage data to JSON for custom analysis
-- [ ] **CX-03**: Extension supports plan selection (Pro $20, Max5 $100, Max20 $200) with correct limits per plan
+- [x] **CX-03**: Extension supports plan selection (Pro $20, Max5 $100, Max20 $200) with correct limits per plan
 - [ ] **CX-04**: Extension activates lazily (only when Claude Code data directory exists)
 - [ ] **CX-05**: Extension provides a settings UI for configuring refresh interval, warning thresholds, plan type, and pricing overrides
 
@@ -96,20 +96,20 @@
 | DP-01 | Phase 2 | Pending |
 | DP-02 | Phase 2 | Pending |
 | DP-03 | Phase 2 | Pending |
-| DP-04 | Phase 1 | Pending |
+| DP-04 | Phase 1 | Done |
 | DP-05 | Phase 2 | Pending |
-| DP-06 | Phase 1 | Pending |
+| DP-06 | Phase 1 | Done |
 | TP-01 | Phase 3 | Pending |
 | TP-02 | Phase 5 | Pending |
 | TP-03 | Phase 6 | Pending |
-| TP-04 | Phase 1 | Pending |
+| TP-04 | Phase 1 | Done |
 | CX-01 | Phase 6 | Pending |
 | CX-02 | Phase 6 | Pending |
-| CX-03 | Phase 1 | Pending |
+| CX-03 | Phase 1 | Done |
 | CX-04 | Phase 6 | Pending |
 | CX-05 | Phase 6 | Pending |
 
 **Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after roadmap creation*
+*Last updated: 2026-02-07 after Phase 1 completion*
