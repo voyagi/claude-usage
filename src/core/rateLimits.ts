@@ -4,7 +4,7 @@
  */
 
 import { startOfWeek, addDays, addHours, differenceInMinutes, differenceInHours, subHours } from 'date-fns';
-import type { TimeBuckets, RateLimitInfo, RateLimitStatus, StatusBarData, PlanType } from '../types.js';
+import type { TimeBuckets, RateLimitInfo, RateLimitStatus, StatusBarData, PlanType, RefinedLimits } from '../types.js';
 import { getPlanConfig } from '../pricing/plans.js';
 import { format } from 'date-fns';
 
@@ -13,10 +13,16 @@ import { format } from 'date-fns';
  */
 export function calculateRateLimits(
   buckets: TimeBuckets,
-  planType: PlanType
+  planType: PlanType,
+  refinedLimits?: RefinedLimits | null
 ): RateLimitStatus {
   const plan = getPlanConfig(planType);
   const now = new Date();
+
+  // Merge refined limits with plan config (refined overrides plan defaults)
+  const effectiveSessionLimit = refinedLimits?.sessionTokenLimit ?? plan.sessionTokenLimit;
+  const effectiveWeeklyLimit = refinedLimits?.weeklyTokenLimit ?? plan.weeklyTokenLimit;
+  const effectiveSonnetLimit = refinedLimits?.weeklySonnetLimit ?? plan.weeklySonnetLimit;
 
   // Session 5hr limit: Sum output tokens from sessions with lastMessage in last 5 hours
   const fiveHoursAgo = subHours(now, 5);
@@ -35,12 +41,12 @@ export function calculateRateLimits(
   const session5h: RateLimitInfo = {
     name: 'Session (5hr)',
     currentTokens: sessionTokens,
-    estimatedLimit: plan.sessionTokenLimit ?? 0,
-    percentage: plan.sessionTokenLimit
-      ? Math.min(100, Math.round((sessionTokens / plan.sessionTokenLimit) * 100))
+    estimatedLimit: effectiveSessionLimit ?? 0,
+    percentage: effectiveSessionLimit
+      ? Math.min(100, Math.round((sessionTokens / effectiveSessionLimit) * 100))
       : 0,
     resetTime: oldestSessionTime ? addHours(oldestSessionTime, 5) : null,
-    isHit: plan.sessionTokenLimit ? (sessionTokens / plan.sessionTokenLimit) >= 1.0 : false,
+    isHit: effectiveSessionLimit ? (sessionTokens / effectiveSessionLimit) >= 1.0 : false,
   };
 
   // Weekly limit: Sum output tokens from current ISO week
@@ -52,12 +58,12 @@ export function calculateRateLimits(
   const weekly: RateLimitInfo = {
     name: 'Weekly',
     currentTokens: weeklyTokens,
-    estimatedLimit: plan.weeklyTokenLimit ?? 0,
-    percentage: plan.weeklyTokenLimit
-      ? Math.min(100, Math.round((weeklyTokens / plan.weeklyTokenLimit) * 100))
+    estimatedLimit: effectiveWeeklyLimit ?? 0,
+    percentage: effectiveWeeklyLimit
+      ? Math.min(100, Math.round((weeklyTokens / effectiveWeeklyLimit) * 100))
       : 0,
     resetTime: addDays(weekStart, 7),
-    isHit: plan.weeklyTokenLimit ? (weeklyTokens / plan.weeklyTokenLimit) >= 1.0 : false,
+    isHit: effectiveWeeklyLimit ? (weeklyTokens / effectiveWeeklyLimit) >= 1.0 : false,
   };
 
   // Weekly Sonnet limit: Sum output tokens only from claude-sonnet-* models this week
@@ -72,12 +78,12 @@ export function calculateRateLimits(
   const weeklySonnet: RateLimitInfo = {
     name: 'Weekly Sonnet',
     currentTokens: weeklySonnetTokens,
-    estimatedLimit: plan.weeklySonnetLimit ?? 0,
-    percentage: plan.weeklySonnetLimit
-      ? Math.min(100, Math.round((weeklySonnetTokens / plan.weeklySonnetLimit) * 100))
+    estimatedLimit: effectiveSonnetLimit ?? 0,
+    percentage: effectiveSonnetLimit
+      ? Math.min(100, Math.round((weeklySonnetTokens / effectiveSonnetLimit) * 100))
       : 0,
     resetTime: addDays(weekStart, 7),
-    isHit: plan.weeklySonnetLimit ? (weeklySonnetTokens / plan.weeklySonnetLimit) >= 1.0 : false,
+    isHit: effectiveSonnetLimit ? (weeklySonnetTokens / effectiveSonnetLimit) >= 1.0 : false,
   };
 
   const worstPercentage = Math.max(
@@ -153,7 +159,8 @@ export function buildStatusBarData(
   buckets: TimeBuckets,
   stats: { filesProcessed: number; linesSkipped: number },
   planType: PlanType,
-  burnRateOverride?: number
+  burnRateOverride?: number,
+  refinedLimits?: RefinedLimits | null
 ): StatusBarData {
   const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
@@ -180,7 +187,7 @@ export function buildStatusBarData(
     todayCost: todayData?.totalCost ?? 0,
     monthCost: monthData?.totalCost ?? 0,
     burnRate: burnRateOverride !== undefined ? burnRateOverride : calculateBurnRate(buckets),
-    rateLimits: calculateRateLimits(buckets, planType),
+    rateLimits: calculateRateLimits(buckets, planType, refinedLimits),
     lastUpdated: now,
     filesProcessed: stats.filesProcessed,
     linesSkipped: stats.linesSkipped,

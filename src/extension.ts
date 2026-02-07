@@ -15,11 +15,14 @@ import { SessionWatcher } from './watcher/sessionWatcher.js';
 import { StatusBarManager } from './ui/statusBar.js';
 import { showUsageMenu, showPlanPicker } from './ui/quickPick.js';
 import { buildStatusBarData } from './core/rateLimits.js';
+import { getPlanConfig } from './pricing/plans.js';
 import { formatTokens } from './ui/formatting.js';
 import { CredentialsWatcher } from './storage/credentialsWatcher.js';
 import { createBurnRateTracker, calculateBurnRateEMA } from './core/burnRate.js';
+import { refineLimitEstimate } from './parser/rateLimitDetector.js';
+import type { RateLimitEvent } from './parser/incrementalParser.js';
 import type { BurnRateTracker } from './core/burnRate.js';
-import type { PlanType } from './types.js';
+import type { PlanType, RefinedLimits } from './types.js';
 
 const logger = Logger.create('Claude Usage Monitor');
 
@@ -27,6 +30,9 @@ const logger = Logger.create('Claude Usage Monitor');
 let sessionWatcher: SessionWatcher | null = null;
 let burnRateTracker: BurnRateTracker | null = null;
 let detectedTier: PlanType | null = null;
+let refinedLimits: RefinedLimits | null = null;
+let lastKnownSessionTokens = 0;
+let lastKnownWeeklyTokens = 0;
 
 /**
  * Extension activation
@@ -63,6 +69,59 @@ export function activate(context: vscode.ExtensionContext) {
     return config.get<number>('burnRate.windowMinutes', 15);
   }
 
+  // Load refined limits from globalState
+  function loadRefinedLimits(): RefinedLimits | null {
+    return context.globalState.get<RefinedLimits>('refinedLimits') ?? null;
+  }
+
+  // Save refined limits to globalState
+  async function saveRefinedLimits(limits: RefinedLimits): Promise<void> {
+    await context.globalState.update('refinedLimits', limits);
+  }
+
+  // Load persisted refined limits
+  refinedLimits = loadRefinedLimits();
+  if (refinedLimits) {
+    logger.info(`Loaded refined limits from globalState (last updated: ${refinedLimits.lastUpdated})`);
+  }
+
+  // Handle rate limit events from SessionWatcher
+  function handleRateLimitEvent(event: RateLimitEvent): void {
+    const plan = getPlanConfig(getSelectedPlan());
+
+    if (event.limitType === 'session' && lastKnownSessionTokens > 0) {
+      const currentLimit = refinedLimits?.sessionTokenLimit ?? plan.sessionTokenLimit ?? 0;
+      const refined = refineLimitEstimate(currentLimit, lastKnownSessionTokens);
+      if (refined < currentLimit) {
+        refinedLimits = {
+          ...refinedLimits,
+          sessionTokenLimit: refined,
+          lastUpdated: new Date().toISOString(),
+        } as RefinedLimits;
+        logger.info(`Refined session limit: ${currentLimit} -> ${refined} (observed: ${lastKnownSessionTokens})`);
+      }
+    } else if (event.limitType === 'weekly' && lastKnownWeeklyTokens > 0) {
+      const currentLimit = refinedLimits?.weeklyTokenLimit ?? plan.weeklyTokenLimit ?? 0;
+      const refined = refineLimitEstimate(currentLimit, lastKnownWeeklyTokens);
+      if (refined < currentLimit) {
+        refinedLimits = {
+          ...refinedLimits,
+          weeklyTokenLimit: refined,
+          lastUpdated: new Date().toISOString(),
+        } as RefinedLimits;
+        logger.info(`Refined weekly limit: ${currentLimit} -> ${refined} (observed: ${lastKnownWeeklyTokens})`);
+      }
+    }
+
+    // Persist and refresh
+    if (refinedLimits) {
+      saveRefinedLimits(refinedLimits).catch((err) => {
+        logger.error(`Failed to save refined limits: ${err}`);
+      });
+      vscode.commands.executeCommand('claude-usage.refresh');
+    }
+  }
+
   // Initialize burn rate tracker
   burnRateTracker = createBurnRateTracker();
 
@@ -73,21 +132,25 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.executeCommand('claude-usage.refresh');
   });
 
-  // Create SessionWatcher with onUpdate callback
+  // Create SessionWatcher with onUpdate callback and rate limit event handler
   sessionWatcher = new SessionWatcher(context, (buckets, stats) => {
     // Calculate EMA burn rate
     const burnResult = calculateBurnRateEMA(buckets, burnRateTracker!, getBurnRateWindow());
     burnRateTracker = burnResult.tracker;
 
     // Transform buckets into StatusBarData and update display
-    const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate);
+    const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits);
     statusBar.update(data);
+
+    // Track current token levels for rate limit refinement
+    lastKnownSessionTokens = data.rateLimits.session5h.currentTokens;
+    lastKnownWeeklyTokens = data.rateLimits.weekly.currentTokens;
 
     // Persist to globalState
     store.saveUsageData(buckets, stats).catch((err) => {
       logger.error(`Failed to save usage data: ${err.message}`, err instanceof Error ? err : undefined);
     });
-  });
+  }, handleRateLimitEvent);
 
   // Start watching for file changes
   sessionWatcher.start();
@@ -152,6 +215,11 @@ export function activate(context: vscode.ExtensionContext) {
       );
       if (confirm === 'Yes') {
         await store.clearUsageData();
+        // Clear refined limits
+        refinedLimits = null;
+        await context.globalState.update('refinedLimits', undefined);
+        lastKnownSessionTokens = 0;
+        lastKnownWeeklyTokens = 0;
         if (sessionWatcher) {
           await sessionWatcher.resetState();
         }
@@ -166,6 +234,11 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claude-usage.clearData', async () => {
       await store.clearUsageData();
+      // Clear refined limits
+      refinedLimits = null;
+      await context.globalState.update('refinedLimits', undefined);
+      lastKnownSessionTokens = 0;
+      lastKnownWeeklyTokens = 0;
       if (sessionWatcher) {
         await sessionWatcher.resetState();
       }
@@ -242,7 +315,7 @@ async function performInitialParse(
     // Calculate EMA burn rate for cached data
     const burnResult = calculateBurnRateEMA(cached.buckets, burnRateTracker!, getBurnRateWindow());
     burnRateTracker = burnResult.tracker;
-    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan(), burnResult.rate);
+    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan(), burnResult.rate, refinedLimits);
     statusBar.update(data);
   }
 
@@ -295,7 +368,7 @@ async function performInitialParse(
   burnRateTracker = burnResult.tracker;
 
   // Update status bar with fresh data
-  const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate);
+  const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits);
   statusBar.update(data);
 
   // Seed watcher with baseline data for incremental updates
