@@ -10,17 +10,17 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 4 of 6 (Rate Limiting & Burn Rate)
-Plan: 2 of 4 in current phase
+Plan: 3 of 4 in current phase
 Status: In progress
-Last activity: 2026-02-07 — Completed 04-02-PLAN.md
+Last activity: 2026-02-07 — Completed 04-03-PLAN.md
 
-Progress: [█████░░░░░] ~52%
+Progress: [█████░░░░░] ~58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
-- Average duration: 3.8 minutes
+- Total plans completed: 11
+- Average duration: 3.5 minutes
 - Total execution time: 0.6 hours
 
 **By Phase:**
@@ -30,11 +30,11 @@ Progress: [█████░░░░░] ~52%
 | 01 - Foundation | 4 | 20min | 5.0min |
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
-| 04 - Rate Limiting | 2 | 6min | 3.0min |
+| 04 - Rate Limiting | 3 | 8min | 2.7min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 2min, 3min, 4min, 3min
-- Trend: Consistent velocity (3-4 min range)
+- Last 5 plans: 2min, 3min, 4min, 3min, 2min
+- Trend: Consistent velocity (2-4 min range)
 
 *Updated after each plan completion*
 
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - Legacy clearData kept (03-03): Maintain backwards compatibility for early adopters with keyboard shortcuts
 - Urgency scoring for rate limits (04-02): Use percentage * 1/sqrt(hoursUntilReset) to identify most critical limit
 - Optional burn rate override (04-02): buildStatusBarData accepts EMA-smoothed burn rate while keeping simple fallback
+- Callback-only tier changes (04-03): CredentialsWatcher fires onTierChange only when tier actually changes, not on every file write
+- Downward-only limit refinement (04-03): When 429 observed, adjust limit estimate to 95% of observed usage (never increase estimates)
+- Default warning thresholds (04-03): Yellow at 60%, red at 95%, with 15-minute burn rate window as sensible defaults
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -103,7 +106,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07 15:30
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-02-07 15:37
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None
-Next: Continue Phase 4 (plans 03-04 remaining)
+Next: Continue Phase 4 (plan 04-04 remaining)
