@@ -4,11 +4,11 @@
 
 ### Status Bar (SB)
 
-- [ ] **SB-01**: User sees an always-on status bar item showing input tokens, output tokens, estimated cost ($), and usage percentage against plan limit
-- [ ] **SB-02**: Status bar item is color-coded by usage threshold (green < 60%, yellow 60-80%, red > 80%)
-- [ ] **SB-03**: Status bar displays current burn rate (tokens/min) inline
-- [ ] **SB-04**: Status bar shows cooldown/reset timer counting down to session window expiry
-- [ ] **SB-05**: Status bar adapts to narrow widths with compact mode (abbreviations, truncated labels)
+- [x] **SB-01**: User sees an always-on status bar item showing input tokens, output tokens, estimated cost ($), and usage percentage against plan limit
+- [x] **SB-02**: Status bar item is color-coded by usage threshold (green < 60%, yellow 60-80%, red > 80%)
+- [x] **SB-03**: Status bar displays current burn rate (tokens/min) inline
+- [x] **SB-04**: Status bar shows cooldown/reset timer counting down to session window expiry
+- [x] **SB-05**: Status bar adapts to narrow widths with compact mode (abbreviations, truncated labels)
 
 ### Sidebar Panel (SP)
 
@@ -39,7 +39,7 @@
 
 ### Trust & Privacy (TP)
 
-- [ ] **TP-01**: Extension makes zero network calls — all data stays local, no telemetry, no analytics
+- [x] **TP-01**: Extension makes zero network calls — all data stays local, no telemetry, no analytics
 - [ ] **TP-02**: Extension displays a visible "Local Only" indicator in the sidebar panel
 - [ ] **TP-03**: Extension shows data source path in settings so user can verify what files are being read
 - [x] **TP-04**: Extension uses configurable pricing tables (not hardcoded) so rates can be updated without code changes
@@ -76,11 +76,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SB-01 | Phase 3 | Pending |
-| SB-02 | Phase 3 | Pending |
-| SB-03 | Phase 3 | Pending |
-| SB-04 | Phase 3 | Pending |
-| SB-05 | Phase 3 | Pending |
+| SB-01 | Phase 3 | Done |
+| SB-02 | Phase 3 | Done |
+| SB-03 | Phase 3 | Done |
+| SB-04 | Phase 3 | Done |
+| SB-05 | Phase 3 | Done |
 | SP-01 | Phase 5 | Pending |
 | SP-02 | Phase 5 | Pending |
 | SP-03 | Phase 5 | Pending |
@@ -99,7 +99,7 @@
 | DP-04 | Phase 1 | Done |
 | DP-05 | Phase 2 | Done |
 | DP-06 | Phase 1 | Done |
-| TP-01 | Phase 3 | Pending |
+| TP-01 | Phase 3 | Done |
 | TP-02 | Phase 5 | Pending |
 | TP-03 | Phase 6 | Pending |
 | TP-04 | Phase 1 | Done |
@@ -112,4 +112,4 @@
 **Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after Phase 2 completion*
+*Last updated: 2026-02-07 after Phase 3 completion*

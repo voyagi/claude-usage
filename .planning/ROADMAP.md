@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Core Parsing** - Domain models, JSONL parser, data aggregation, state store
 - [x] **Phase 2: File Watching & Integration** - Real-time file monitoring, cross-platform path handling, data pipeline integration
-- [ ] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
+- [x] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
 - [ ] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
 - [ ] **Phase 5: Webview Dashboard** - Detailed sidebar panel with charts, tables, historical views, session breakdown
 - [ ] **Phase 6: Polish & Trust Features** - Privacy indicators, command palette, export, configuration UI, trust differentiators
@@ -69,9 +69,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Rate limit types, calculation engine, and display formatting utilities
-- [ ] 03-02-PLAN.md — StatusBarManager class with two items and quick pick menu
-- [ ] 03-03-PLAN.md — Wire StatusBarManager into extension.ts, register commands, update package.json
+- [x] 03-01-PLAN.md — Rate limit types, calculation engine, and display formatting utilities
+- [x] 03-02-PLAN.md — StatusBarManager class with two items and quick pick menu
+- [x] 03-03-PLAN.md — Wire StatusBarManager into extension.ts, register commands, update package.json
 
 ### Phase 4: Rate Limiting & Burn Rate
 **Goal**: User knows when they'll hit rate limits and can plan usage accordingly
@@ -131,7 +131,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
 | 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
-| 3. Basic UI (Status Bar) | 0/3 | Not started | - |
+| 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
 | 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |
 | 5. Webview Dashboard | 0/TBD | Not started | - |
 | 6. Polish & Trust Features | 0/TBD | Not started | - |
