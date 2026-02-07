@@ -30,11 +30,11 @@
 
 ### Data & Parsing (DP)
 
-- [ ] **DP-01**: Extension reads JSONL session files from ~/.claude/projects/ across all project subdirectories (account-wide)
-- [ ] **DP-02**: Extension auto-refreshes by watching for file changes (30-60 second intervals, configurable)
-- [ ] **DP-03**: Extension handles cross-platform path resolution (Windows %USERPROFILE%, macOS/Linux ~)
+- [x] **DP-01**: Extension reads JSONL session files from ~/.claude/projects/ across all project subdirectories (account-wide)
+- [x] **DP-02**: Extension auto-refreshes by watching for file changes (30-60 second intervals, configurable)
+- [x] **DP-03**: Extension handles cross-platform path resolution (Windows %USERPROFILE%, macOS/Linux ~)
 - [x] **DP-04**: Extension detects and supports multiple JSONL format versions (legacy + current) gracefully
-- [ ] **DP-05**: Extension handles race conditions when reading JSONL files being actively written by Claude Code
+- [x] **DP-05**: Extension handles race conditions when reading JSONL files being actively written by Claude Code
 - [x] **DP-06**: Extension aggregates usage data correctly, distinguishing cached tokens (not rate-limited) from billable tokens (rate-limited)
 
 ### Trust & Privacy (TP)
@@ -93,11 +93,11 @@
 | RL-04 | Phase 4 | Pending |
 | RL-05 | Phase 4 | Pending |
 | RL-06 | Phase 4 | Pending |
-| DP-01 | Phase 2 | Pending |
-| DP-02 | Phase 2 | Pending |
-| DP-03 | Phase 2 | Pending |
+| DP-01 | Phase 2 | Done |
+| DP-02 | Phase 2 | Done |
+| DP-03 | Phase 2 | Done |
 | DP-04 | Phase 1 | Done |
-| DP-05 | Phase 2 | Pending |
+| DP-05 | Phase 2 | Done |
 | DP-06 | Phase 1 | Done |
 | TP-01 | Phase 3 | Pending |
 | TP-02 | Phase 5 | Pending |
@@ -112,4 +112,4 @@
 **Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after Phase 1 completion*
+*Last updated: 2026-02-07 after Phase 2 completion*

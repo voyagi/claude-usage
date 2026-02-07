@@ -5,7 +5,7 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** Accurate, trustworthy usage visibility — the user always knows where they stand against their plan limits without trusting third-party code with their data.
-**Current focus:** Phase 2 - File Watching & Integration
+**Current focus:** Phase 3 - Basic UI (Status Bar)
 
 ## Current Position
 
@@ -93,4 +93,4 @@ None yet.
 Last session: 2026-02-07T12:41:45Z
 Stopped at: Completed 02-02-PLAN.md (Live File Watching) — Phase 2 complete
 Resume file: None
-Next: Phase 3 - Rate Limit Estimation (not yet planned)
+Next: Phase 3 planning (Basic UI - Status Bar)

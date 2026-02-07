@@ -13,7 +13,7 @@ Build a VS Code extension that monitors Claude Code API usage in real-time by re
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation & Core Parsing** - Domain models, JSONL parser, data aggregation, state store
-- [ ] **Phase 2: File Watching & Integration** - Real-time file monitoring, cross-platform path handling, data pipeline integration
+- [x] **Phase 2: File Watching & Integration** - Real-time file monitoring, cross-platform path handling, data pipeline integration
 - [ ] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
 - [ ] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
 - [ ] **Phase 5: Webview Dashboard** - Detailed sidebar panel with charts, tables, historical views, session breakdown
@@ -52,8 +52,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- OffsetTracker + incremental JSONL parser with byte offset support
-- [ ] 02-02-PLAN.md -- SessionWatcher with debounced file watching + extension lifecycle wiring
+- [x] 02-01-PLAN.md -- OffsetTracker + incremental JSONL parser with byte offset support
+- [x] 02-02-PLAN.md -- SessionWatcher with debounced file watching + extension lifecycle wiring
 
 ### Phase 3: Basic UI (Status Bar)
 **Goal**: User sees their Claude usage at a glance in the status bar
@@ -128,7 +128,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Core Parsing | 4/4 | Complete | 2026-02-07 |
-| 2. File Watching & Integration | 0/2 | Planned | - |
+| 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
 | 3. Basic UI (Status Bar) | 0/TBD | Not started | - |
 | 4. Rate Limiting & Burn Rate | 0/TBD | Not started | - |
 | 5. Webview Dashboard | 0/TBD | Not started | - |
