@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 4 of 6 (Rate Limiting & Burn Rate)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-02-07 — Completed 04-03-PLAN.md
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-02-07 — Completed 04-04-PLAN.md
 
-Progress: [█████░░░░░] ~58%
+Progress: [██████░░░░] ~63%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 3.5 minutes
-- Total execution time: 0.6 hours
+- Total plans completed: 12
+- Average duration: 3.4 minutes
+- Total execution time: 0.7 hours
 
 **By Phase:**
 
@@ -30,10 +30,10 @@ Progress: [█████░░░░░] ~58%
 | 01 - Foundation | 4 | 20min | 5.0min |
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
-| 04 - Rate Limiting | 3 | 8min | 2.7min |
+| 04 - Rate Limiting | 4 | 12min | 3.0min |
 
 **Recent Trend:**
-- Last 5 plans: 2min, 3min, 4min, 3min, 2min
+- Last 5 plans: 3min, 4min, 3min, 2min, 4min
 - Trend: Consistent velocity (2-4 min range)
 
 *Updated after each plan completion*
@@ -78,6 +78,9 @@ Recent decisions affecting current work:
 - Callback-only tier changes (04-03): CredentialsWatcher fires onTierChange only when tier actually changes, not on every file write
 - Downward-only limit refinement (04-03): When 429 observed, adjust limit estimate to 95% of observed usage (never increase estimates)
 - Default warning thresholds (04-03): Yellow at 60%, red at 95%, with 15-minute burn rate window as sensible defaults
+- User override precedence (04-04): Explicit user planType setting takes precedence over auto-detected tier from credentials.json
+- Config thresholds at display time (04-04): Warning thresholds read from config on every update() call for live config changes
+- Urgency score visibility (04-04): Shown in tooltip alongside each rate limit for power user context
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -101,12 +104,14 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 4 rate limit estimation: Exact % and reset timers require API calls (violates zero-network). Must estimate from token counts + known tier structure. Three separate limits (session/weekly/model-weekly) are more complex than originally assumed.
 - Token aggregation accuracy is critical from Phase 1. Must verify against Claude.ai web UI to avoid 5-10x inflation errors seen in other extensions.
+
+**Resolved:**
+- ✅ Phase 4 rate limit estimation: Implemented with EMA smoothing, auto tier detection, and configurable thresholds. Phase 4 complete.
 
 ## Session Continuity
 
-Last session: 2026-02-07 15:37
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-02-07 15:45
+Stopped at: Completed 04-04-PLAN.md (Phase 4 complete)
 Resume file: None
-Next: Continue Phase 4 (plan 04-04 remaining)
+Next: Phase 5 - Dashboard Webview
