@@ -16,12 +16,17 @@ import { StatusBarManager } from './ui/statusBar.js';
 import { showUsageMenu, showPlanPicker } from './ui/quickPick.js';
 import { buildStatusBarData } from './core/rateLimits.js';
 import { formatTokens } from './ui/formatting.js';
+import { CredentialsWatcher } from './storage/credentialsWatcher.js';
+import { createBurnRateTracker, calculateBurnRateEMA } from './core/burnRate.js';
+import type { BurnRateTracker } from './core/burnRate.js';
 import type { PlanType } from './types.js';
 
 const logger = Logger.create('Claude Usage Monitor');
 
-// Module-level reference for SessionWatcher (needed by Clear Data command)
+// Module-level references
 let sessionWatcher: SessionWatcher | null = null;
+let burnRateTracker: BurnRateTracker | null = null;
+let detectedTier: PlanType | null = null;
 
 /**
  * Extension activation
@@ -35,17 +40,49 @@ export function activate(context: vscode.ExtensionContext) {
   // Create StatusBarManager
   const statusBar = new StatusBarManager(context);
 
-  // Helper to read current plan selection
+  // Helper to read current plan selection with auto-detection
   function getSelectedPlan(): PlanType {
     const config = vscode.workspace.getConfiguration('claude-usage');
-    return config.get<PlanType>('planType', 'max5');
+    const userSetting = config.get<PlanType>('planType', 'max5');
+
+    // Check if user explicitly overrode the setting
+    const inspected = config.inspect('planType');
+    const hasUserOverride = inspected?.globalValue !== undefined || inspected?.workspaceValue !== undefined;
+
+    // If user explicitly set it, use their value; otherwise use auto-detected tier
+    if (hasUserOverride) {
+      return userSetting;
+    }
+
+    return detectedTier ?? userSetting;
   }
+
+  // Helper to read burn rate window from config
+  function getBurnRateWindow(): number {
+    const config = vscode.workspace.getConfiguration('claude-usage');
+    return config.get<number>('burnRate.windowMinutes', 15);
+  }
+
+  // Initialize burn rate tracker
+  burnRateTracker = createBurnRateTracker();
+
+  // Create credentials watcher for auto tier detection
+  const credentialsWatcher = new CredentialsWatcher(context, (newTier) => {
+    logger.info(`Tier changed to ${newTier}, refreshing...`);
+    detectedTier = newTier;
+    vscode.commands.executeCommand('claude-usage.refresh');
+  });
 
   // Create SessionWatcher with onUpdate callback
   sessionWatcher = new SessionWatcher(context, (buckets, stats) => {
+    // Calculate EMA burn rate
+    const burnResult = calculateBurnRateEMA(buckets, burnRateTracker!, getBurnRateWindow());
+    burnRateTracker = burnResult.tracker;
+
     // Transform buckets into StatusBarData and update display
-    const data = buildStatusBarData(buckets, stats, getSelectedPlan());
+    const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate);
     statusBar.update(data);
+
     // Persist to globalState
     store.saveUsageData(buckets, stats).catch((err) => {
       logger.error(`Failed to save usage data: ${err.message}`, err instanceof Error ? err : undefined);
@@ -54,6 +91,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Start watching for file changes
   sessionWatcher.start();
+
+  // Start credentials watcher (async, non-blocking)
+  credentialsWatcher.start(getSelectedPlan()).then((tier) => {
+    if (tier !== getSelectedPlan()) {
+      detectedTier = tier;
+      logger.info(`Auto-detected plan tier: ${tier}`);
+    }
+  }).catch((err) => {
+    logger.warn(`Credentials detection failed: ${err.message}`);
+  });
 
   // Register showMenu command
   context.subscriptions.push(
@@ -168,14 +215,34 @@ async function performInitialParse(
   // Helper to read current plan selection (inline to avoid module-level dependency)
   function getSelectedPlan(): PlanType {
     const config = vscode.workspace.getConfiguration('claude-usage');
-    return config.get<PlanType>('planType', 'max5');
+    const userSetting = config.get<PlanType>('planType', 'max5');
+
+    // Check if user explicitly overrode the setting
+    const inspected = config.inspect('planType');
+    const hasUserOverride = inspected?.globalValue !== undefined || inspected?.workspaceValue !== undefined;
+
+    // If user explicitly set it, use their value; otherwise use auto-detected tier
+    if (hasUserOverride) {
+      return userSetting;
+    }
+
+    return detectedTier ?? userSetting;
+  }
+
+  // Helper to read burn rate window from config
+  function getBurnRateWindow(): number {
+    const config = vscode.workspace.getConfiguration('claude-usage');
+    return config.get<number>('burnRate.windowMinutes', 15);
   }
 
   // Try cached data first for instant status bar update
   const cached = await store.loadUsageData();
   if (cached) {
     logger.info('Loaded cached usage data, showing immediately');
-    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan());
+    // Calculate EMA burn rate for cached data
+    const burnResult = calculateBurnRateEMA(cached.buckets, burnRateTracker!, getBurnRateWindow());
+    burnRateTracker = burnResult.tracker;
+    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan(), burnResult.rate);
     statusBar.update(data);
   }
 
@@ -223,8 +290,12 @@ async function performInitialParse(
   // Save to globalState
   await store.saveUsageData(buckets, stats);
 
+  // Calculate EMA burn rate for fresh data
+  const burnResult = calculateBurnRateEMA(buckets, burnRateTracker!, getBurnRateWindow());
+  burnRateTracker = burnResult.tracker;
+
   // Update status bar with fresh data
-  const data = buildStatusBarData(buckets, stats, getSelectedPlan());
+  const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate);
   statusBar.update(data);
 
   // Seed watcher with baseline data for incremental updates
