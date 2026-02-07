@@ -12,12 +12,12 @@
 
 ### Sidebar Panel (SP)
 
-- [ ] **SP-01**: Clicking the status bar item opens a sidebar webview panel
-- [ ] **SP-02**: Sidebar shows detailed token breakdown: input, output, cache_creation, cache_read — separated clearly
-- [ ] **SP-03**: Sidebar displays session timing: window start time, expiry time, time remaining
-- [ ] **SP-04**: Sidebar includes trend charts (bar/line) showing usage over time using Recharts
-- [ ] **SP-05**: Sidebar provides daily, weekly, and monthly aggregation views with totals
-- [ ] **SP-06**: Sidebar shows session comparison — how current session compares to user's average
+- [x] **SP-01**: Clicking the status bar item opens a sidebar webview panel
+- [x] **SP-02**: Sidebar shows detailed token breakdown: input, output, cache_creation, cache_read — separated clearly
+- [x] **SP-03**: Sidebar displays session timing: window start time, expiry time, time remaining
+- [x] **SP-04**: Sidebar includes trend charts (bar/line) showing usage over time using Recharts
+- [x] **SP-05**: Sidebar provides daily, weekly, and monthly aggregation views with totals
+- [x] **SP-06**: Sidebar shows session comparison — how current session compares to user's average
 
 ### Rate Limiting (RL)
 
@@ -40,7 +40,7 @@
 ### Trust & Privacy (TP)
 
 - [x] **TP-01**: Extension makes zero network calls — all data stays local, no telemetry, no analytics
-- [ ] **TP-02**: Extension displays a visible "Local Only" indicator in the sidebar panel
+- [x] **TP-02**: Extension displays a visible "Local Only" indicator in the sidebar panel
 - [ ] **TP-03**: Extension shows data source path in settings so user can verify what files are being read
 - [x] **TP-04**: Extension uses configurable pricing tables (not hardcoded) so rates can be updated without code changes
 
@@ -81,12 +81,12 @@
 | SB-03 | Phase 3 | Done |
 | SB-04 | Phase 3 | Done |
 | SB-05 | Phase 3 | Done |
-| SP-01 | Phase 5 | Pending |
-| SP-02 | Phase 5 | Pending |
-| SP-03 | Phase 5 | Pending |
-| SP-04 | Phase 5 | Pending |
-| SP-05 | Phase 5 | Pending |
-| SP-06 | Phase 5 | Pending |
+| SP-01 | Phase 5 | Done |
+| SP-02 | Phase 5 | Done |
+| SP-03 | Phase 5 | Done |
+| SP-04 | Phase 5 | Done |
+| SP-05 | Phase 5 | Done |
+| SP-06 | Phase 5 | Done |
 | RL-01 | Phase 4 | Done |
 | RL-02 | Phase 4 | Done |
 | RL-03 | Phase 4 | Done |
@@ -100,7 +100,7 @@
 | DP-05 | Phase 2 | Done |
 | DP-06 | Phase 1 | Done |
 | TP-01 | Phase 3 | Done |
-| TP-02 | Phase 5 | Pending |
+| TP-02 | Phase 5 | Done |
 | TP-03 | Phase 6 | Pending |
 | TP-04 | Phase 1 | Done |
 | CX-01 | Phase 6 | Pending |
@@ -112,4 +112,4 @@
 **Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after Phase 4 completion*
+*Last updated: 2026-02-07 after Phase 5 completion*

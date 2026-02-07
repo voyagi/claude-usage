@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: File Watching & Integration** - Real-time file monitoring, cross-platform path handling, data pipeline integration
 - [x] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
 - [x] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
-- [ ] **Phase 5: Webview Dashboard** - Detailed sidebar panel with charts, tables, historical views, session breakdown
+- [x] **Phase 5: Webview Dashboard** - Detailed sidebar panel with charts, tables, historical views, session breakdown
 - [ ] **Phase 6: Polish & Trust Features** - Privacy indicators, command palette, export, configuration UI, trust differentiators
 
 ## Phase Details
@@ -106,14 +106,15 @@ Plans:
   5. User can switch between daily, weekly, and monthly aggregation views
   6. User sees how current session compares to their average
   7. Panel displays "Local Only" trust indicator
-**Plans**: 5 plans
+**Plans**: 6 plans
 
 Plans:
-- [ ] 05-01-PLAN.md -- Build infrastructure: deps, dual esbuild config, package.json contributions, JSX support
-- [ ] 05-02-PLAN.md -- DashboardProvider (WebviewViewProvider) + message type definitions
-- [ ] 05-03-PLAN.md -- React scaffold + Overview tab (token breakdown, rate limits, session timing, trust indicator)
-- [ ] 05-04-PLAN.md -- Trends tab (Recharts stacked bar chart, segmented control, data table)
-- [ ] 05-05-PLAN.md -- Session tab + wiring (session comparison, extension.ts integration, data flow)
+- [x] 05-01-PLAN.md -- Build infrastructure: deps, dual esbuild config, package.json contributions, JSX support
+- [x] 05-02-PLAN.md -- DashboardProvider (WebviewViewProvider) + message type definitions
+- [x] 05-03-PLAN.md -- React scaffold + Overview tab (token breakdown, rate limits, session timing, trust indicator)
+- [x] 05-04-PLAN.md -- Trends tab (Recharts stacked bar chart, segmented control, data table)
+- [x] 05-05-PLAN.md -- Session tab + wiring (session comparison, App.tsx tab integration)
+- [x] 05-06-PLAN.md -- Extension.ts integration, DashboardProvider data pipeline, status bar click
 
 ### Phase 6: Polish & Trust Features
 **Goal**: Extension demonstrates trustworthiness and provides power-user features
@@ -142,5 +143,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. File Watching & Integration | 2/2 | Complete | 2026-02-07 |
 | 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
 | 4. Rate Limiting & Burn Rate | 6/6 | Complete | 2026-02-07 |
-| 5. Webview Dashboard | 0/5 | Not started | - |
+| 5. Webview Dashboard | 6/6 | Complete | 2026-02-07 |
 | 6. Polish & Trust Features | 0/TBD | Not started | - |
