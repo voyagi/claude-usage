@@ -39,8 +39,30 @@
       {
         "command": "claude-usage.resetSession",
         "title": "Claude Usage: Reset Session Tracking"
+      },
+      {
+        "command": "claude-usage.openDashboard",
+        "title": "Claude Usage: Open Dashboard"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-usage",
+          "title": "Claude Usage",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "claude-usage": [
+        {
+          "type": "webview",
+          "id": "claude-usage.dashboardView",
+          "name": "Dashboard"
+        }
+      ]
+    },
     "configuration": {
       "title": "Claude Usage Monitor",
       "properties": {
@@ -118,6 +140,8 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
+    "@types/react": "^19.2.13",
+    "@types/react-dom": "^19.2.3",
     "@types/vscode": "^1.96.0",
     "esbuild": "^0.24.0",
     "jest": "^30.2.0",
@@ -126,6 +150,10 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-is": "^19.2.4",
+    "recharts": "^3.7.0",
     "zod": "^3.24.0"
   }
 }
