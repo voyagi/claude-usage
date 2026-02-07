@@ -4,6 +4,8 @@
  */
 import { useState, useEffect } from 'react';
 import { OverviewTab } from './components/OverviewTab';
+import { TrendsTab } from './components/TrendsTab';
+import { SessionTab } from './components/SessionTab';
 import { TrustIndicator } from './components/TrustIndicator';
 import { DashboardData, WebviewMessage, ExtensionMessage } from './types';
 import { vscode } from './index';
@@ -96,16 +98,8 @@ export function App() {
         ) : (
           <>
             {activeTab === 'overview' && <OverviewTab data={data} />}
-            {activeTab === 'trends' && (
-              <div className="placeholder-tab">
-                <p>Trends tab (Plan 05-04)</p>
-              </div>
-            )}
-            {activeTab === 'session' && (
-              <div className="placeholder-tab">
-                <p>Session tab (Plan 05-05)</p>
-              </div>
-            )}
+            {activeTab === 'trends' && <TrendsTab data={data} />}
+            {activeTab === 'session' && <SessionTab data={data} />}
           </>
         )}
       </main>
