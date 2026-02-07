@@ -13,7 +13,10 @@ import {
   formatCost,
   formatPercentage,
   formatBurnRate,
+  formatTimeUntilLimit,
 } from './formatting.js';
+import { calculateUrgencyScore } from '../core/rateLimits.js';
+import { predictTimeUntilLimit } from '../core/burnRate.js';
 
 export class StatusBarManager {
   private metricsItem: vscode.StatusBarItem;
@@ -73,12 +76,16 @@ export class StatusBarManager {
       this.metricsItem.text = text;
     }
 
-    // Update background color based on worst percentage
+    // Update background color based on worst percentage with configurable thresholds
+    const config = vscode.workspace.getConfiguration('claude-usage');
+    const yellowThreshold = config.get<number>('rateLimits.warnings.yellow', 60);
+    const redThreshold = config.get<number>('rateLimits.warnings.red', 95);
+
     const worstPct = data.rateLimits.worstPercentage;
-    if (worstPct >= 80) {
+    if (worstPct >= redThreshold) {
       this.metricsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
       this.cooldownItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-    } else if (worstPct >= 60) {
+    } else if (worstPct >= yellowThreshold) {
       this.metricsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       this.cooldownItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
     } else {
@@ -96,10 +103,18 @@ export class StatusBarManager {
     tooltip.appendMarkdown(`**Tokens:** ${formatTokensExact(data.totalInputTokens)} in / ${formatTokensExact(data.totalOutputTokens)} out\n\n`);
     tooltip.appendMarkdown('**Rate Limits** _(estimated)_\n\n');
 
-    // Add each rate limit with details
+    // Add each rate limit with details and urgency scores
     const limits = [data.rateLimits.session5h, data.rateLimits.weekly, data.rateLimits.weeklySonnet];
+    const now = new Date();
     for (const limit of limits) {
       let line = `- ${limit.name}: ${formatPercentage(limit.percentage)} (${formatTokensExact(limit.currentTokens)} / ${formatTokensExact(limit.estimatedLimit)})`;
+
+      // Add urgency score for power users
+      const urgency = calculateUrgencyScore(limit, now);
+      if (urgency > 0) {
+        line += ` (urgency: ${Math.round(urgency)})`;
+      }
+
       if (limit.isHit) {
         line += ` -- **LIMIT HIT**, resets ${formatCooldown(limit.resetTime)}`;
       } else if (limit.resetTime) {
@@ -108,9 +123,19 @@ export class StatusBarManager {
       tooltip.appendMarkdown(line + '\n\n');
     }
 
-    // Add burn rate if active
+    // Add burn rate if active with time-until-limit prediction
     if (data.burnRate > 0) {
       tooltip.appendMarkdown(`**Burn Rate:** ${formatBurnRate(data.burnRate)}\n\n`);
+
+      // Predict time until session limit (most relevant for active sessions)
+      const minutesUntilSession = predictTimeUntilLimit(
+        data.rateLimits.session5h.currentTokens,
+        data.rateLimits.session5h.estimatedLimit,
+        data.burnRate
+      );
+      if (minutesUntilSession !== null) {
+        tooltip.appendMarkdown(`**Est. Time to Session Limit:** ${formatTimeUntilLimit(minutesUntilSession)}\n\n`);
+      }
     }
 
     // Add metadata
@@ -145,8 +170,11 @@ export class StatusBarManager {
       return;
     }
 
-    // If no hit limits but worst percentage >= 60%, show soonest reset of worst limit
-    if (data.rateLimits.worstPercentage >= 60) {
+    // If no hit limits but worst percentage >= threshold, show soonest reset of worst limit
+    const config = vscode.workspace.getConfiguration('claude-usage');
+    const yellowThreshold = config.get<number>('rateLimits.warnings.yellow', 60);
+
+    if (data.rateLimits.worstPercentage >= yellowThreshold) {
       const worstLimit = limits.reduce((worst, current) => {
         return current.percentage > worst.percentage ? current : worst;
       });
