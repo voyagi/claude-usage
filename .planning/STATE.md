@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 5 of 6 (Webview Dashboard) — IN PROGRESS
-Plan: 1 of 4 in current phase (05-02 complete, 05-01/03/04 in progress)
-Status: Building sidebar dashboard provider
-Last activity: 2026-02-07 — Completed 05-02-PLAN.md (DashboardProvider + message types)
+Plan: 1 of 4 in current phase
+Status: Build infrastructure complete
+Last activity: 2026-02-07 — Completed 05-01-PLAN.md (React + esbuild setup)
 
-Progress: [████████░░] ~70%
+Progress: [████████░░] ~71%
 
 ## Performance Metrics
 
@@ -31,11 +31,11 @@ Progress: [████████░░] ~70%
 | 02 - File Watching | 2 | 7min | 3.5min |
 | 03 - Basic UI | 3 | 9min | 3.0min |
 | 04 - Rate Limiting | 6 | 28min | 4.7min |
-| 05 - Webview Dashboard | 1 | 3min | 3.0min |
+| 05 - Webview Dashboard | 1 | 4min | 4.0min |
 
 **Recent Trend:**
-- Last 5 plans: 4min, 5min, 5min, 11min, 3min
-- Trend: Stable execution times, simple file creation plans ~3min
+- Last 5 plans: 5min, 5min, 11min, 3min, 4min
+- Trend: Stable execution times, infrastructure setup plans ~4min
 
 *Updated after each plan completion*
 
@@ -90,6 +90,9 @@ Recent decisions affecting current work:
 - ISO string serialization (05-02): DashboardData uses ISO timestamps not Date objects for safe JSON serialization across iframe boundary
 - Visibility-aware refresh (05-02): DashboardProvider caches data and sends immediately when webview becomes visible
 - CSP with unsafe-inline styles (05-02): Allow React inline styles while nonce-protecting scripts
+- Dual bundling strategy (05-01): Separate esbuild configs for extension (Node.js/CJS) and webview (browser/IIFE) with parallel builds
+- Automatic JSX transform (05-01): react-jsx eliminates need for React imports in every TSX file
+- Sidebar view placement (05-01): Activity bar registration for persistent dashboard visibility alongside other extensions
 
 ### Local Data Sources Discovery (2026-02-07)
 
@@ -120,7 +123,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-07 19:25
-Stopped at: Completed 05-02-PLAN.md (DashboardProvider + message types)
+Last session: 2026-02-07 19:26
+Stopped at: Completed 05-01-PLAN.md (React + esbuild build infrastructure)
 Resume file: None
-Next: Continue Phase 5 (05-01, 05-03, 05-04 in progress or queued)
+Next: Continue Phase 5 (05-02, 05-03, 05-04 queued)
