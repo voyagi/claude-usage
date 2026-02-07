@@ -72,12 +72,17 @@
     "watch": "node esbuild.config.mjs --watch",
     "compile": "tsc --noEmit",
     "lint": "eslint src --ext ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.96.0",
     "esbuild": "^0.24.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
     "typescript": "^5.7.0"
   },
   "dependencies": {
