@@ -23,6 +23,7 @@ export class StatusBarManager {
   private cooldownItem: vscode.StatusBarItem;
   private isCompactMode: boolean;
   private errorTimer: NodeJS.Timeout | undefined;
+  private _visible = true;
 
   constructor(context: vscode.ExtensionContext) {
     // Create metrics item (higher priority = further right)
@@ -224,6 +225,20 @@ export class StatusBarManager {
     this.metricsItem.backgroundColor = undefined;
     this.metricsItem.show();
     this.cooldownItem.hide();
+  }
+
+  /**
+   * Toggle visibility of both status bar items
+   */
+  toggle(): void {
+    this._visible = !this._visible;
+    if (this._visible) {
+      this.metricsItem.show();
+      this.cooldownItem.show();
+    } else {
+      this.metricsItem.hide();
+      this.cooldownItem.hide();
+    }
   }
 
   /**

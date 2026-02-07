@@ -18,15 +18,35 @@ export async function showUsageMenu(): Promise<void> {
     },
     {
       label: '$(gear) Switch Plan Tier',
-      description: 'Change Claude plan (Pro, Max 5x, Max 20x)',
+      description: 'Change plan (Pro, Max 5x, Max 20x)',
     },
     {
-      label: '$(graph) View Usage Summary',
-      description: 'Show detailed usage breakdown',
+      label: '$(export) Export Usage Data',
+      description: 'Save usage data as JSON',
+    },
+    {
+      label: '$(dashboard) Open Dashboard',
+      description: 'Show detailed usage dashboard',
+    },
+    {
+      label: '$(eye) Toggle Status Bar',
+      description: 'Show/hide status bar items',
+    },
+    {
+      label: '$(folder) Show Data Source',
+      description: 'Show watched directory path',
+    },
+    {
+      label: '$(settings-gear) Open Settings',
+      description: 'Configure extension settings',
+    },
+    {
+      label: '$(discard) Reset Rate Limits',
+      description: 'Clear learned rate limit estimates',
     },
     {
       label: '$(trash) Reset Session Tracking',
-      description: 'Clear session counters and reparse',
+      description: 'Clear all data and reparse',
     },
   ];
 
@@ -43,9 +63,19 @@ export async function showUsageMenu(): Promise<void> {
     await vscode.commands.executeCommand('claude-usage.refresh');
   } else if (selected.label.includes('Switch Plan')) {
     await vscode.commands.executeCommand('claude-usage.switchPlan');
-  } else if (selected.label.includes('View Usage')) {
-    await vscode.commands.executeCommand('claude-usage.viewSummary');
-  } else if (selected.label.includes('Reset')) {
+  } else if (selected.label.includes('Export Usage Data')) {
+    await vscode.commands.executeCommand('claude-usage.exportData');
+  } else if (selected.label.includes('Open Dashboard')) {
+    await vscode.commands.executeCommand('claude-usage.openDashboard');
+  } else if (selected.label.includes('Toggle Status Bar')) {
+    await vscode.commands.executeCommand('claude-usage.toggleStatusBar');
+  } else if (selected.label.includes('Show Data Source')) {
+    await vscode.commands.executeCommand('claude-usage.showDataSource');
+  } else if (selected.label.includes('Open Settings')) {
+    await vscode.commands.executeCommand('claude-usage.openSettings');
+  } else if (selected.label.includes('Reset Rate Limits')) {
+    await vscode.commands.executeCommand('claude-usage.resetRateLimits');
+  } else if (selected.label.includes('Reset Session Tracking')) {
     await vscode.commands.executeCommand('claude-usage.resetSession');
   }
 }
