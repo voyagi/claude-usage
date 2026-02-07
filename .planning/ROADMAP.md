@@ -22,6 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Foundation & Core Parsing
+
 **Goal**: Extension can accurately parse JSONL files and calculate token usage
 **Depends on**: Nothing (first phase)
 **Requirements**: DP-04, DP-06, TP-04, CX-03
@@ -34,12 +35,14 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 
 Plans:
-- [x] 01-01-PLAN.md — Scaffold VS Code extension project, domain types, Zod schemas, utility modules
-- [x] 01-02-PLAN.md — Streaming JSONL parser with error recovery, token extraction
-- [x] 01-03-PLAN.md — Configurable pricing engine, plan selection, time bucket aggregation
-- [x] 01-04-PLAN.md — UsageStore persistence, extension entry point wiring, integration verification
+
+- [x] 01-01-PLAN.md -- Scaffold VS Code extension project, domain types, Zod schemas, utility modules
+- [x] 01-02-PLAN.md -- Streaming JSONL parser with error recovery, token extraction
+- [x] 01-03-PLAN.md -- Configurable pricing engine, plan selection, time bucket aggregation
+- [x] 01-04-PLAN.md -- UsageStore persistence, extension entry point wiring, integration verification
 
 ### Phase 2: File Watching & Integration
+
 **Goal**: Extension monitors all Claude Code projects and updates usage in real-time
 **Depends on**: Phase 1
 **Requirements**: DP-01, DP-02, DP-03, DP-05
@@ -52,10 +55,12 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
+
 - [x] 02-01-PLAN.md -- OffsetTracker + incremental JSONL parser with byte offset support
 - [x] 02-02-PLAN.md -- SessionWatcher with debounced file watching + extension lifecycle wiring
 
 ### Phase 3: Basic UI (Status Bar)
+
 **Goal**: User sees their Claude usage at a glance in the status bar
 **Depends on**: Phase 2
 **Requirements**: SB-01, SB-02, SB-03, SB-04, SB-05, TP-01
@@ -69,11 +74,13 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [x] 03-01-PLAN.md — Rate limit types, calculation engine, and display formatting utilities
-- [x] 03-02-PLAN.md — StatusBarManager class with two items and quick pick menu
-- [x] 03-03-PLAN.md — Wire StatusBarManager into extension.ts, register commands, update package.json
+
+- [x] 03-01-PLAN.md -- Rate limit types, calculation engine, and display formatting utilities
+- [x] 03-02-PLAN.md -- StatusBarManager class with two items and quick pick menu
+- [x] 03-03-PLAN.md -- Wire StatusBarManager into extension.ts, register commands, update package.json
 
 ### Phase 4: Rate Limiting & Burn Rate
+
 **Goal**: User knows when they'll hit rate limits and can plan usage accordingly
 **Depends on**: Phase 3
 **Requirements**: RL-01, RL-02, RL-03, RL-04, RL-05, RL-06
@@ -87,6 +94,7 @@ Plans:
 **Plans**: 6 plans (4 original + 2 gap closure)
 
 Plans:
+
 - [x] 04-01-PLAN.md -- Burn rate engine (EMA) + tier detection from credentials.json (TDD)
 - [x] 04-02-PLAN.md -- Enhance rateLimits.ts with urgency weighting + formatting.ts with time-until-limit
 - [x] 04-03-PLAN.md -- CredentialsWatcher + rate limit event detector + package.json config schema
@@ -95,6 +103,7 @@ Plans:
 - [x] 04-06-PLAN.md -- [GAP] Per-model weekly aggregation for accurate Sonnet limit tracking
 
 ### Phase 5: Webview Dashboard
+
 **Goal**: User can view detailed usage breakdown, historical trends, and session analysis
 **Depends on**: Phase 4
 **Requirements**: SP-01, SP-02, SP-03, SP-04, SP-05, SP-06, TP-02
@@ -109,6 +118,7 @@ Plans:
 **Plans**: 6 plans
 
 Plans:
+
 - [x] 05-01-PLAN.md -- Build infrastructure: deps, dual esbuild config, package.json contributions, JSX support
 - [x] 05-02-PLAN.md -- DashboardProvider (WebviewViewProvider) + message type definitions
 - [x] 05-03-PLAN.md -- React scaffold + Overview tab (token breakdown, rate limits, session timing, trust indicator)
@@ -117,6 +127,7 @@ Plans:
 - [x] 05-06-PLAN.md -- Extension.ts integration, DashboardProvider data pipeline, status bar click
 
 ### Phase 6: Polish & Trust Features
+
 **Goal**: Extension demonstrates trustworthiness and provides power-user features
 **Depends on**: Phase 5
 **Requirements**: CX-01, CX-02, CX-04, CX-05, TP-03
@@ -127,15 +138,18 @@ Plans:
   4. User can configure refresh interval, warning thresholds, and pricing overrides
   5. Extension only activates when Claude Code data directory exists
   6. Documentation clearly states "zero network calls, fully local"
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+
+- [ ] 06-01-PLAN.md -- Activation guard, command palette expansion, data export, config enhancements
+- [ ] 06-02-PLAN.md -- Dashboard trust UX (welcome card, expandable access details, data source footer, custom pricing badge)
+- [ ] 06-03-PLAN.md -- Trust-focused README and final integration verification
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -144,4 +158,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
 | 4. Rate Limiting & Burn Rate | 6/6 | Complete | 2026-02-07 |
 | 5. Webview Dashboard | 6/6 | Complete | 2026-02-07 |
-| 6. Polish & Trust Features | 0/TBD | Not started | - |
+| 6. Polish & Trust Features | 0/3 | Not started | - |
