@@ -12,10 +12,14 @@ import { loadPricingFromConfig, calculateCost } from './pricing/pricingEngine.js
 import { aggregateUsage, getTimeBucketSummary } from './aggregation/timeBuckets.js';
 import { UsageStore } from './storage/usageStore.js';
 import { getPlanConfig } from './pricing/plans.js';
+import { SessionWatcher } from './watcher/sessionWatcher.js';
 import { format } from 'date-fns';
 import type { TimeBuckets, PlanType } from './types.js';
 
 const logger = Logger.create('Claude Usage Monitor');
+
+// Module-level reference for SessionWatcher (needed by Clear Data command)
+let sessionWatcher: SessionWatcher | null = null;
 
 /**
  * Extension activation
@@ -36,11 +40,27 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
+  // Create SessionWatcher with onUpdate callback
+  sessionWatcher = new SessionWatcher(context, (buckets, stats) => {
+    // Update status bar with new data
+    updateStatusBar(statusBarItem, buckets, stats);
+    // Persist to globalState
+    store.saveUsageData(buckets, stats).catch((err) => {
+      logger.error(`Failed to save usage data: ${err.message}`, err instanceof Error ? err : undefined);
+    });
+  });
+
+  // Start watching for file changes
+  sessionWatcher.start();
+
   // Register Clear Data command
   const clearDataCommand = vscode.commands.registerCommand(
     'claude-usage.clearData',
     async () => {
       await store.clearUsageData();
+      if (sessionWatcher) {
+        await sessionWatcher.resetState();
+      }
       statusBarItem.text = 'Claude Usage: No data';
       statusBarItem.tooltip = 'All usage data cleared. Reload window to reparse.';
       vscode.window.showInformationMessage(
@@ -51,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(clearDataCommand);
 
   // Perform initial parse asynchronously (non-blocking)
-  performInitialParse(store, statusBarItem).catch((err) => {
+  performInitialParse(store, statusBarItem, sessionWatcher).catch((err) => {
     logger.error(`Initial parse failed: ${err.message}`, err instanceof Error ? err : undefined);
     statusBarItem.text = '$(warning) Claude Usage: Error';
     statusBarItem.tooltip = `Parse failed: ${err.message}`;
@@ -139,7 +159,8 @@ function updateStatusBar(
  */
 async function performInitialParse(
   store: UsageStore,
-  statusBarItem: vscode.StatusBarItem
+  statusBarItem: vscode.StatusBarItem,
+  watcher: SessionWatcher
 ): Promise<void> {
   // Try cached data first for instant status bar update
   const cached = await store.loadUsageData();
@@ -194,6 +215,12 @@ async function performInitialParse(
 
   // Update status bar with fresh data
   updateStatusBar(statusBarItem, buckets, {
+    filesProcessed: parseResult.filesProcessed,
+    linesSkipped: parseResult.linesSkipped,
+  });
+
+  // Seed watcher with baseline data for incremental updates
+  watcher.setInitialBuckets(buckets, {
     filesProcessed: parseResult.filesProcessed,
     linesSkipped: parseResult.linesSkipped,
   });
