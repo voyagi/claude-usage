@@ -70,6 +70,11 @@ export interface DashboardData {
   filesProcessed: number;
   linesSkipped: number;
   planType: string; // e.g., "max_5x", "max_20x", "pro"
+
+  // Trust & transparency
+  dataSourcePath: string; // Watched directory path for transparency footer
+  isFirstRun: boolean; // True if user has never seen the dashboard before
+  hasCustomPricing: boolean; // True if user has overridden any pricing values
 }
 
 /**
@@ -77,7 +82,8 @@ export interface DashboardData {
  */
 export type WebviewMessage =
   | { type: 'requestData' }
-  | { type: 'changePeriod'; period: 'daily' | 'weekly' | 'monthly' };
+  | { type: 'changePeriod'; period: 'daily' | 'weekly' | 'monthly' }
+  | { type: 'dismissWelcome' };
 
 /**
  * Messages sent FROM extension TO webview

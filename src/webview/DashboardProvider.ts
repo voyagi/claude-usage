@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { subHours } from 'date-fns';
 import type { DashboardData, WebviewMessage, ExtensionMessage, RateLimitData, TrendDataPoint } from './app/types.js';
 import type { TimeBuckets, StatusBarData, RateLimitInfo } from '../types.js';
+import { getClaudeProjectsDir } from '../utils/paths.js';
 
 export class DashboardProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'claude-usage.dashboardView';
@@ -19,8 +20,16 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   private _statusBarData?: StatusBarData;
   private _planType: string = 'pro';
   private _activePeriod: 'daily' | 'weekly' | 'monthly' = 'daily';
+  private _isFirstRun: boolean = false;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri: vscode.Uri,
+    private readonly _context: vscode.ExtensionContext
+  ) {
+    // Check first-run status
+    const welcomeDismissed = _context.globalState.get<string>('welcomeDismissedVersion');
+    this._isFirstRun = !welcomeDismissed;
+  }
 
   /**
    * Transform internal TimeBuckets + StatusBarData into webview-safe DashboardData.
@@ -30,7 +39,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     buckets: TimeBuckets,
     statusBarData: StatusBarData,
     planType: string,
-    activePeriod: 'daily' | 'weekly' | 'monthly' = 'daily'
+    activePeriod: 'daily' | 'weekly' | 'monthly' = 'daily',
+    isFirstRun: boolean = false,
+    hasCustomPricing: boolean = false
   ): DashboardData {
     const now = new Date();
     const today = format(now, 'yyyy-MM-dd');
@@ -141,6 +152,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
       filesProcessed,
       linesSkipped,
       planType,
+      dataSourcePath: getClaudeProjectsDir(),
+      isFirstRun,
+      hasCustomPricing,
     };
   }
 
@@ -182,7 +196,26 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
               this._buckets,
               this._statusBarData,
               this._planType,
-              this._activePeriod
+              this._activePeriod,
+              this._isFirstRun,
+              this._hasCustomPricing()
+            );
+            this.updateData(data);
+          }
+          break;
+
+        case 'dismissWelcome':
+          this._isFirstRun = false;
+          this._context.globalState.update('welcomeDismissedVersion', '0.1.0');
+          // Rebuild and send data without welcome flag
+          if (this._buckets && this._statusBarData) {
+            const data = DashboardProvider.buildDashboardData(
+              this._buckets,
+              this._statusBarData,
+              this._planType,
+              this._activePeriod,
+              false,
+              this._hasCustomPricing()
             );
             this.updateData(data);
           }
@@ -212,7 +245,14 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     this._statusBarData = statusBarData;
     this._planType = planType;
 
-    const data = DashboardProvider.buildDashboardData(buckets, statusBarData, planType, this._activePeriod);
+    const data = DashboardProvider.buildDashboardData(
+      buckets,
+      statusBarData,
+      planType,
+      this._activePeriod,
+      this._isFirstRun,
+      this._hasCustomPricing()
+    );
     this.updateData(data);
   }
 
@@ -227,6 +267,14 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     if (this._view?.visible) {
       this._postMessage({ type: 'usageData', payload: data });
     }
+  }
+
+  /**
+   * Check if user has custom pricing overrides
+   */
+  private _hasCustomPricing(): boolean {
+    const pricing = vscode.workspace.getConfiguration('claude-usage').get<object>('pricing', {});
+    return Object.keys(pricing).length > 0;
   }
 
   /**

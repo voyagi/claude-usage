@@ -5,6 +5,8 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { Logger } from './utils/logger.js';
 import { getClaudeProjectsDir } from './utils/paths.js';
 import { parseAllSessions } from './parser/jsonlParser.js';
@@ -21,6 +23,7 @@ import { CredentialsWatcher } from './storage/credentialsWatcher.js';
 import { createBurnRateTracker, calculateBurnRateEMA } from './core/burnRate.js';
 import { refineLimitEstimate } from './parser/rateLimitDetector.js';
 import { DashboardProvider } from './webview/DashboardProvider.js';
+import { exportUsageData } from './commands/exportData.js';
 import type { RateLimitEvent } from './parser/incrementalParser.js';
 import type { BurnRateTracker } from './core/burnRate.js';
 import type { PlanType, RefinedLimits } from './types.js';
@@ -39,7 +42,16 @@ let lastKnownWeeklyTokens = 0;
 /**
  * Extension activation
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+  // Activation guard: silently return if ~/.claude/ doesn't exist
+  const claudeDir = path.join(os.homedir(), '.claude');
+  try {
+    await fs.access(claudeDir);
+  } catch {
+    logger.info('Claude Code data directory not found (~/.claude/), extension inactive');
+    return;
+  }
+
   logger.info('Claude Usage Monitor activating...');
 
   // Create UsageStore for globalState persistence
@@ -49,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
   const statusBar = new StatusBarManager(context);
 
   // Create and register DashboardProvider
-  dashboardProvider = new DashboardProvider(context.extensionUri);
+  dashboardProvider = new DashboardProvider(context.extensionUri, context);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       DashboardProvider.viewType,
@@ -221,10 +233,10 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Register viewSummary command (placeholder for Phase 5)
+  // Register viewSummary command (opens dashboard)
   context.subscriptions.push(
     vscode.commands.registerCommand('claude-usage.viewSummary', () => {
-      vscode.window.showInformationMessage('Usage summary dashboard coming in Phase 5.');
+      vscode.commands.executeCommand('claude-usage.openDashboard');
     })
   );
 
@@ -250,6 +262,46 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('Session data cleared. Refreshing...');
         await vscode.commands.executeCommand('claude-usage.refresh');
       }
+    })
+  );
+
+  // Register exportData command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.exportData', async () => {
+      await exportUsageData(store, getSelectedPlan());
+    })
+  );
+
+  // Register toggleStatusBar command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.toggleStatusBar', () => {
+      statusBar.toggle();
+      vscode.window.setStatusBarMessage('Claude Usage: Status bar toggled', 3000);
+    })
+  );
+
+  // Register showDataSource command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.showDataSource', () => {
+      const dir = getClaudeProjectsDir();
+      vscode.window.showInformationMessage(`Claude Usage reads data from: ${dir}`);
+    })
+  );
+
+  // Register resetRateLimits command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.resetRateLimits', async () => {
+      refinedLimits = null;
+      await context.globalState.update('refinedLimits', undefined);
+      vscode.window.setStatusBarMessage('Claude Usage: Rate limit estimates reset', 3000);
+      await vscode.commands.executeCommand('claude-usage.refresh');
+    })
+  );
+
+  // Register openSettings command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claude-usage.openSettings', () => {
+      vscode.commands.executeCommand('workbench.action.openSettings', 'claude-usage');
     })
   );
 
