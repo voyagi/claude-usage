@@ -41,16 +41,16 @@
 
 - [x] **TP-01**: Extension makes zero network calls — all data stays local, no telemetry, no analytics
 - [x] **TP-02**: Extension displays a visible "Local Only" indicator in the sidebar panel
-- [ ] **TP-03**: Extension shows data source path in settings so user can verify what files are being read
+- [x] **TP-03**: Extension shows data source path in settings so user can verify what files are being read
 - [x] **TP-04**: Extension uses configurable pricing tables (not hardcoded) so rates can be updated without code changes
 
 ### Configuration & UX (CX)
 
-- [ ] **CX-01**: Extension registers command palette commands for: manual refresh, plan selection, toggle views, export data
-- [ ] **CX-02**: User can export usage data to JSON for custom analysis
+- [x] **CX-01**: Extension registers command palette commands for: manual refresh, plan selection, toggle views, export data
+- [x] **CX-02**: User can export usage data to JSON for custom analysis
 - [x] **CX-03**: Extension supports plan selection (Pro $20, Max5 $100, Max20 $200) with correct limits per plan
-- [ ] **CX-04**: Extension activates lazily (only when Claude Code data directory exists)
-- [ ] **CX-05**: Extension provides a settings UI for configuring refresh interval, warning thresholds, plan type, and pricing overrides
+- [x] **CX-04**: Extension activates lazily (only when Claude Code data directory exists)
+- [x] **CX-05**: Extension provides a settings UI for configuring refresh interval, warning thresholds, plan type, and pricing overrides
 
 ## v2 Requirements (Deferred)
 
@@ -101,15 +101,15 @@
 | DP-06 | Phase 1 | Done |
 | TP-01 | Phase 3 | Done |
 | TP-02 | Phase 5 | Done |
-| TP-03 | Phase 6 | Pending |
+| TP-03 | Phase 6 | Done |
 | TP-04 | Phase 1 | Done |
-| CX-01 | Phase 6 | Pending |
-| CX-02 | Phase 6 | Pending |
+| CX-01 | Phase 6 | Done |
+| CX-02 | Phase 6 | Done |
 | CX-03 | Phase 1 | Done |
-| CX-04 | Phase 6 | Pending |
-| CX-05 | Phase 6 | Pending |
+| CX-04 | Phase 6 | Done |
+| CX-05 | Phase 6 | Done |
 
 **Coverage: 30/30 requirements mapped (100%)**
 
 ---
-*Last updated: 2026-02-07 after Phase 5 completion*
+*Last updated: 2026-02-08 after Phase 6 completion — all 30 requirements complete*

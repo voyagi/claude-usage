@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Basic UI (Status Bar)** - Always-on status bar showing tokens, cost, usage percentage with color coding
 - [x] **Phase 4: Rate Limiting & Burn Rate** - 5-hour session window tracking, burn rate calculation, proximity warnings
 - [x] **Phase 5: Webview Dashboard** - Detailed sidebar panel with charts, tables, historical views, session breakdown
-- [ ] **Phase 6: Polish & Trust Features** - Privacy indicators, command palette, export, configuration UI, trust differentiators
+- [x] **Phase 6: Polish & Trust Features** - Privacy indicators, command palette, export, configuration UI, trust differentiators
 
 ## Phase Details
 
@@ -142,9 +142,9 @@ Plans:
 
 Plans:
 
-- [ ] 06-01-PLAN.md -- Activation guard, command palette expansion, data export, config enhancements
-- [ ] 06-02-PLAN.md -- Dashboard trust UX (welcome card, expandable access details, data source footer, custom pricing badge)
-- [ ] 06-03-PLAN.md -- Trust-focused README and final integration verification
+- [x] 06-01-PLAN.md -- Activation guard, command palette expansion, data export, config enhancements
+- [x] 06-02-PLAN.md -- Dashboard trust UX (welcome card, expandable access details, data source footer, custom pricing badge)
+- [x] 06-03-PLAN.md -- Trust-focused README and final integration verification
 
 ## Progress
 
@@ -158,4 +158,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Basic UI (Status Bar) | 3/3 | Complete | 2026-02-07 |
 | 4. Rate Limiting & Burn Rate | 6/6 | Complete | 2026-02-07 |
 | 5. Webview Dashboard | 6/6 | Complete | 2026-02-07 |
-| 6. Polish & Trust Features | 0/3 | Not started | - |
+| 6. Polish & Trust Features | 3/3 | Complete | 2026-02-08 |
