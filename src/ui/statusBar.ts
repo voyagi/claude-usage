@@ -1,134 +1,147 @@
 /**
- * StatusBarManager - Manages two status bar items for Claude usage monitoring
- * - Metrics item: cost, usage percentage, burn rate
- * - Cooldown item: soonest rate limit reset timer
+ * StatusBarManager - Manages three status bar items for Claude usage monitoring
+ * Each rate limit (Session, Weekly, Sonnet) gets its own color-coded item
  */
 
 import * as vscode from 'vscode';
-import type { StatusBarData, RateLimitInfo } from '../types.js';
+import type { StatusBarData } from '../types.js';
 import {
-  formatTokens,
   formatTokensExact,
   formatCooldown,
+  formatCooldownCompact,
+  formatResetTime24h,
   formatCost,
   formatPercentage,
   formatBurnRate,
   formatTimeUntilLimit,
 } from './formatting.js';
-import { calculateUrgencyScore } from '../core/rateLimits.js';
 import { predictTimeUntilLimit } from '../core/burnRate.js';
 
+// Distinct text colors for each rate limit (readable on dark status bar)
+const SESSION_COLOR = '#4EC9B0';  // teal
+const WEEKLY_COLOR = '#DCDCAA';   // yellow
+const SONNET_COLOR = '#C586C0';   // purple
+
 export class StatusBarManager {
-  private metricsItem: vscode.StatusBarItem;
-  private cooldownItem: vscode.StatusBarItem;
-  private isCompactMode: boolean;
+  private sessionItem: vscode.StatusBarItem;
+  private weeklyItem: vscode.StatusBarItem;
+  private sonnetItem: vscode.StatusBarItem;
   private errorTimer: NodeJS.Timeout | undefined;
   private _visible = true;
 
   constructor(context: vscode.ExtensionContext) {
-    // Create metrics item (higher priority = further right)
-    this.metricsItem = vscode.window.createStatusBarItem(
-      'claude-usage.metrics',
+    // Use high, adjacent priorities so all 3 stay grouped together
+    this.sessionItem = vscode.window.createStatusBarItem(
+      'claude-usage.session',
       vscode.StatusBarAlignment.Right,
-      100
+      -10000
     );
-    this.metricsItem.command = 'claude-usage.openDashboard';
-    context.subscriptions.push(this.metricsItem);
+    this.sessionItem.command = 'claude-usage.openDashboard';
+    this.sessionItem.color = SESSION_COLOR;
+    context.subscriptions.push(this.sessionItem);
 
-    // Create cooldown item (slightly lower priority, appears to left of metrics)
-    this.cooldownItem = vscode.window.createStatusBarItem(
-      'claude-usage.cooldown',
+    this.weeklyItem = vscode.window.createStatusBarItem(
+      'claude-usage.weekly',
       vscode.StatusBarAlignment.Right,
-      99
+      -10001
     );
-    this.cooldownItem.command = 'claude-usage.openDashboard';
-    context.subscriptions.push(this.cooldownItem);
+    this.weeklyItem.command = 'claude-usage.openDashboard';
+    this.weeklyItem.color = WEEKLY_COLOR;
+    context.subscriptions.push(this.weeklyItem);
 
-    // Read compact mode setting
-    const config = vscode.workspace.getConfiguration('claude-usage');
-    this.isCompactMode = config.get<boolean>('compactMode', false);
+    this.sonnetItem = vscode.window.createStatusBarItem(
+      'claude-usage.sonnet',
+      vscode.StatusBarAlignment.Right,
+      -10002
+    );
+    this.sonnetItem.command = 'claude-usage.openDashboard';
+    this.sonnetItem.color = SONNET_COLOR;
+    context.subscriptions.push(this.sonnetItem);
 
-    // Show initial loading state
-    this.metricsItem.text = '$(loading~spin) Claude: Loading...';
-    this.metricsItem.show();
-    this.cooldownItem.hide();
+    // Show initial loading state on session item only
+    this.sessionItem.text = '$(loading~spin) Claude: Loading...';
+    this.sessionItem.show();
+    this.weeklyItem.hide();
+    this.sonnetItem.hide();
   }
 
   /**
-   * Update both status bar items with new data
+   * Update all three status bar items with new data
    */
   update(data: StatusBarData): void {
-    // Clear any error timer
     if (this.errorTimer) {
       clearTimeout(this.errorTimer);
       this.errorTimer = undefined;
     }
 
-    // Update metrics item text
-    if (this.isCompactMode) {
-      // Compact: cost + percentage only
-      this.metricsItem.text = `$(cloud) ${formatCost(data.totalCost)} ${formatPercentage(data.rateLimits.worstPercentage)}`;
-    } else {
-      // Normal: cost + percentage + burn rate
-      let text = `$(cloud) ${formatCost(data.totalCost)} | ${formatPercentage(data.rateLimits.worstPercentage)}`;
-      if (data.burnRate > 0) {
-        text += ` | ${formatBurnRate(data.burnRate)}`;
-      }
-      this.metricsItem.text = text;
-    }
+    const api = data.apiUsage;
+    const sessionPct = api?.fiveHour ? Math.round(api.fiveHour.utilization * 100) : data.rateLimits.session5h.percentage;
+    const weeklyPct = api?.sevenDay ? Math.round(api.sevenDay.utilization * 100) : data.rateLimits.weekly.percentage;
+    const sonnetPct = api?.sevenDaySonnet ? Math.round(api.sevenDaySonnet.utilization * 100) : data.rateLimits.weeklySonnet.percentage;
 
-    // Update background color based on worst percentage with configurable thresholds
-    const config = vscode.workspace.getConfiguration('claude-usage');
-    const yellowThreshold = config.get<number>('rateLimits.warnings.yellow', 60);
-    const redThreshold = config.get<number>('rateLimits.warnings.red', 95);
+    const sessionReset = api?.fiveHour?.resetsAt ? new Date(api.fiveHour.resetsAt) : data.rateLimits.session5h.resetTime;
+    const weeklyReset = api?.sevenDay?.resetsAt ? new Date(api.sevenDay.resetsAt) : data.rateLimits.weekly.resetTime;
+    const sonnetReset = api?.sevenDaySonnet?.resetsAt ? new Date(api.sevenDaySonnet.resetsAt) : data.rateLimits.weeklySonnet.resetTime;
 
-    const worstPct = data.rateLimits.worstPercentage;
-    if (worstPct >= redThreshold) {
-      this.metricsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-      this.cooldownItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-    } else if (worstPct >= yellowThreshold) {
-      this.metricsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-      this.cooldownItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-    } else {
-      this.metricsItem.backgroundColor = undefined;
-      this.cooldownItem.backgroundColor = undefined;
-    }
+    // Build text for each item
+    const sCd = formatCooldownCompact(sessionReset);
+    const wCd = formatCooldownCompact(weeklyReset);
+    const soCd = formatCooldownCompact(sonnetReset);
 
-    // Update metrics item tooltip (markdown formatted)
+    this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ''}`;
+    this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ''}`;
+    this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ''}`;
+
+    // Build shared tooltip (same on all 3 items)
+    const tooltip = this.buildTooltip(data, api, sessionPct, weeklyPct, sonnetPct, sessionReset, weeklyReset, sonnetReset);
+    this.sessionItem.tooltip = tooltip;
+    this.weeklyItem.tooltip = tooltip;
+    this.sonnetItem.tooltip = tooltip;
+
+    this.sessionItem.show();
+    this.weeklyItem.show();
+    this.sonnetItem.show();
+  }
+
+  private buildTooltip(
+    data: StatusBarData,
+    api: StatusBarData['apiUsage'],
+    sessionPct: number, weeklyPct: number, sonnetPct: number,
+    sessionReset: Date | null, weeklyReset: Date | null, sonnetReset: Date | null,
+  ): vscode.MarkdownString {
     const tooltip = new vscode.MarkdownString();
     tooltip.isTrusted = true;
     tooltip.supportHtml = false;
 
     tooltip.appendMarkdown('**Claude Usage Monitor**\n\n');
     tooltip.appendMarkdown(`**Today:** ${formatCost(data.todayCost)} | **Month:** ${formatCost(data.monthCost)}\n\n`);
-    tooltip.appendMarkdown(`**Tokens:** ${formatTokensExact(data.totalInputTokens)} in / ${formatTokensExact(data.totalOutputTokens)} out\n\n`);
-    tooltip.appendMarkdown('**Rate Limits** _(estimated)_\n\n');
 
-    // Add each rate limit with details and urgency scores
-    const limits = [data.rateLimits.session5h, data.rateLimits.weekly, data.rateLimits.weeklySonnet];
-    const now = new Date();
-    for (const limit of limits) {
-      let line = `- ${limit.name}: ${formatPercentage(limit.percentage)} (${formatTokensExact(limit.currentTokens)} / ${formatTokensExact(limit.estimatedLimit)})`;
+    if (api) {
+      tooltip.appendMarkdown('**Rate Limits**\n\n');
+    } else {
+      tooltip.appendMarkdown('**Rate Limits** _(estimated -- API unavailable)_\n\n');
+    }
 
-      // Add urgency score for power users
-      const urgency = calculateUrgencyScore(limit, now);
-      if (urgency > 0) {
-        line += ` (urgency: ${Math.round(urgency)})`;
-      }
+    const limitEntries: { name: string; resetTime: Date | null; pct: number }[] = [
+      { name: 'Session (5hr)', resetTime: sessionReset, pct: sessionPct },
+      { name: 'Weekly (7 day)', resetTime: weeklyReset, pct: weeklyPct },
+      { name: 'Weekly Sonnet', resetTime: sonnetReset, pct: sonnetPct },
+    ];
 
-      if (limit.isHit) {
-        line += ` -- **LIMIT HIT**, resets ${formatCooldown(limit.resetTime)}`;
-      } else if (limit.resetTime) {
-        line += ` -- resets ${formatCooldown(limit.resetTime)}`;
+    for (const entry of limitEntries) {
+      let line = `- ${entry.name}: **${formatPercentage(entry.pct)}**`;
+      const cd = formatCooldown(entry.resetTime);
+      const exactTime = formatResetTime24h(entry.resetTime);
+      if (cd && exactTime) {
+        line += ` -- resets in ${cd} (${exactTime})`;
+      } else if (cd) {
+        line += ` -- resets in ${cd}`;
       }
       tooltip.appendMarkdown(line + '\n\n');
     }
 
-    // Add burn rate if active with time-until-limit prediction
     if (data.burnRate > 0) {
       tooltip.appendMarkdown(`**Burn Rate:** ${formatBurnRate(data.burnRate)}\n\n`);
-
-      // Predict time until session limit (most relevant for active sessions)
       const minutesUntilSession = predictTimeUntilLimit(
         data.rateLimits.session5h.currentTokens,
         data.rateLimits.session5h.estimatedLimit,
@@ -139,116 +152,58 @@ export class StatusBarManager {
       }
     }
 
-    // Add metadata
+    tooltip.appendMarkdown(`**Tokens:** ${formatTokensExact(data.totalInputTokens)} in / ${formatTokensExact(data.totalOutputTokens)} out\n\n`);
     tooltip.appendMarkdown(`Files: ${data.filesProcessed} | Updated: ${data.lastUpdated.toLocaleTimeString()}`);
 
-    this.metricsItem.tooltip = tooltip;
-    this.metricsItem.show();
-
-    // Update cooldown item
-    this.updateCooldownItem(data);
+    return tooltip;
   }
 
-  /**
-   * Update cooldown item based on rate limit status
-   */
-  private updateCooldownItem(data: StatusBarData): void {
-    const limits = [data.rateLimits.session5h, data.rateLimits.weekly, data.rateLimits.weeklySonnet];
-
-    // Find hit limits and their reset times
-    const hitLimits = limits.filter(l => l.isHit && l.resetTime);
-    if (hitLimits.length > 0) {
-      // Show soonest reset among hit limits
-      const soonest = hitLimits.reduce((earliest, current) => {
-        if (!current.resetTime) return earliest;
-        if (!earliest.resetTime) return current;
-        return current.resetTime < earliest.resetTime ? current : earliest;
-      });
-
-      this.cooldownItem.text = `$(clock) ${formatCooldown(soonest.resetTime)}`;
-      this.cooldownItem.tooltip = 'Soonest rate limit reset. Click for actions.';
-      this.cooldownItem.show();
-      return;
-    }
-
-    // If no hit limits but worst percentage >= threshold, show soonest reset of worst limit
-    const config = vscode.workspace.getConfiguration('claude-usage');
-    const yellowThreshold = config.get<number>('rateLimits.warnings.yellow', 60);
-
-    if (data.rateLimits.worstPercentage >= yellowThreshold) {
-      const worstLimit = limits.reduce((worst, current) => {
-        return current.percentage > worst.percentage ? current : worst;
-      });
-
-      if (worstLimit.resetTime) {
-        this.cooldownItem.text = `$(clock) ${formatCooldown(worstLimit.resetTime)}`;
-        this.cooldownItem.tooltip = 'Soonest rate limit reset. Click for actions.';
-        this.cooldownItem.show();
-        return;
-      }
-    }
-
-    // Otherwise hide cooldown item
-    this.cooldownItem.hide();
-  }
-
-  /**
-   * Show refreshing state with spinner
-   */
   showRefreshing(): void {
-    this.metricsItem.text = '$(sync~spin) Refreshing...';
-    this.metricsItem.backgroundColor = undefined;
-    this.cooldownItem.hide();
+    this.sessionItem.text = '$(sync~spin) Refreshing...';
+    this.sessionItem.backgroundColor = undefined;
+    this.weeklyItem.hide();
+    this.sonnetItem.hide();
   }
 
-  /**
-   * Show error state
-   */
   showError(message: string): void {
-    this.metricsItem.text = '$(warning) Claude: Error';
-    this.metricsItem.tooltip = message;
-    this.metricsItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-    this.cooldownItem.hide();
+    this.sessionItem.text = '$(warning) Claude: Error';
+    this.sessionItem.tooltip = message;
+    this.weeklyItem.hide();
+    this.sonnetItem.hide();
 
-    // Auto-restore after 5 seconds (will be overwritten by next update)
     this.errorTimer = setTimeout(() => {
       this.showNoData();
     }, 5000);
   }
 
-  /**
-   * Show no data state
-   */
   showNoData(): void {
-    this.metricsItem.text = '$(cloud) Claude: No data';
-    this.metricsItem.tooltip = 'No Claude usage data found. Start using Claude Code to see usage stats.';
-    this.metricsItem.backgroundColor = undefined;
-    this.metricsItem.show();
-    this.cooldownItem.hide();
+    this.sessionItem.text = '$(cloud) Claude: No data';
+    this.sessionItem.tooltip = 'No Claude usage data found. Start using Claude Code to see usage stats.';
+    this.sessionItem.backgroundColor = undefined;
+    this.sessionItem.show();
+    this.weeklyItem.hide();
+    this.sonnetItem.hide();
   }
 
-  /**
-   * Toggle visibility of both status bar items
-   */
   toggle(): void {
     this._visible = !this._visible;
     if (this._visible) {
-      this.metricsItem.show();
-      this.cooldownItem.show();
+      this.sessionItem.show();
+      this.weeklyItem.show();
+      this.sonnetItem.show();
     } else {
-      this.metricsItem.hide();
-      this.cooldownItem.hide();
+      this.sessionItem.hide();
+      this.weeklyItem.hide();
+      this.sonnetItem.hide();
     }
   }
 
-  /**
-   * Dispose status bar items
-   */
   dispose(): void {
     if (this.errorTimer) {
       clearTimeout(this.errorTimer);
     }
-    this.metricsItem.dispose();
-    this.cooldownItem.dispose();
+    this.sessionItem.dispose();
+    this.weeklyItem.dispose();
+    this.sonnetItem.dispose();
   }
 }

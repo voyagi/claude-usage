@@ -56,27 +56,33 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     const monthCost = statusBarData.monthCost;
     const totalCost = statusBarData.totalCost;
 
-    // 3. Rate limits - convert each RateLimitInfo to RateLimitData (serialization-safe)
-    const convertRateLimit = (info: RateLimitInfo): RateLimitData => ({
+    // 3. Rate limits - use API data when available, fall back to JSONL estimates
+    const api = statusBarData.apiUsage;
+
+    const convertRateLimit = (info: RateLimitInfo, apiWindow: { utilization: number; resetsAt: string | null } | null): RateLimitData => ({
       name: info.name,
       currentTokens: info.currentTokens,
       estimatedLimit: info.estimatedLimit,
-      percentage: info.percentage,
-      resetTime: info.resetTime?.toISOString() ?? null,
-      isHit: info.isHit,
+      percentage: apiWindow ? Math.round(apiWindow.utilization * 100) : info.percentage,
+      resetTime: apiWindow?.resetsAt ?? info.resetTime?.toISOString() ?? null,
+      isHit: apiWindow ? apiWindow.utilization >= 1.0 : info.isHit,
     });
 
-    const session5h = convertRateLimit(statusBarData.rateLimits.session5h);
-    const weekly = convertRateLimit(statusBarData.rateLimits.weekly);
-    const weeklySonnet = convertRateLimit(statusBarData.rateLimits.weeklySonnet);
+    const session5h = convertRateLimit(statusBarData.rateLimits.session5h, api?.fiveHour ?? null);
+    const weekly = convertRateLimit(statusBarData.rateLimits.weekly, api?.sevenDay ?? null);
+    const weeklySonnet = convertRateLimit(statusBarData.rateLimits.weeklySonnet, api?.sevenDaySonnet ?? null);
 
-    // 4. Session timing - compute from session5h resetTime
+    // 4. Session timing - use API reset time when available
     let windowStart: string | null = null;
     let windowExpiry: string | null = null;
     let timeRemainingMinutes: number | null = null;
 
-    if (statusBarData.rateLimits.session5h.resetTime) {
-      const resetTime = statusBarData.rateLimits.session5h.resetTime;
+    const sessionResetSource = api?.fiveHour?.resetsAt
+      ? new Date(api.fiveHour.resetsAt)
+      : statusBarData.rateLimits.session5h.resetTime;
+
+    if (sessionResetSource) {
+      const resetTime = sessionResetSource;
       windowExpiry = resetTime.toISOString();
       windowStart = new Date(resetTime.getTime() - 5 * 60 * 60 * 1000).toISOString();
       timeRemainingMinutes = Math.max(0, Math.round((resetTime.getTime() - now.getTime()) / 60000));

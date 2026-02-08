@@ -60,6 +60,52 @@ export function formatCooldown(resetTime: Date | null): string {
 }
 
 /**
+ * Compact countdown for status bar (no spaces)
+ * null: "" | Past: "0m" | <1h: "34m" | <24h: "2h34m" | >=24h: "2d3h"
+ */
+export function formatCooldownCompact(resetTime: Date | null): string {
+  if (!resetTime) {
+    return '';
+  }
+
+  const minutesRemaining = differenceInMinutes(resetTime, new Date());
+  if (minutesRemaining <= 0) {
+    return '0m';
+  }
+  if (minutesRemaining < 60) {
+    return `${minutesRemaining}m`;
+  }
+  const totalHours = Math.floor(minutesRemaining / 60);
+  if (totalHours < 24) {
+    const mins = minutesRemaining % 60;
+    return `${totalHours}h${mins}m`;
+  }
+  const days = Math.floor(totalHours / 24);
+  const hrs = totalHours % 24;
+  return `${days}d${hrs}h`;
+}
+
+/**
+ * Format reset time as 24h local time for tooltip
+ * Same day: "14:00" | Different day: "Feb 11 14:00"
+ */
+export function formatResetTime24h(resetTime: Date | null): string {
+  if (!resetTime) {
+    return '';
+  }
+  const now = new Date();
+  const hhmm = resetTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const sameDay = resetTime.getFullYear() === now.getFullYear()
+    && resetTime.getMonth() === now.getMonth()
+    && resetTime.getDate() === now.getDate();
+  if (sameDay) {
+    return hhmm;
+  }
+  const monthDay = resetTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${monthDay} ${hhmm}`;
+}
+
+/**
  * Format cost with smart precision
  * < $0.01: "$0.00"
  * < $1.00: two decimals ("$0.42")

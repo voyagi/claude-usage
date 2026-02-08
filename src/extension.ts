@@ -23,6 +23,8 @@ import { CredentialsWatcher } from './storage/credentialsWatcher.js';
 import { createBurnRateTracker, calculateBurnRateEMA } from './core/burnRate.js';
 import { refineLimitEstimate } from './parser/rateLimitDetector.js';
 import { DashboardProvider } from './webview/DashboardProvider.js';
+import { fetchApiUsage } from './api/usageApi.js';
+import type { ApiUsageData } from './types.js';
 import { exportUsageData } from './commands/exportData.js';
 import type { RateLimitEvent } from './parser/incrementalParser.js';
 import type { BurnRateTracker } from './core/burnRate.js';
@@ -38,6 +40,7 @@ let detectedTier: PlanType | null = null;
 let refinedLimits: RefinedLimits | null = null;
 let lastKnownSessionTokens = 0;
 let lastKnownWeeklyTokens = 0;
+let cachedApiUsage: ApiUsageData | null = null;
 
 /**
  * Extension activation
@@ -161,8 +164,15 @@ export async function activate(context: vscode.ExtensionContext) {
     const burnResult = calculateBurnRateEMA(buckets, burnRateTracker!, getBurnRateWindow());
     burnRateTracker = burnResult.tracker;
 
+    // Fetch real-time rate limits from API (non-blocking)
+    fetchApiUsage(logger).then((apiData) => {
+      if (apiData) {
+        cachedApiUsage = apiData;
+      }
+    });
+
     // Transform buckets into StatusBarData and update display
-    const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits);
+    const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits, cachedApiUsage);
     statusBar.update(data);
 
     // Update dashboard with new data
@@ -383,14 +393,25 @@ async function performInitialParse(
     return config.get<number>('burnRate.windowMinutes', 15);
   }
 
+  // Fetch API usage data (non-blocking, runs in parallel with cache load)
+  const apiUsagePromise = fetchApiUsage(logger).then((apiData) => {
+    if (apiData) {
+      cachedApiUsage = apiData;
+      logger.info(`API usage fetched: session ${Math.round((apiData.fiveHour?.utilization ?? 0) * 100)}%, weekly ${Math.round((apiData.sevenDay?.utilization ?? 0) * 100)}%`);
+    }
+    return apiData;
+  });
+
   // Try cached data first for instant status bar update
   const cached = await store.loadUsageData();
   if (cached) {
     logger.info('Loaded cached usage data, showing immediately');
+    // Wait briefly for API data (up to 2s) for accurate first display
+    await Promise.race([apiUsagePromise, new Promise(r => setTimeout(r, 2000))]);
     // Calculate EMA burn rate for cached data
     const burnResult = calculateBurnRateEMA(cached.buckets, burnRateTracker!, getBurnRateWindow());
     burnRateTracker = burnResult.tracker;
-    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan(), burnResult.rate, refinedLimits);
+    const data = buildStatusBarData(cached.buckets, cached.stats, getSelectedPlan(), burnResult.rate, refinedLimits, cachedApiUsage);
     statusBar.update(data);
     // Update dashboard with cached data
     if (dashboardProvider) {
@@ -446,8 +467,11 @@ async function performInitialParse(
   const burnResult = calculateBurnRateEMA(buckets, burnRateTracker!, getBurnRateWindow());
   burnRateTracker = burnResult.tracker;
 
+  // Ensure API data is available for fresh display
+  await Promise.race([apiUsagePromise, new Promise(r => setTimeout(r, 2000))]);
+
   // Update status bar with fresh data
-  const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits);
+  const data = buildStatusBarData(buckets, stats, getSelectedPlan(), burnResult.rate, refinedLimits, cachedApiUsage);
   statusBar.update(data);
 
   // Update dashboard with fresh data

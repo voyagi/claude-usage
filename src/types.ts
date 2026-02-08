@@ -135,6 +135,20 @@ export interface RefinedLimits {
   lastUpdated: string; // ISO timestamp
 }
 
+/** Real-time rate limit data from Anthropic API */
+export interface ApiRateLimitWindow {
+  utilization: number;  // 0.0-1.0
+  resetsAt: string | null;  // ISO timestamp
+}
+
+/** API usage response (fetched from same endpoint as Claude Code's Account & Usage) */
+export interface ApiUsageData {
+  fiveHour: ApiRateLimitWindow | null;
+  sevenDay: ApiRateLimitWindow | null;
+  sevenDaySonnet: ApiRateLimitWindow | null;
+  fetchedAt: Date;
+}
+
 /**
  * Everything the status bar needs to render
  */
@@ -146,6 +160,7 @@ export interface StatusBarData {
   monthCost: number;
   burnRate: number;                // tokens per minute, 0 if no recent activity
   rateLimits: RateLimitStatus;
+  apiUsage: ApiUsageData | null;   // exact percentages from Anthropic API (when available)
   lastUpdated: Date;
   filesProcessed: number;
   linesSkipped: number;

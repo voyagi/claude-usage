@@ -4,7 +4,7 @@
  */
 
 import { startOfWeek, addDays, addHours, differenceInMinutes, differenceInHours, subHours } from 'date-fns';
-import type { TimeBuckets, RateLimitInfo, RateLimitStatus, StatusBarData, PlanType, RefinedLimits } from '../types.js';
+import type { TimeBuckets, RateLimitInfo, RateLimitStatus, StatusBarData, PlanType, RefinedLimits, ApiUsageData } from '../types.js';
 import { getPlanConfig } from '../pricing/plans.js';
 import { format } from 'date-fns';
 
@@ -160,7 +160,8 @@ export function buildStatusBarData(
   stats: { filesProcessed: number; linesSkipped: number },
   planType: PlanType,
   burnRateOverride?: number,
-  refinedLimits?: RefinedLimits | null
+  refinedLimits?: RefinedLimits | null,
+  apiUsage?: ApiUsageData | null
 ): StatusBarData {
   const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
@@ -188,6 +189,7 @@ export function buildStatusBarData(
     monthCost: monthData?.totalCost ?? 0,
     burnRate: burnRateOverride !== undefined ? burnRateOverride : calculateBurnRate(buckets),
     rateLimits: calculateRateLimits(buckets, planType, refinedLimits),
+    apiUsage: apiUsage ?? null,
     lastUpdated: now,
     filesProcessed: stats.filesProcessed,
     linesSkipped: stats.linesSkipped,
