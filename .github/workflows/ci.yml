@@ -1,0 +1,7 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  ci:
+    uses: voyagi/.github-workflows/.github/workflows/node-ci.yml@main
+    with:
+      run-knip: true
