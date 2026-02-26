@@ -5,14 +5,14 @@
  * Auto-detects Claude plan tier from ~/.claude/.credentials.json
  */
 
-import { PlanType } from '../types';
+import type { PlanType } from "../types";
 
 /**
  * Parsed credentials structure
  */
 export interface CredentialsData {
-  rateLimitTier?: string;
-  subscriptionType?: string;
+	rateLimitTier?: string;
+	subscriptionType?: string;
 }
 
 /**
@@ -22,22 +22,22 @@ export interface CredentialsData {
  * @returns Parsed credentials or null if invalid JSON
  */
 export function parseCredentialsFile(content: string): CredentialsData | null {
-  try {
-    const parsed = JSON.parse(content);
-    const result: CredentialsData = {};
+	try {
+		const parsed = JSON.parse(content);
+		const result: CredentialsData = {};
 
-    if (parsed.rateLimitTier) {
-      result.rateLimitTier = parsed.rateLimitTier;
-    }
-    if (parsed.subscriptionType) {
-      result.subscriptionType = parsed.subscriptionType;
-    }
+		if (parsed.rateLimitTier) {
+			result.rateLimitTier = parsed.rateLimitTier;
+		}
+		if (parsed.subscriptionType) {
+			result.subscriptionType = parsed.subscriptionType;
+		}
 
-    return result;
-  } catch (error) {
-    // Invalid JSON - return null for graceful degradation
-    return null;
-  }
+		return result;
+	} catch (_error) {
+		// Invalid JSON - return null for graceful degradation
+		return null;
+	}
 }
 
 /**
@@ -48,30 +48,30 @@ export function parseCredentialsFile(content: string): CredentialsData | null {
  * @returns Detected plan type
  */
 export function detectTierFromCredentials(
-  credentials: CredentialsData | null,
-  fallback: PlanType
+	credentials: CredentialsData | null,
+	fallback: PlanType,
 ): PlanType {
-  if (!credentials) {
-    return fallback;
-  }
+	if (!credentials) {
+		return fallback;
+	}
 
-  // Check rateLimitTier field (case-insensitive)
-  if (credentials.rateLimitTier) {
-    const tier = credentials.rateLimitTier.toLowerCase();
+	// Check rateLimitTier field (case-insensitive)
+	if (credentials.rateLimitTier) {
+		const tier = credentials.rateLimitTier.toLowerCase();
 
-    if (tier.includes('max_20')) {
-      return 'max20';
-    }
-    if (tier.includes('max_5')) {
-      return 'max5';
-    }
-  }
+		if (tier.includes("max_20")) {
+			return "max20";
+		}
+		if (tier.includes("max_5")) {
+			return "max5";
+		}
+	}
 
-  // Check subscriptionType field
-  if (credentials.subscriptionType === 'pro') {
-    return 'pro';
-  }
+	// Check subscriptionType field
+	if (credentials.subscriptionType === "pro") {
+		return "pro";
+	}
 
-  // No match - use fallback
-  return fallback;
+	// No match - use fallback
+	return fallback;
 }

@@ -3,7 +3,7 @@
  * All functions are pure (no side effects, no VS Code dependencies)
  */
 
-import { differenceInMinutes } from 'date-fns';
+import { differenceInMinutes } from "date-fns";
 
 /**
  * Format tokens with smart K/M abbreviation
@@ -13,14 +13,14 @@ import { differenceInMinutes } from 'date-fns';
  * >= 1M: one decimal ("3.4M")
  */
 export function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return (tokens / 1_000_000).toFixed(1) + 'M';
-  } else if (tokens >= 10_000) {
-    return Math.round(tokens / 1_000) + 'K';
-  } else if (tokens >= 1_000) {
-    return (tokens / 1_000).toFixed(1) + 'K';
-  }
-  return tokens.toString();
+	if (tokens >= 1_000_000) {
+		return `${(tokens / 1_000_000).toFixed(1)}M`;
+	} else if (tokens >= 10_000) {
+		return `${Math.round(tokens / 1_000)}K`;
+	} else if (tokens >= 1_000) {
+		return `${(tokens / 1_000).toFixed(1)}K`;
+	}
+	return tokens.toString();
 }
 
 /**
@@ -28,7 +28,7 @@ export function formatTokens(tokens: number): string {
  * E.g. "1,234,567"
  */
 export function formatTokensExact(tokens: number): string {
-  return new Intl.NumberFormat('en-US').format(tokens);
+	return new Intl.NumberFormat("en-US").format(tokens);
 }
 
 /**
@@ -39,24 +39,24 @@ export function formatTokensExact(tokens: number): string {
  * >= 1 hour: "Xh Ym" (e.g. "2h 34m")
  */
 export function formatCooldown(resetTime: Date | null): string {
-  if (!resetTime) {
-    return '';
-  }
+	if (!resetTime) {
+		return "";
+	}
 
-  const now = new Date();
-  const minutesRemaining = differenceInMinutes(resetTime, now);
+	const now = new Date();
+	const minutesRemaining = differenceInMinutes(resetTime, now);
 
-  if (minutesRemaining <= 0) {
-    return 'Ready';
-  }
+	if (minutesRemaining <= 0) {
+		return "Ready";
+	}
 
-  if (minutesRemaining < 60) {
-    return `${minutesRemaining}m`;
-  }
+	if (minutesRemaining < 60) {
+		return `${minutesRemaining}m`;
+	}
 
-  const hours = Math.floor(minutesRemaining / 60);
-  const minutes = minutesRemaining % 60;
-  return `${hours}h ${minutes}m`;
+	const hours = Math.floor(minutesRemaining / 60);
+	const minutes = minutesRemaining % 60;
+	return `${hours}h ${minutes}m`;
 }
 
 /**
@@ -64,25 +64,25 @@ export function formatCooldown(resetTime: Date | null): string {
  * null: "" | Past: "0m" | <1h: "34m" | <24h: "2h34m" | >=24h: "2d3h"
  */
 export function formatCooldownCompact(resetTime: Date | null): string {
-  if (!resetTime) {
-    return '';
-  }
+	if (!resetTime) {
+		return "";
+	}
 
-  const minutesRemaining = differenceInMinutes(resetTime, new Date());
-  if (minutesRemaining <= 0) {
-    return '0m';
-  }
-  if (minutesRemaining < 60) {
-    return `${minutesRemaining}m`;
-  }
-  const totalHours = Math.floor(minutesRemaining / 60);
-  if (totalHours < 24) {
-    const mins = minutesRemaining % 60;
-    return `${totalHours}h${mins}m`;
-  }
-  const days = Math.floor(totalHours / 24);
-  const hrs = totalHours % 24;
-  return `${days}d${hrs}h`;
+	const minutesRemaining = differenceInMinutes(resetTime, new Date());
+	if (minutesRemaining <= 0) {
+		return "0m";
+	}
+	if (minutesRemaining < 60) {
+		return `${minutesRemaining}m`;
+	}
+	const totalHours = Math.floor(minutesRemaining / 60);
+	if (totalHours < 24) {
+		const mins = minutesRemaining % 60;
+		return `${totalHours}h${mins}m`;
+	}
+	const days = Math.floor(totalHours / 24);
+	const hrs = totalHours % 24;
+	return `${days}d${hrs}h`;
 }
 
 /**
@@ -90,19 +90,27 @@ export function formatCooldownCompact(resetTime: Date | null): string {
  * Same day: "14:00" | Different day: "Feb 11 14:00"
  */
 export function formatResetTime24h(resetTime: Date | null): string {
-  if (!resetTime) {
-    return '';
-  }
-  const now = new Date();
-  const hhmm = resetTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
-  const sameDay = resetTime.getFullYear() === now.getFullYear()
-    && resetTime.getMonth() === now.getMonth()
-    && resetTime.getDate() === now.getDate();
-  if (sameDay) {
-    return hhmm;
-  }
-  const monthDay = resetTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${monthDay} ${hhmm}`;
+	if (!resetTime) {
+		return "";
+	}
+	const now = new Date();
+	const hhmm = resetTime.toLocaleTimeString("en-GB", {
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: false,
+	});
+	const sameDay =
+		resetTime.getFullYear() === now.getFullYear() &&
+		resetTime.getMonth() === now.getMonth() &&
+		resetTime.getDate() === now.getDate();
+	if (sameDay) {
+		return hhmm;
+	}
+	const monthDay = resetTime.toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	});
+	return `${monthDay} ${hhmm}`;
 }
 
 /**
@@ -113,13 +121,13 @@ export function formatResetTime24h(resetTime: Date | null): string {
  * >= $100: no decimals ("$150")
  */
 export function formatCost(cost: number): string {
-  if (cost < 0.01) {
-    return '$0.00';
-  } else if (cost < 100) {
-    return `$${cost.toFixed(2)}`;
-  } else {
-    return `$${Math.round(cost)}`;
-  }
+	if (cost < 0.01) {
+		return "$0.00";
+	} else if (cost < 100) {
+		return `$${cost.toFixed(2)}`;
+	} else {
+		return `$${Math.round(cost)}`;
+	}
 }
 
 /**
@@ -127,7 +135,7 @@ export function formatCost(cost: number): string {
  * E.g. "73%"
  */
 export function formatPercentage(percent: number): string {
-  return `${Math.round(percent)}%`;
+	return `${Math.round(percent)}%`;
 }
 
 /**
@@ -137,15 +145,15 @@ export function formatPercentage(percent: number): string {
  * >= 100: abbreviated + "/min" (e.g. "1.2K/min")
  */
 export function formatBurnRate(tokensPerMin: number): string {
-  if (tokensPerMin === 0) {
-    return '';
-  }
+	if (tokensPerMin === 0) {
+		return "";
+	}
 
-  if (tokensPerMin < 100) {
-    return `${Math.round(tokensPerMin)}/min`;
-  }
+	if (tokensPerMin < 100) {
+		return `${Math.round(tokensPerMin)}/min`;
+	}
 
-  return `${formatTokens(tokensPerMin)}/min`;
+	return `${formatTokens(tokensPerMin)}/min`;
 }
 
 /**
@@ -157,23 +165,23 @@ export function formatBurnRate(tokensPerMin: number): string {
  * >= 60 min: 'Xh Ym at current pace' (e.g. '2h 15m at current pace')
  */
 export function formatTimeUntilLimit(minutes: number | null): string {
-  if (minutes === null) {
-    return '';
-  }
+	if (minutes === null) {
+		return "";
+	}
 
-  if (minutes === 0) {
-    return 'LIMIT HIT';
-  }
+	if (minutes === 0) {
+		return "LIMIT HIT";
+	}
 
-  if (minutes < 1) {
-    return '<1m at current pace';
-  }
+	if (minutes < 1) {
+		return "<1m at current pace";
+	}
 
-  if (minutes < 60) {
-    return `${Math.round(minutes)}m at current pace`;
-  }
+	if (minutes < 60) {
+		return `${Math.round(minutes)}m at current pace`;
+	}
 
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return `${hours}h ${mins}m at current pace`;
+	const hours = Math.floor(minutes / 60);
+	const mins = Math.round(minutes % 60);
+	return `${hours}h ${mins}m at current pace`;
 }
