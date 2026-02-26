@@ -1,229 +1,230 @@
 {
-  "name": "claude-usage-monitor",
-  "displayName": "Claude Usage Monitor",
-  "description": "Local-only Claude Code usage monitoring — zero network calls",
-  "version": "1.0.0",
-  "publisher": "voyagi",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/voyagi/claude-usage.git"
-  },
-  "homepage": "https://github.com/voyagi/claude-usage#readme",
-  "bugs": {
-    "url": "https://github.com/voyagi/claude-usage/issues"
-  },
-  "icon": "resources/icon.png",
-  "keywords": [
-    "claude",
-    "anthropic",
-    "usage",
-    "monitor",
-    "tokens",
-    "rate-limit",
-    "local-only"
-  ],
-  "engines": {
-    "vscode": "^1.96.0"
-  },
-  "categories": [
-    "Other",
-    "Visualization"
-  ],
-  "main": "./dist/extension.js",
-  "activationEvents": [
-    "onStartupFinished"
-  ],
-  "contributes": {
-    "commands": [
-      {
-        "command": "claude-usage.clearData",
-        "title": "Clear Usage Data",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.showMenu",
-        "title": "Show Menu",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.refresh",
-        "title": "Refresh Usage Data",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.switchPlan",
-        "title": "Switch Plan Tier",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.viewSummary",
-        "title": "View Usage Summary",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.resetSession",
-        "title": "Reset Session Tracking",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.openDashboard",
-        "title": "Open Dashboard",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.exportData",
-        "title": "Export Usage Data",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.toggleStatusBar",
-        "title": "Toggle Status Bar",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.showDataSource",
-        "title": "Show Data Source Path",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.openSettings",
-        "title": "Open Settings",
-        "category": "Claude Usage"
-      },
-      {
-        "command": "claude-usage.resetRateLimits",
-        "title": "Reset Rate Limit Estimates",
-        "category": "Claude Usage"
-      }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "claude-usage",
-          "title": "Claude Usage",
-          "icon": "resources/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "claude-usage": [
-        {
-          "type": "webview",
-          "id": "claude-usage.dashboardView",
-          "name": "Dashboard"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "Claude Usage Monitor",
-      "properties": {
-        "claude-usage.planType": {
-          "type": "string",
-          "enum": [
-            "pro",
-            "max5",
-            "max20"
-          ],
-          "default": "max5",
-          "description": "Your Claude plan type (affects cost calculations)",
-          "scope": "application"
-        },
-        "claude-usage.pricing": {
-          "type": "object",
-          "description": "Per-model pricing overrides (inputPerMillion, outputPerMillion, cache5mWriteMultiplier, cache1hWriteMultiplier, cacheReadMultiplier)",
-          "default": {},
-          "scope": "application"
-        },
-        "claude-usage.compactMode": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use compact status bar display (shorter text for narrow windows)",
-          "scope": "window"
-        },
-        "claude-usage.refreshInterval": {
-          "type": "number",
-          "default": 60,
-          "minimum": 10,
-          "maximum": 600,
-          "description": "How often to refresh usage data (seconds). Affects file watcher debounce.",
-          "scope": "window"
-        },
-        "claude-usage.rateLimits.session.threshold": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "markdownDescription": "Override estimated 5-hour session output token limit. Set to 0 to use auto-detected value from your plan tier.",
-          "scope": "window"
-        },
-        "claude-usage.rateLimits.weekly.threshold": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "markdownDescription": "Override estimated weekly output token limit. Set to 0 to use auto-detected value.",
-          "scope": "window"
-        },
-        "claude-usage.rateLimits.weeklySonnet.threshold": {
-          "type": "number",
-          "default": 0,
-          "minimum": 0,
-          "markdownDescription": "Override estimated weekly Sonnet model output token limit. Set to 0 to use auto-detected value.",
-          "scope": "window"
-        },
-        "claude-usage.rateLimits.warnings.yellow": {
-          "type": "number",
-          "default": 60,
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Yellow warning threshold (percentage of limit)",
-          "scope": "window"
-        },
-        "claude-usage.rateLimits.warnings.red": {
-          "type": "number",
-          "default": 95,
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Red warning threshold (percentage of limit)",
-          "scope": "window"
-        },
-        "claude-usage.burnRate.windowMinutes": {
-          "type": "number",
-          "default": 15,
-          "minimum": 5,
-          "maximum": 60,
-          "description": "Lookback window for burn rate calculation (minutes)",
-          "scope": "window"
-        }
-      }
-    }
-  },
-  "scripts": {
-    "build": "node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs --watch",
-    "compile": "tsc --noEmit",
-    "lint": "eslint src --ext ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "package": "vsce package"
-  },
-  "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@types/node": "^22.10.0",
-    "@types/react": "^19.2.13",
-    "@types/react-dom": "^19.2.3",
-    "@types/vscode": "^1.96.0",
-    "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.24.0",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.6",
-    "typescript": "^5.7.0"
-  },
-  "dependencies": {
-    "date-fns": "^4.1.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-is": "^19.2.4",
-    "recharts": "^3.7.0",
-    "zod": "^3.24.0"
-  }
+	"name": "claude-usage-monitor",
+	"displayName": "Claude Usage Monitor",
+	"description": "Local-only Claude Code usage monitoring — zero network calls",
+	"version": "1.0.0",
+	"publisher": "voyagi",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/voyagi/claude-usage.git"
+	},
+	"homepage": "https://github.com/voyagi/claude-usage#readme",
+	"bugs": {
+		"url": "https://github.com/voyagi/claude-usage/issues"
+	},
+	"icon": "resources/icon.png",
+	"keywords": [
+		"claude",
+		"anthropic",
+		"usage",
+		"monitor",
+		"tokens",
+		"rate-limit",
+		"local-only"
+	],
+	"engines": {
+		"vscode": "^1.96.0"
+	},
+	"categories": [
+		"Other",
+		"Visualization"
+	],
+	"main": "./dist/extension.js",
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"contributes": {
+		"commands": [
+			{
+				"command": "claude-usage.clearData",
+				"title": "Clear Usage Data",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.showMenu",
+				"title": "Show Menu",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.refresh",
+				"title": "Refresh Usage Data",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.switchPlan",
+				"title": "Switch Plan Tier",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.viewSummary",
+				"title": "View Usage Summary",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.resetSession",
+				"title": "Reset Session Tracking",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.openDashboard",
+				"title": "Open Dashboard",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.exportData",
+				"title": "Export Usage Data",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.toggleStatusBar",
+				"title": "Toggle Status Bar",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.showDataSource",
+				"title": "Show Data Source Path",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.openSettings",
+				"title": "Open Settings",
+				"category": "Claude Usage"
+			},
+			{
+				"command": "claude-usage.resetRateLimits",
+				"title": "Reset Rate Limit Estimates",
+				"category": "Claude Usage"
+			}
+		],
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "claude-usage",
+					"title": "Claude Usage",
+					"icon": "resources/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"claude-usage": [
+				{
+					"type": "webview",
+					"id": "claude-usage.dashboardView",
+					"name": "Dashboard"
+				}
+			]
+		},
+		"configuration": {
+			"title": "Claude Usage Monitor",
+			"properties": {
+				"claude-usage.planType": {
+					"type": "string",
+					"enum": [
+						"pro",
+						"max5",
+						"max20"
+					],
+					"default": "max5",
+					"description": "Your Claude plan type (affects cost calculations)",
+					"scope": "application"
+				},
+				"claude-usage.pricing": {
+					"type": "object",
+					"description": "Per-model pricing overrides (inputPerMillion, outputPerMillion, cache5mWriteMultiplier, cache1hWriteMultiplier, cacheReadMultiplier)",
+					"default": {},
+					"scope": "application"
+				},
+				"claude-usage.compactMode": {
+					"type": "boolean",
+					"default": false,
+					"description": "Use compact status bar display (shorter text for narrow windows)",
+					"scope": "window"
+				},
+				"claude-usage.refreshInterval": {
+					"type": "number",
+					"default": 60,
+					"minimum": 10,
+					"maximum": 600,
+					"description": "How often to refresh usage data (seconds). Affects file watcher debounce.",
+					"scope": "window"
+				},
+				"claude-usage.rateLimits.session.threshold": {
+					"type": "number",
+					"default": 0,
+					"minimum": 0,
+					"markdownDescription": "Override estimated 5-hour session output token limit. Set to 0 to use auto-detected value from your plan tier.",
+					"scope": "window"
+				},
+				"claude-usage.rateLimits.weekly.threshold": {
+					"type": "number",
+					"default": 0,
+					"minimum": 0,
+					"markdownDescription": "Override estimated weekly output token limit. Set to 0 to use auto-detected value.",
+					"scope": "window"
+				},
+				"claude-usage.rateLimits.weeklySonnet.threshold": {
+					"type": "number",
+					"default": 0,
+					"minimum": 0,
+					"markdownDescription": "Override estimated weekly Sonnet model output token limit. Set to 0 to use auto-detected value.",
+					"scope": "window"
+				},
+				"claude-usage.rateLimits.warnings.yellow": {
+					"type": "number",
+					"default": 60,
+					"minimum": 0,
+					"maximum": 100,
+					"description": "Yellow warning threshold (percentage of limit)",
+					"scope": "window"
+				},
+				"claude-usage.rateLimits.warnings.red": {
+					"type": "number",
+					"default": 95,
+					"minimum": 0,
+					"maximum": 100,
+					"description": "Red warning threshold (percentage of limit)",
+					"scope": "window"
+				},
+				"claude-usage.burnRate.windowMinutes": {
+					"type": "number",
+					"default": 15,
+					"minimum": 5,
+					"maximum": 60,
+					"description": "Lookback window for burn rate calculation (minutes)",
+					"scope": "window"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"build": "node esbuild.config.mjs",
+		"watch": "node esbuild.config.mjs --watch",
+		"compile": "tsc --noEmit",
+		"lint": "eslint src --ext ts",
+		"test": "jest",
+		"test:watch": "jest --watch",
+		"package": "vsce package"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.4",
+		"@types/jest": "^30.0.0",
+		"@types/node": "^22.10.0",
+		"@types/react": "^19.2.13",
+		"@types/react-dom": "^19.2.3",
+		"@types/vscode": "^1.96.0",
+		"@vscode/vsce": "^3.7.1",
+		"esbuild": "^0.24.0",
+		"jest": "^30.2.0",
+		"ts-jest": "^29.4.6",
+		"typescript": "^5.7.0"
+	},
+	"dependencies": {
+		"date-fns": "^4.1.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"react-is": "^19.2.4",
+		"recharts": "^3.7.0",
+		"zod": "^3.24.0"
+	}
 }

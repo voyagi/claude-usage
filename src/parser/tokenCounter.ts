@@ -3,7 +3,7 @@
  * Converts parsed JSONL messages into TokenUsage records and provides aggregation helpers
  */
 
-import type { TokenUsage, AggregatedUsage } from '../types.js';
+import type { AggregatedUsage, TokenUsage } from "../types.js";
 
 /**
  * Extract TokenUsage from a validated assistant message
@@ -12,39 +12,39 @@ import type { TokenUsage, AggregatedUsage } from '../types.js';
  * @returns TokenUsage object with all token counts and metadata
  */
 export function extractTokenUsage(
-  parsed: {
-    timestamp: string;
-    message: {
-      model: string;
-      usage: {
-        input_tokens: number;
-        output_tokens: number;
-        cache_creation_input_tokens?: number;
-        cache_read_input_tokens?: number;
-        cache_creation?: {
-          ephemeral_5m_input_tokens?: number;
-          ephemeral_1h_input_tokens?: number;
-        };
-      };
-    };
-  },
-  sessionId: string
+	parsed: {
+		timestamp: string;
+		message: {
+			model: string;
+			usage: {
+				input_tokens: number;
+				output_tokens: number;
+				cache_creation_input_tokens?: number;
+				cache_read_input_tokens?: number;
+				cache_creation?: {
+					ephemeral_5m_input_tokens?: number;
+					ephemeral_1h_input_tokens?: number;
+				};
+			};
+		};
+	},
+	sessionId: string,
 ): TokenUsage {
-  const usage = parsed.message.usage;
-  const cacheCreation = usage.cache_creation;
+	const usage = parsed.message.usage;
+	const cacheCreation = usage.cache_creation;
 
-  return {
-    timestamp: new Date(parsed.timestamp),
-    model: parsed.message.model,
-    sessionId,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
-    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-    cacheCreation5m: cacheCreation?.ephemeral_5m_input_tokens ?? 0,
-    cacheCreation1h: cacheCreation?.ephemeral_1h_input_tokens ?? 0,
-    cost: 0, // Will be calculated by pricing module
-  };
+	return {
+		timestamp: new Date(parsed.timestamp),
+		model: parsed.message.model,
+		sessionId,
+		inputTokens: usage.input_tokens,
+		outputTokens: usage.output_tokens,
+		cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+		cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+		cacheCreation5m: cacheCreation?.ephemeral_5m_input_tokens ?? 0,
+		cacheCreation1h: cacheCreation?.ephemeral_1h_input_tokens ?? 0,
+		cost: 0, // Will be calculated by pricing module
+	};
 }
 
 /**
@@ -60,7 +60,7 @@ export function extractTokenUsage(
  * @returns Number of tokens that count toward input token rate limits
  */
 export function getBillableTokenCount(usage: TokenUsage): number {
-  return usage.inputTokens + usage.cacheCreationTokens;
+	return usage.inputTokens + usage.cacheCreationTokens;
 }
 
 /**
@@ -71,12 +71,12 @@ export function getBillableTokenCount(usage: TokenUsage): number {
  * @returns Total tokens processed (input + output + cache creation + cache reads)
  */
 export function getTotalTokens(usage: TokenUsage): number {
-  return (
-    usage.inputTokens +
-    usage.outputTokens +
-    usage.cacheCreationTokens +
-    usage.cacheReadTokens
-  );
+	return (
+		usage.inputTokens +
+		usage.outputTokens +
+		usage.cacheCreationTokens +
+		usage.cacheReadTokens
+	);
 }
 
 /**
@@ -84,16 +84,16 @@ export function getTotalTokens(usage: TokenUsage): number {
  * @returns Empty aggregated usage record
  */
 export function createEmptyAggregatedUsage(): AggregatedUsage {
-  return {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheCreationTokens: 0,
-    cacheReadTokens: 0,
-    totalCost: 0,
-    messageCount: 0,
-    firstMessage: null,
-    lastMessage: null,
-  };
+	return {
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheCreationTokens: 0,
+		cacheReadTokens: 0,
+		totalCost: 0,
+		messageCount: 0,
+		firstMessage: null,
+		lastMessage: null,
+	};
 }
 
 /**
@@ -104,22 +104,22 @@ export function createEmptyAggregatedUsage(): AggregatedUsage {
  * @param source TokenUsage to add from
  */
 export function addToAggregation(
-  target: AggregatedUsage,
-  source: TokenUsage
+	target: AggregatedUsage,
+	source: TokenUsage,
 ): void {
-  // Sum all token counts
-  target.inputTokens += source.inputTokens;
-  target.outputTokens += source.outputTokens;
-  target.cacheCreationTokens += source.cacheCreationTokens;
-  target.cacheReadTokens += source.cacheReadTokens;
-  target.totalCost += source.cost;
-  target.messageCount += 1;
+	// Sum all token counts
+	target.inputTokens += source.inputTokens;
+	target.outputTokens += source.outputTokens;
+	target.cacheCreationTokens += source.cacheCreationTokens;
+	target.cacheReadTokens += source.cacheReadTokens;
+	target.totalCost += source.cost;
+	target.messageCount += 1;
 
-  // Update timestamp range
-  if (target.firstMessage === null || source.timestamp < target.firstMessage) {
-    target.firstMessage = source.timestamp;
-  }
-  if (target.lastMessage === null || source.timestamp > target.lastMessage) {
-    target.lastMessage = source.timestamp;
-  }
+	// Update timestamp range
+	if (target.firstMessage === null || source.timestamp < target.firstMessage) {
+		target.firstMessage = source.timestamp;
+	}
+	if (target.lastMessage === null || source.timestamp > target.lastMessage) {
+		target.lastMessage = source.timestamp;
+	}
 }
