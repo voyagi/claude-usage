@@ -1,9 +1,13 @@
 {
 	"name": "claude-usage-monitor",
-	"displayName": "Claude Usage Monitor",
-	"description": "Local-only Claude Code usage monitoring — zero network calls",
 	"version": "1.0.0",
+	"description": "Local-only Claude Code usage monitoring — zero network calls",
 	"publisher": "voyagi",
+	"displayName": "Claude Usage Monitor",
+	"engines": {
+		"vscode": "^1.96.0",
+		"npm": ">=10.0.0 <11"
+	},
 	"license": "MIT",
 	"repository": {
 		"type": "git",
@@ -23,9 +27,6 @@
 		"rate-limit",
 		"local-only"
 	],
-	"engines": {
-		"vscode": "^1.96.0"
-	},
 	"categories": [
 		"Other",
 		"Visualization"
