@@ -195,6 +195,23 @@ export async function activate(context: vscode.ExtensionContext) {
 				fetchApiUsage(logger).then((apiData) => {
 					if (apiData) {
 						cachedApiUsage = apiData;
+						// Re-render status bar with fresh API data
+						const freshData = buildStatusBarData(
+							buckets,
+							stats,
+							getSelectedPlan(),
+							burnResult.rate,
+							refinedLimits,
+							cachedApiUsage,
+						);
+						statusBar.update(freshData);
+						if (dashboardProvider) {
+							dashboardProvider.updateBuckets(
+								buckets,
+								freshData,
+								getSelectedPlan(),
+							);
+						}
 					}
 				});
 			}
