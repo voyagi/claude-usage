@@ -29,6 +29,7 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		weekly: new Map(),
 		monthly: new Map(),
 		modelWeekly: new Map(),
+		hourly: new Map(),
 	};
 
 	for (const record of records) {
@@ -69,6 +70,13 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 			buckets.monthly.set(monthKey, createEmptyAggregatedUsage());
 		}
 		addToAggregation(buckets.monthly.get(monthKey)!, record);
+
+		// Hourly bucket: key = YYYY-MM-DDTHH (for sliding window calculations)
+		const hourKey = format(record.timestamp, "yyyy-MM-dd'T'HH");
+		if (!buckets.hourly.has(hourKey)) {
+			buckets.hourly.set(hourKey, createEmptyAggregatedUsage());
+		}
+		addToAggregation(buckets.hourly.get(hourKey)!, record);
 	}
 
 	return buckets;
@@ -85,12 +93,17 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
  * @returns Merged TimeBuckets
  */
 export function mergeTimeBuckets(a: TimeBuckets, b: TimeBuckets): TimeBuckets {
+	// Deep-copy a's entries so += mutations don't affect the original
+	const deepCopyMap = (m: Map<string, AggregatedUsage>) =>
+		new Map(Array.from(m.entries(), ([k, v]) => [k, { ...v }]));
+
 	const merged: TimeBuckets = {
-		session: new Map(a.session),
-		daily: new Map(a.daily),
-		weekly: new Map(a.weekly),
-		monthly: new Map(a.monthly),
-		modelWeekly: new Map(a.modelWeekly),
+		session: deepCopyMap(a.session),
+		daily: deepCopyMap(a.daily),
+		weekly: deepCopyMap(a.weekly),
+		monthly: deepCopyMap(a.monthly),
+		modelWeekly: deepCopyMap(a.modelWeekly),
+		hourly: deepCopyMap(a.hourly),
 	};
 
 	// Helper to merge a bucket level
@@ -138,6 +151,7 @@ export function mergeTimeBuckets(a: TimeBuckets, b: TimeBuckets): TimeBuckets {
 	mergeBucket(merged.weekly, b.weekly);
 	mergeBucket(merged.monthly, b.monthly);
 	mergeBucket(merged.modelWeekly, b.modelWeekly);
+	mergeBucket(merged.hourly, b.hourly);
 
 	return merged;
 }
@@ -186,6 +200,7 @@ export function serializeTimeBuckets(
 		weekly: Array.from(buckets.weekly.entries()),
 		monthly: Array.from(buckets.monthly.entries()),
 		modelWeekly: Array.from(buckets.modelWeekly.entries()),
+		hourly: Array.from(buckets.hourly.entries()),
 	};
 }
 
@@ -224,6 +239,9 @@ export function deserializeTimeBuckets(
 				key,
 				deserializeAgg(agg),
 			]),
+		),
+		hourly: new Map(
+			(serialized.hourly ?? []).map(([key, agg]) => [key, deserializeAgg(agg)]),
 		),
 	};
 }

@@ -42,19 +42,20 @@ export function calculateRateLimits(
 	const effectiveSonnetLimit =
 		refinedLimits?.weeklySonnetLimit ?? plan.weeklySonnetLimit;
 
-	// Session 5hr limit: Sum output tokens from sessions with lastMessage in last 5 hours
+	// Session 5hr limit: Sum output tokens from hourly buckets within the last 5 hours
+	// Using hourly buckets instead of session aggregates avoids over-counting
+	// sessions that started before the 5hr window
 	const fiveHoursAgo = subHours(now, 5);
 	let sessionTokens = 0;
 	let oldestSessionTime: Date | null = null;
 
-	for (const [_sessionId, agg] of buckets.session.entries()) {
-		if (agg.lastMessage && agg.lastMessage >= fiveHoursAgo) {
+	for (const [hourKey, agg] of buckets.hourly.entries()) {
+		// hourKey format: "YYYY-MM-DDTHH"
+		const hourDate = new Date(`${hourKey}:00:00`);
+		if (hourDate >= fiveHoursAgo) {
 			sessionTokens += agg.outputTokens;
-			if (
-				!oldestSessionTime ||
-				(agg.firstMessage && agg.firstMessage < oldestSessionTime)
-			) {
-				oldestSessionTime = agg.firstMessage;
+			if (!oldestSessionTime || hourDate < oldestSessionTime) {
+				oldestSessionTime = hourDate;
 			}
 		}
 	}
