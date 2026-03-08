@@ -215,20 +215,19 @@ export class SessionWatcher {
 	/**
 	 * Set initial buckets and stats after full parse completes
 	 * Called by extension.ts to seed the watcher with baseline data
+	 * Serialized via processingChain to prevent races with incremental parses
 	 */
 	setInitialBuckets(
 		buckets: TimeBuckets,
 		stats: { filesProcessed: number; linesSkipped: number },
 	): void {
-		this.currentBuckets = buckets;
-		this.totalLinesSkipped = stats.linesSkipped;
-
-		// Track files as processed (we don't have individual file paths from full parse,
-		// so we'll just use the count directly)
-		// The processedFiles set will grow as incremental updates happen
-		logger.info(
-			`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped`,
-		);
+		this.processingChain = this.processingChain.then(() => {
+			this.currentBuckets = buckets;
+			this.totalLinesSkipped = stats.linesSkipped;
+			logger.info(
+				`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped`,
+			);
+		});
 	}
 
 	/**

@@ -7,13 +7,13 @@ import { subHours, subMinutes } from "date-fns";
 import {
 	aggregateUsage,
 	mergeTimeBuckets,
-} from "../src/aggregation/timeBuckets";
+} from "../../src/aggregation/timeBuckets";
 import {
 	calculateBurnRateEMA,
 	createBurnRateTracker,
-} from "../src/core/burnRate";
-import { calculateRateLimits } from "../src/core/rateLimits";
-import type { AggregatedUsage, TimeBuckets, TokenUsage } from "../src/types";
+} from "../../src/core/burnRate";
+import { calculateRateLimits } from "../../src/core/rateLimits";
+import type { AggregatedUsage, TimeBuckets, TokenUsage } from "../../src/types";
 
 // ---- Helpers ----
 
@@ -40,6 +40,7 @@ function emptyBuckets(): TimeBuckets {
 		weekly: new Map(),
 		monthly: new Map(),
 		modelWeekly: new Map(),
+		hourly: new Map(),
 	};
 }
 

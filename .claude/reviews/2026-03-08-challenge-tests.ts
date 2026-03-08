@@ -4,7 +4,7 @@
  * Framework: Jest with ts-jest
  */
 
-import type { TimeBuckets, AggregatedUsage } from "../../src/types";
+import type { TimeBuckets } from "../../src/types";
 
 // Helper to create valid empty TimeBuckets
 function createEmptyBuckets(): TimeBuckets {

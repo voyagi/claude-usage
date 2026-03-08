@@ -254,6 +254,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (tier !== getSelectedPlan()) {
 				detectedTier = tier;
 				logger.info(`Auto-detected plan tier: ${tier}`);
+				vscode.commands.executeCommand("claude-usage.refresh");
 			}
 		})
 		.catch((err) => {
