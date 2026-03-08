@@ -233,6 +233,7 @@ export class SessionWatcher {
 			weekly: new Map(),
 			monthly: new Map(),
 			modelWeekly: new Map(),
+			hourly: new Map(),
 		};
 
 		this.processedFiles.clear();
