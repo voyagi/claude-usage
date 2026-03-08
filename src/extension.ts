@@ -49,6 +49,25 @@ let cachedApiUsage: ApiUsageData | null = null;
 let lastApiFetchTime = 0;
 
 /**
+ * Read current plan selection with auto-detection fallback
+ */
+function getSelectedPlan(): PlanType {
+	const config = vscode.workspace.getConfiguration("claude-usage");
+	const userSetting = config.get<PlanType>("planType", "max5");
+
+	const inspected = config.inspect("planType");
+	const hasUserOverride =
+		inspected?.globalValue !== undefined ||
+		inspected?.workspaceValue !== undefined;
+
+	if (hasUserOverride) {
+		return userSetting;
+	}
+
+	return detectedTier ?? userSetting;
+}
+
+/**
  * Extension activation
  */
 export async function activate(context: vscode.ExtensionContext) {
@@ -79,25 +98,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			dashboardProvider,
 		),
 	);
-
-	// Helper to read current plan selection with auto-detection
-	function getSelectedPlan(): PlanType {
-		const config = vscode.workspace.getConfiguration("claude-usage");
-		const userSetting = config.get<PlanType>("planType", "max5");
-
-		// Check if user explicitly overrode the setting
-		const inspected = config.inspect("planType");
-		const hasUserOverride =
-			inspected?.globalValue !== undefined ||
-			inspected?.workspaceValue !== undefined;
-
-		// If user explicitly set it, use their value; otherwise use auto-detected tier
-		if (hasUserOverride) {
-			return userSetting;
-		}
-
-		return detectedTier ?? userSetting;
-	}
 
 	// Helper to read burn rate window from config
 	function getBurnRateWindow(): number {
@@ -467,25 +467,6 @@ async function performInitialParse(
 	statusBar: StatusBarManager,
 	watcher: SessionWatcher,
 ): Promise<void> {
-	// Helper to read current plan selection (inline to avoid module-level dependency)
-	function getSelectedPlan(): PlanType {
-		const config = vscode.workspace.getConfiguration("claude-usage");
-		const userSetting = config.get<PlanType>("planType", "max5");
-
-		// Check if user explicitly overrode the setting
-		const inspected = config.inspect("planType");
-		const hasUserOverride =
-			inspected?.globalValue !== undefined ||
-			inspected?.workspaceValue !== undefined;
-
-		// If user explicitly set it, use their value; otherwise use auto-detected tier
-		if (hasUserOverride) {
-			return userSetting;
-		}
-
-		return detectedTier ?? userSetting;
-	}
-
 	// Helper to read burn rate window from config
 	function getBurnRateWindow(): number {
 		const config = vscode.workspace.getConfiguration("claude-usage");

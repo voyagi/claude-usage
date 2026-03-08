@@ -42,7 +42,9 @@ export async function exportUsageData(
 
 	const exportData = {
 		exportedAt: new Date().toISOString(),
-		extensionVersion: "0.1.0",
+		extensionVersion:
+			vscode.extensions.getExtension("claude-usage-monitor")?.packageJSON
+				?.version ?? "unknown",
 		dataSource: getClaudeProjectsDir(),
 		planType,
 		summary: {

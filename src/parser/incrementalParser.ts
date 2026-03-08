@@ -103,7 +103,7 @@ export async function parseIncremental(
 				}
 
 				// Validate with Zod schema and extract token usage
-				const tokenUsage = parseAssistantMessage(line);
+				const tokenUsage = parseAssistantMessage(parsed);
 
 				if (tokenUsage === null) {
 					// Missing usage data or validation failed - skip silently
