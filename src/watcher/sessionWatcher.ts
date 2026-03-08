@@ -253,6 +253,13 @@ export class SessionWatcher {
 	}
 
 	/**
+	 * Remove offset keys for files that no longer exist on disk
+	 */
+	async pruneStaleOffsets(): Promise<void> {
+		await this.offsetTracker.pruneStaleKeys();
+	}
+
+	/**
 	 * Dispose of watcher resources
 	 * Watcher itself is auto-disposed via context.subscriptions
 	 */

@@ -3,6 +3,7 @@
  * Persists per-file read positions across VS Code reloads using globalState
  */
 
+import * as fs from "node:fs/promises";
 import type * as vscode from "vscode";
 import { Logger } from "../utils/logger.js";
 
@@ -66,6 +67,28 @@ export class OffsetTracker {
 		}
 
 		logger.info(`Cleared ${offsetKeys.length} file offsets`);
+	}
+
+	/**
+	 * Remove offset keys for files that no longer exist on disk
+	 */
+	async pruneStaleKeys(): Promise<void> {
+		const trackedFiles = this.getAllTrackedFiles();
+		let pruned = 0;
+
+		for (const filePath of trackedFiles) {
+			try {
+				await fs.access(filePath);
+			} catch {
+				const key = this.keyPrefix + filePath;
+				await this.context.globalState.update(key, undefined);
+				pruned++;
+			}
+		}
+
+		if (pruned > 0) {
+			logger.info(`Pruned ${pruned} stale offset keys`);
+		}
 	}
 
 	/**

@@ -430,7 +430,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Perform initial parse, then start watcher (order matters: setInitialBuckets must run before watcher)
 	performInitialParse(store, statusBar, sessionWatcher)
-		.then(() => {
+		.then(async () => {
+			await sessionWatcher!.pruneStaleOffsets();
 			sessionWatcher!.start();
 		})
 		.catch((err) => {
