@@ -37,6 +37,7 @@ export class SessionWatcher {
 	private readonly offsetTracker: OffsetTracker;
 	private readonly recentlyCreated = new Set<string>();
 	private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
+	private processingChain: Promise<void> = Promise.resolve();
 	private currentBuckets: TimeBuckets = {
 		session: new Map(),
 		daily: new Map(),
@@ -131,9 +132,18 @@ export class SessionWatcher {
 	}
 
 	/**
-	 * Handle a file change event (debounced)
+	 * Handle a file change event (debounced, serialized via processingChain)
 	 */
-	private async handleFileChange(
+	private handleFileChange(filePath: string, forceOffset?: number): void {
+		this.processingChain = this.processingChain.then(() =>
+			this.doHandleFileChange(filePath, forceOffset),
+		);
+	}
+
+	/**
+	 * Process a single file change (called sequentially via processingChain)
+	 */
+	private async doHandleFileChange(
 		filePath: string,
 		forceOffset?: number,
 	): Promise<void> {
