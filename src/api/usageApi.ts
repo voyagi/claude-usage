@@ -60,9 +60,8 @@ function parseWindow(
 	if (!raw || raw.utilization === null || raw.utilization === undefined) {
 		return null;
 	}
-	// API returns percentages (0-100), normalize to 0-1 fraction
-	const utilization =
-		raw.utilization > 1 ? raw.utilization / 100 : raw.utilization;
+	// API returns percentages as integers (0-100), always normalize to 0-1 fraction
+	const utilization = raw.utilization / 100;
 	return {
 		utilization,
 		resetsAt: raw.resets_at ?? null,

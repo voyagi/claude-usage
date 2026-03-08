@@ -30,6 +30,7 @@ describe("Burn Rate Calculator", () => {
 				weekly: new Map(),
 				monthly: new Map(),
 				modelWeekly: new Map(),
+				hourly: new Map(),
 			};
 			const tracker = createBurnRateTracker();
 			const result = calculateBurnRateEMA(buckets, tracker, 60);
@@ -57,6 +58,7 @@ describe("Burn Rate Calculator", () => {
 				weekly: new Map(),
 				monthly: new Map(),
 				modelWeekly: new Map(),
+				hourly: new Map(),
 			};
 
 			const tracker = createBurnRateTracker();
@@ -84,6 +86,7 @@ describe("Burn Rate Calculator", () => {
 				weekly: new Map(),
 				monthly: new Map(),
 				modelWeekly: new Map(),
+				hourly: new Map(),
 			};
 
 			const tracker = createBurnRateTracker();
@@ -111,6 +114,7 @@ describe("Burn Rate Calculator", () => {
 				weekly: new Map(),
 				monthly: new Map(),
 				modelWeekly: new Map(),
+				hourly: new Map(),
 			};
 
 			const tracker = createBurnRateTracker(0.5); // alpha = 0.5 for predictable math

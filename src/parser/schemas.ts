@@ -66,16 +66,18 @@ export const AssistantMessageSchema = z
 	.passthrough();
 
 /**
- * Parse a JSONL line and extract token usage data
- * @param line Raw JSONL line string
+ * Parse a pre-parsed JSON object and extract token usage data
+ * @param json Already-parsed JSON object from a JSONL line
  * @returns TokenUsage object or null if invalid/not an assistant message
  */
-export function parseAssistantMessage(line: string): TokenUsage | null {
+export function parseAssistantMessage(json: unknown): TokenUsage | null {
 	try {
-		const json = JSON.parse(line);
-
 		// Only process assistant messages
-		if (json.type !== "assistant") {
+		if (
+			typeof json !== "object" ||
+			json === null ||
+			(json as Record<string, unknown>).type !== "assistant"
+		) {
 			return null;
 		}
 

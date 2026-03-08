@@ -37,12 +37,14 @@ export class SessionWatcher {
 	private readonly offsetTracker: OffsetTracker;
 	private readonly recentlyCreated = new Set<string>();
 	private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
+	private processingChain: Promise<void> = Promise.resolve();
 	private currentBuckets: TimeBuckets = {
 		session: new Map(),
 		daily: new Map(),
 		weekly: new Map(),
 		monthly: new Map(),
 		modelWeekly: new Map(),
+		hourly: new Map(),
 	};
 	private readonly processedFiles = new Set<string>();
 	private totalLinesSkipped = 0;
@@ -130,9 +132,18 @@ export class SessionWatcher {
 	}
 
 	/**
-	 * Handle a file change event (debounced)
+	 * Handle a file change event (debounced, serialized via processingChain)
 	 */
-	private async handleFileChange(
+	private handleFileChange(filePath: string, forceOffset?: number): void {
+		this.processingChain = this.processingChain.then(() =>
+			this.doHandleFileChange(filePath, forceOffset),
+		);
+	}
+
+	/**
+	 * Process a single file change (called sequentially via processingChain)
+	 */
+	private async doHandleFileChange(
 		filePath: string,
 		forceOffset?: number,
 	): Promise<void> {
@@ -204,20 +215,19 @@ export class SessionWatcher {
 	/**
 	 * Set initial buckets and stats after full parse completes
 	 * Called by extension.ts to seed the watcher with baseline data
+	 * Serialized via processingChain to prevent races with incremental parses
 	 */
 	setInitialBuckets(
 		buckets: TimeBuckets,
 		stats: { filesProcessed: number; linesSkipped: number },
 	): void {
-		this.currentBuckets = buckets;
-		this.totalLinesSkipped = stats.linesSkipped;
-
-		// Track files as processed (we don't have individual file paths from full parse,
-		// so we'll just use the count directly)
-		// The processedFiles set will grow as incremental updates happen
-		logger.info(
-			`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped`,
-		);
+		this.processingChain = this.processingChain.then(() => {
+			this.currentBuckets = buckets;
+			this.totalLinesSkipped = stats.linesSkipped;
+			logger.info(
+				`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped`,
+			);
+		});
 	}
 
 	/**
@@ -232,12 +242,20 @@ export class SessionWatcher {
 			weekly: new Map(),
 			monthly: new Map(),
 			modelWeekly: new Map(),
+			hourly: new Map(),
 		};
 
 		this.processedFiles.clear();
 		this.totalLinesSkipped = 0;
 
 		logger.info("SessionWatcher state reset");
+	}
+
+	/**
+	 * Remove offset keys for files that no longer exist on disk
+	 */
+	async pruneStaleOffsets(): Promise<void> {
+		await this.offsetTracker.pruneStaleKeys();
 	}
 
 	/**

@@ -1,5 +1,0 @@
-name: Dependency Review
-on: [pull_request]
-jobs:
-  review:
-    uses: voyagi/.github-workflows/.github/workflows/dependency-review.yml@main

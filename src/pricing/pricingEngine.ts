@@ -70,9 +70,10 @@ export function loadPricingFromConfig(): Record<string, ModelPricing> {
 
 	for (const [modelName, override] of Object.entries(userOverrides)) {
 		try {
-			// Validate the override structure
-			const validated = ModelPricingSchema.parse(override);
-			merged[modelName] = validated;
+			// Validate partial override and merge with defaults
+			const validated = ModelPricingSchema.partial().parse(override);
+			const base = merged[modelName] ?? DEFAULT_PRICING["claude-sonnet-4-5"];
+			merged[modelName] = { ...base, ...validated };
 			logger.info(`Applied pricing override for model: ${modelName}`);
 		} catch (error) {
 			logger.warn(

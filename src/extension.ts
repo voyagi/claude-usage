@@ -46,6 +46,26 @@ let refinedLimits: RefinedLimits | null = null;
 let lastKnownSessionTokens = 0;
 let lastKnownWeeklyTokens = 0;
 let cachedApiUsage: ApiUsageData | null = null;
+let lastApiFetchTime = 0;
+
+/**
+ * Read current plan selection with auto-detection fallback
+ */
+function getSelectedPlan(): PlanType {
+	const config = vscode.workspace.getConfiguration("claude-usage");
+	const userSetting = config.get<PlanType>("planType", "max5");
+
+	const inspected = config.inspect("planType");
+	const hasUserOverride =
+		inspected?.globalValue !== undefined ||
+		inspected?.workspaceValue !== undefined;
+
+	if (hasUserOverride) {
+		return userSetting;
+	}
+
+	return detectedTier ?? userSetting;
+}
 
 /**
  * Extension activation
@@ -78,25 +98,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			dashboardProvider,
 		),
 	);
-
-	// Helper to read current plan selection with auto-detection
-	function getSelectedPlan(): PlanType {
-		const config = vscode.workspace.getConfiguration("claude-usage");
-		const userSetting = config.get<PlanType>("planType", "max5");
-
-		// Check if user explicitly overrode the setting
-		const inspected = config.inspect("planType");
-		const hasUserOverride =
-			inspected?.globalValue !== undefined ||
-			inspected?.workspaceValue !== undefined;
-
-		// If user explicitly set it, use their value; otherwise use auto-detected tier
-		if (hasUserOverride) {
-			return userSetting;
-		}
-
-		return detectedTier ?? userSetting;
-	}
 
 	// Helper to read burn rate window from config
 	function getBurnRateWindow(): number {
@@ -187,12 +188,33 @@ export async function activate(context: vscode.ExtensionContext) {
 			);
 			burnRateTracker = burnResult.tracker;
 
-			// Fetch real-time rate limits from API (non-blocking)
-			fetchApiUsage(logger).then((apiData) => {
-				if (apiData) {
-					cachedApiUsage = apiData;
-				}
-			});
+			// Fetch real-time rate limits from API (non-blocking, throttled to 60s)
+			const now = Date.now();
+			if (now - lastApiFetchTime >= 60_000) {
+				lastApiFetchTime = now;
+				fetchApiUsage(logger).then((apiData) => {
+					if (apiData) {
+						cachedApiUsage = apiData;
+						// Re-render status bar with fresh API data
+						const freshData = buildStatusBarData(
+							buckets,
+							stats,
+							getSelectedPlan(),
+							burnResult.rate,
+							refinedLimits,
+							cachedApiUsage,
+						);
+						statusBar.update(freshData);
+						if (dashboardProvider) {
+							dashboardProvider.updateBuckets(
+								buckets,
+								freshData,
+								getSelectedPlan(),
+							);
+						}
+					}
+				});
+			}
 
 			// Transform buckets into StatusBarData and update display
 			const data = buildStatusBarData(
@@ -225,9 +247,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		handleRateLimitEvent,
 	);
 
-	// Start watching for file changes
-	sessionWatcher.start();
-
 	// Start credentials watcher (async, non-blocking)
 	credentialsWatcher
 		.start(getSelectedPlan())
@@ -235,6 +254,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (tier !== getSelectedPlan()) {
 				detectedTier = tier;
 				logger.info(`Auto-detected plan tier: ${tier}`);
+				vscode.commands.executeCommand("claude-usage.refresh");
 			}
 		})
 		.catch((err) => {
@@ -409,14 +429,21 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// Perform initial parse asynchronously (non-blocking)
-	performInitialParse(store, statusBar, sessionWatcher).catch((err) => {
-		logger.error(
-			`Initial parse failed: ${err.message}`,
-			err instanceof Error ? err : undefined,
-		);
-		statusBar.showError(err instanceof Error ? err.message : String(err));
-	});
+	// Perform initial parse, then start watcher (order matters: setInitialBuckets must run before watcher)
+	performInitialParse(store, statusBar, sessionWatcher)
+		.then(async () => {
+			await sessionWatcher!.pruneStaleOffsets();
+			sessionWatcher!.start();
+		})
+		.catch((err) => {
+			logger.error(
+				`Initial parse failed: ${err.message}`,
+				err instanceof Error ? err : undefined,
+			);
+			statusBar.showError(err instanceof Error ? err.message : String(err));
+			// Start watcher even on parse failure so live updates still work
+			sessionWatcher!.start();
+		});
 
 	logger.info("Claude Usage Monitor activated");
 }
@@ -425,6 +452,10 @@ export async function activate(context: vscode.ExtensionContext) {
  * Deactivation cleanup
  */
 export function deactivate() {
+	sessionWatcher?.dispose();
+	sessionWatcher = null;
+	dashboardProvider = null;
+	burnRateTracker = null;
 	logger.info("Claude Usage Monitor deactivated");
 }
 
@@ -437,25 +468,6 @@ async function performInitialParse(
 	statusBar: StatusBarManager,
 	watcher: SessionWatcher,
 ): Promise<void> {
-	// Helper to read current plan selection (inline to avoid module-level dependency)
-	function getSelectedPlan(): PlanType {
-		const config = vscode.workspace.getConfiguration("claude-usage");
-		const userSetting = config.get<PlanType>("planType", "max5");
-
-		// Check if user explicitly overrode the setting
-		const inspected = config.inspect("planType");
-		const hasUserOverride =
-			inspected?.globalValue !== undefined ||
-			inspected?.workspaceValue !== undefined;
-
-		// If user explicitly set it, use their value; otherwise use auto-detected tier
-		if (hasUserOverride) {
-			return userSetting;
-		}
-
-		return detectedTier ?? userSetting;
-	}
-
 	// Helper to read burn rate window from config
 	function getBurnRateWindow(): number {
 		const config = vscode.workspace.getConfiguration("claude-usage");

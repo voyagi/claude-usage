@@ -42,6 +42,8 @@ export interface TimeBuckets {
 	monthly: Map<string, AggregatedUsage>;
 	/** Per-model weekly aggregation. Key format: "YYYY-WII:model-name" */
 	modelWeekly: Map<string, AggregatedUsage>;
+	/** Hourly buckets for sliding window calculations. Key format: "YYYY-MM-DDTHH" */
+	hourly: Map<string, AggregatedUsage>;
 }
 
 /**
@@ -93,6 +95,7 @@ export interface SerializedTimeBuckets {
 	weekly: [string, AggregatedUsage][];
 	monthly: [string, AggregatedUsage][];
 	modelWeekly?: [string, AggregatedUsage][]; // Optional for backward compat with existing persisted data
+	hourly?: [string, AggregatedUsage][]; // Optional for backward compat
 }
 
 /**

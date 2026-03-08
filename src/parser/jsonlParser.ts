@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as readline from "node:readline";
 import type { FileParseResult, TokenUsage } from "../types.js";
 import type { Logger } from "../utils/logger.js";
-import { findAllSessionFiles } from "../utils/paths.js";
+import { findAllSessionFiles, getClaudeProjectsDir } from "../utils/paths.js";
 import { parseAssistantMessage } from "./schemas.js";
 
 /**
@@ -50,7 +50,7 @@ export async function parseSessionFile(
 				}
 
 				// Validate with Zod schema and extract token usage
-				const tokenUsage = parseAssistantMessage(line);
+				const tokenUsage = parseAssistantMessage(parsed);
 
 				if (tokenUsage === null) {
 					// Missing usage data or validation failed - skip silently
@@ -113,26 +113,26 @@ export async function parseAllSessions(logger: Logger): Promise<{
 	let filesProcessed = 0;
 
 	// Discover all JSONL files (including subagents)
-	const sessionFiles = await findAllSessionFiles(
-		require("node:path").join(
-			require("node:os").homedir(),
-			".claude",
-			"projects",
-		),
-	);
+	const sessionFiles = await findAllSessionFiles(getClaudeProjectsDir());
 
 	logger.info(`Found ${sessionFiles.length} session files to process`);
 
-	// Parse each file - continue on errors to process as many as possible
-	for (const filePath of sessionFiles) {
-		const result = await parseSessionFile(filePath, logger);
+	// Parse files in parallel batches of 10
+	const BATCH_SIZE = 10;
+	for (let i = 0; i < sessionFiles.length; i += BATCH_SIZE) {
+		const batch = sessionFiles.slice(i, i + BATCH_SIZE);
+		const results = await Promise.all(
+			batch.map((filePath) => parseSessionFile(filePath, logger)),
+		);
 
-		allRecords.push(...result.records);
-		totalLinesSkipped += result.linesSkipped;
-		allErrors.push(...result.errors);
+		for (const result of results) {
+			allRecords.push(...result.records);
+			totalLinesSkipped += result.linesSkipped;
+			allErrors.push(...result.errors);
 
-		if (result.errors.length === 0) {
-			filesProcessed++;
+			if (result.errors.length === 0) {
+				filesProcessed++;
+			}
 		}
 	}
 

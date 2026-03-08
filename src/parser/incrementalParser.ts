@@ -66,9 +66,6 @@ export async function parseIncremental(
 			};
 		}
 
-		// Track bytes read starting from the actual start position
-		let bytesRead = actualStart;
-
 		// Create read stream starting at the offset
 		const fileStream = fs.createReadStream(filePath, {
 			encoding: "utf8",
@@ -82,9 +79,6 @@ export async function parseIncremental(
 		});
 
 		for await (const line of rl) {
-			// Track bytes: line content + newline character
-			bytesRead += Buffer.byteLength(line, "utf8") + 1;
-
 			// Skip empty lines (whitespace-only)
 			if (!line.trim()) {
 				continue;
@@ -109,7 +103,7 @@ export async function parseIncremental(
 				}
 
 				// Validate with Zod schema and extract token usage
-				const tokenUsage = parseAssistantMessage(line);
+				const tokenUsage = parseAssistantMessage(parsed);
 
 				if (tokenUsage === null) {
 					// Missing usage data or validation failed - skip silently
@@ -124,20 +118,21 @@ export async function parseIncremental(
 				const errorMsg =
 					parseError instanceof Error ? parseError.message : String(parseError);
 				logger.warn(
-					`Skipped corrupt line in ${filePath} at offset ${bytesRead}: ${errorMsg} | Line: ${snippet}...`,
+					`Skipped corrupt line in ${filePath}: ${errorMsg} | Line: ${snippet}...`,
 				);
 			}
 		}
 
+		// Use file size as the new offset (avoids CRLF vs LF byte counting errors)
 		logger.info(
 			`Incremental parse of ${filePath}: ${records.length} new records, ` +
-				`${linesSkipped} lines skipped, offset ${startOffset} -> ${bytesRead}`,
+				`${linesSkipped} lines skipped, offset ${startOffset} -> ${fileSize}`,
 		);
 
 		return {
 			records,
 			rateLimitEvents,
-			newOffset: bytesRead,
+			newOffset: fileSize,
 			linesSkipped,
 		};
 	} catch (fileError) {
