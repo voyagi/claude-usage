@@ -123,16 +123,22 @@ export async function parseAllSessions(logger: Logger): Promise<{
 
 	logger.info(`Found ${sessionFiles.length} session files to process`);
 
-	// Parse each file - continue on errors to process as many as possible
-	for (const filePath of sessionFiles) {
-		const result = await parseSessionFile(filePath, logger);
+	// Parse files in parallel batches of 10
+	const BATCH_SIZE = 10;
+	for (let i = 0; i < sessionFiles.length; i += BATCH_SIZE) {
+		const batch = sessionFiles.slice(i, i + BATCH_SIZE);
+		const results = await Promise.all(
+			batch.map((filePath) => parseSessionFile(filePath, logger)),
+		);
 
-		allRecords.push(...result.records);
-		totalLinesSkipped += result.linesSkipped;
-		allErrors.push(...result.errors);
+		for (const result of results) {
+			allRecords.push(...result.records);
+			totalLinesSkipped += result.linesSkipped;
+			allErrors.push(...result.errors);
 
-		if (result.errors.length === 0) {
-			filesProcessed++;
+			if (result.errors.length === 0) {
+				filesProcessed++;
+			}
 		}
 	}
 
