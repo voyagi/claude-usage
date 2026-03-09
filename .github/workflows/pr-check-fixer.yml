@@ -10,6 +10,7 @@ permissions:
   pull-requests: write
   checks: read
   actions: read
+  id-token: write
 
 jobs:
   fix:
