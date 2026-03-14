@@ -215,7 +215,7 @@
 		"@types/react-dom": "^19.2.3",
 		"@types/vscode": "^1.96.0",
 		"@vscode/vsce": "^3.7.1",
-		"esbuild": "^0.24.0",
+		"esbuild": "^0.25.0",
 		"jest": "^30.2.0",
 		"ts-jest": "^29.4.6",
 		"typescript": "^5.7.0"
