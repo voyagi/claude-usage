@@ -21,6 +21,8 @@ import {
 const SESSION_COLOR = "#4EC9B0"; // teal
 const WEEKLY_COLOR = "#DCDCAA"; // yellow
 const SONNET_COLOR = "#C586C0"; // purple
+const STALE_COLOR = "#808080"; // gray for dim/stale data
+const CRITICAL_COLOR = "#555555"; // very dim for critical staleness
 
 export class StatusBarManager {
 	private sessionItem: vscode.StatusBarItem;
@@ -28,6 +30,7 @@ export class StatusBarManager {
 	private sonnetItem: vscode.StatusBarItem;
 	private errorTimer: NodeJS.Timeout | undefined;
 	private _visible = true;
+	private lastSignature = "";
 
 	constructor(context: vscode.ExtensionContext) {
 		// Use high, adjacent priorities so all 3 stay grouped together
@@ -100,9 +103,34 @@ export class StatusBarManager {
 		const wCd = formatCooldownCompact(weeklyReset);
 		const soCd = formatCooldownCompact(sonnetReset);
 
-		this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}`;
+		// Skip redundant re-renders via signature hash
+		const staleness = data.staleness;
+		const signature = `${sessionPct}|${weeklyPct}|${sonnetPct}|${staleness}|${sCd}|${wCd}|${soCd}`;
+		if (signature === this.lastSignature) return;
+		this.lastSignature = signature;
+
+		// Staleness indicator: append ? when data is old
+		const staleMarker =
+			staleness === "stale" || staleness === "critical" ? " ?" : "";
+
+		this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}${staleMarker}`;
 		this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ""}`;
 		this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ""}`;
+
+		// Apply staleness dimming
+		if (staleness === "critical") {
+			this.sessionItem.color = CRITICAL_COLOR;
+			this.weeklyItem.color = CRITICAL_COLOR;
+			this.sonnetItem.color = CRITICAL_COLOR;
+		} else if (staleness === "dim" || staleness === "stale") {
+			this.sessionItem.color = STALE_COLOR;
+			this.weeklyItem.color = STALE_COLOR;
+			this.sonnetItem.color = STALE_COLOR;
+		} else {
+			this.sessionItem.color = SESSION_COLOR;
+			this.weeklyItem.color = WEEKLY_COLOR;
+			this.sonnetItem.color = SONNET_COLOR;
+		}
 
 		// Build shared tooltip (same on all 3 items)
 		const tooltip = this.buildTooltip(
@@ -192,6 +220,19 @@ export class StatusBarManager {
 		tooltip.appendMarkdown(
 			`**Tokens:** ${formatTokensExact(data.totalInputTokens)} in / ${formatTokensExact(data.totalOutputTokens)} out\n\n`,
 		);
+		// Staleness warning
+		if (data.staleness === "stale" || data.staleness === "critical") {
+			const ageMs = api?.fetchedAt
+				? Date.now() - new Date(api.fetchedAt).getTime()
+				: 0;
+			const ageMin = Math.round(ageMs / 60_000);
+			tooltip.appendMarkdown(`$(warning) _API data is ${ageMin}m old_\n\n`);
+		} else if (!api) {
+			tooltip.appendMarkdown(
+				"$(info) _Rate limits estimated (API unavailable)_\n\n",
+			);
+		}
+
 		tooltip.appendMarkdown(
 			`Files: ${data.filesProcessed} | Updated: ${data.lastUpdated.toLocaleTimeString()}`,
 		);
