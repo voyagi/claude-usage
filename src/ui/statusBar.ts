@@ -7,13 +7,14 @@ import * as vscode from "vscode";
 import { predictTimeUntilLimit } from "../core/burnRate.js";
 import type { StatusBarData } from "../types.js";
 import {
+	formatBarGraph,
 	formatBurnRate,
 	formatCooldown,
 	formatCooldownCompact,
 	formatCost,
+	formatPaceForecast,
 	formatPercentage,
 	formatResetTime24h,
-	formatTimeUntilLimit,
 	formatTokensExact,
 } from "./formatting.js";
 
@@ -190,7 +191,8 @@ export class StatusBarManager {
 		];
 
 		for (const entry of limitEntries) {
-			let line = `- ${entry.name}: **${formatPercentage(entry.pct)}**`;
+			const bar = formatBarGraph(entry.pct);
+			let line = `\`${bar}\` ${entry.name}`;
 			const cd = formatCooldown(entry.resetTime);
 			const exactTime = formatResetTime24h(entry.resetTime);
 			if (cd && exactTime) {
@@ -205,15 +207,30 @@ export class StatusBarManager {
 			tooltip.appendMarkdown(
 				`**Burn Rate:** ${formatBurnRate(data.burnRate)}\n\n`,
 			);
-			const minutesUntilSession = predictTimeUntilLimit(
-				data.rateLimits.session5h.currentTokens,
-				data.rateLimits.session5h.estimatedLimit,
-				data.burnRate,
-			);
-			if (minutesUntilSession !== null) {
-				tooltip.appendMarkdown(
-					`**Est. Time to Session Limit:** ${formatTimeUntilLimit(minutesUntilSession)}\n\n`,
+
+			// Pace forecast for each limit
+			const forecasts = [
+				{
+					name: "Session",
+					current: data.rateLimits.session5h.currentTokens,
+					limit: data.rateLimits.session5h.estimatedLimit,
+				},
+				{
+					name: "Weekly",
+					current: data.rateLimits.weekly.currentTokens,
+					limit: data.rateLimits.weekly.estimatedLimit,
+				},
+			];
+			for (const f of forecasts) {
+				const minutes = predictTimeUntilLimit(
+					f.current,
+					f.limit,
+					data.burnRate,
 				);
+				const forecast = formatPaceForecast(minutes, f.name);
+				if (forecast) {
+					tooltip.appendMarkdown(`${forecast}\n\n`);
+				}
 			}
 		}
 
