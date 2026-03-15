@@ -59,6 +59,7 @@ let usageCache: UsageCache | null = null;
 let lastKnownBuckets: TimeBuckets | null = null;
 let lastKnownStats: { filesProcessed: number; linesSkipped: number } | null =
 	null;
+let lastBurnRate = 0;
 
 /**
  * Read current plan selection with auto-detection fallback
@@ -197,20 +198,21 @@ export async function activate(context: vscode.ExtensionContext) {
 			lastKnownBuckets = buckets;
 			lastKnownStats = stats;
 
-			// Calculate EMA burn rate
+			// Calculate EMA burn rate (only here, not in refreshStatusBar)
 			const burnResult = calculateBurnRateEMA(
 				buckets,
 				burnRateTracker!,
 				getBurnRateWindow(),
 			);
 			burnRateTracker = burnResult.tracker;
+			lastBurnRate = burnResult.rate;
 
 			// Transform buckets into StatusBarData and update display
 			const data = buildStatusBarData(
 				buckets,
 				stats,
 				getSelectedPlan(),
-				burnResult.rate,
+				lastBurnRate,
 				refinedLimits,
 				cachedApiUsage,
 			);
@@ -253,19 +255,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	// --- Shared cache + adaptive polling (API-first architecture) ---
 
 	// Helper: refresh status bar from latest API + JSONL data
+	// Uses lastBurnRate instead of recalculating EMA (only SessionWatcher should recalculate)
 	function refreshStatusBar(): void {
 		if (!lastKnownBuckets || !lastKnownStats) return;
-		const burnResult = calculateBurnRateEMA(
-			lastKnownBuckets,
-			burnRateTracker!,
-			getBurnRateWindow(),
-		);
-		burnRateTracker = burnResult.tracker;
 		const data = buildStatusBarData(
 			lastKnownBuckets,
 			lastKnownStats,
 			getSelectedPlan(),
-			burnResult.rate,
+			lastBurnRate,
 			refinedLimits,
 			cachedApiUsage,
 		);
@@ -307,8 +304,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 
 			// Write to shared cache for other windows
-			usageCache!
-				.writeCache({
+			usageCache
+				?.writeCache({
 					apiUsage: apiData,
 					rateLimitTier: apiData.rateLimitTier,
 					writtenAt: new Date().toISOString(),
@@ -327,7 +324,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		},
 		logger,
 	);
-	pollingTimer.start();
 	context.subscriptions.push({ dispose: () => pollingTimer?.dispose() });
 
 	// Watch cache file for changes from other VS Code windows
@@ -512,11 +508,14 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	);
 
-	// Perform initial parse, then start watcher (order matters: setInitialBuckets must run before watcher)
+	// Perform initial parse, then start watcher and polling timer
+	// (order matters: setInitialBuckets must run before watcher, and
+	// lastKnownBuckets must be set before polling timer so refreshStatusBar works)
 	performInitialParse(store, statusBar, sessionWatcher)
 		.then(async () => {
 			await sessionWatcher!.pruneStaleOffsets();
 			sessionWatcher!.start();
+			pollingTimer?.start();
 		})
 		.catch((err) => {
 			logger.error(
@@ -524,8 +523,9 @@ export async function activate(context: vscode.ExtensionContext) {
 				err instanceof Error ? err : undefined,
 			);
 			statusBar.showError(err instanceof Error ? err.message : String(err));
-			// Start watcher even on parse failure so live updates still work
+			// Start watcher and polling timer even on parse failure
 			sessionWatcher!.start();
+			pollingTimer?.start();
 		});
 
 	logger.info("Claude Usage Monitor activated");
@@ -542,6 +542,7 @@ export function deactivate() {
 	sessionWatcher = null;
 	dashboardProvider = null;
 	burnRateTracker = null;
+	lastBurnRate = 0;
 	lastKnownBuckets = null;
 	lastKnownStats = null;
 	logger.info("Claude Usage Monitor deactivated");
@@ -575,11 +576,12 @@ async function performInitialParse(
 			getBurnRateWindow(),
 		);
 		burnRateTracker = burnResult.tracker;
+		lastBurnRate = burnResult.rate;
 		const data = buildStatusBarData(
 			cached.buckets,
 			cached.stats,
 			getSelectedPlan(),
-			burnResult.rate,
+			lastBurnRate,
 			refinedLimits,
 			cachedApiUsage,
 		);
@@ -644,13 +646,14 @@ async function performInitialParse(
 		getBurnRateWindow(),
 	);
 	burnRateTracker = burnResult.tracker;
+	lastBurnRate = burnResult.rate;
 
 	// Update status bar with fresh data (uses cachedApiUsage kept fresh by PollingTimer)
 	const data = buildStatusBarData(
 		buckets,
 		stats,
 		getSelectedPlan(),
-		burnResult.rate,
+		lastBurnRate,
 		refinedLimits,
 		cachedApiUsage,
 	);

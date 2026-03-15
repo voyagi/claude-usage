@@ -39,8 +39,13 @@ export class UsageCache {
 			if (!parsed.apiUsage || !parsed.writtenAt) {
 				return null;
 			}
-			// Restore Date object from ISO string
-			parsed.apiUsage.fetchedAt = new Date(parsed.apiUsage.fetchedAt);
+			// Restore Date object from ISO string (guard against missing/invalid)
+			if (typeof parsed.apiUsage.fetchedAt === "string") {
+				const d = new Date(parsed.apiUsage.fetchedAt);
+				parsed.apiUsage.fetchedAt = Number.isNaN(d.getTime()) ? new Date() : d;
+			} else {
+				parsed.apiUsage.fetchedAt = new Date();
+			}
 			return parsed as UsageCacheData;
 		} catch (error) {
 			if (
@@ -86,14 +91,6 @@ export class UsageCache {
 				`Could not write usage cache: ${error instanceof Error ? error.message : error}`,
 			);
 		}
-	}
-
-	/**
-	 * Check if cached data is fresh enough (within maxAgeMs)
-	 */
-	isFresh(data: UsageCacheData, maxAgeMs: number): boolean {
-		const age = Date.now() - new Date(data.writtenAt).getTime();
-		return age < maxAgeMs;
 	}
 
 	/**

@@ -23,6 +23,7 @@ export class PollingTimer {
 
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	private isRunning = false;
+	private isTickInFlight = false;
 	private consecutiveFailures = 0;
 
 	constructor(
@@ -64,9 +65,10 @@ export class PollingTimer {
 	/**
 	 * Force an immediate fetch, resetting the timer schedule.
 	 * Used for on-click refresh and cache-stale scenarios.
+	 * No-op if stopped or if a tick is already in-flight.
 	 */
 	async forceRefresh(): Promise<void> {
-		// Clear any pending timer
+		if (!this.isRunning || this.isTickInFlight) return;
 		if (this.timer) {
 			clearTimeout(this.timer);
 			this.timer = null;
@@ -87,6 +89,8 @@ export class PollingTimer {
 	}
 
 	private async tick(): Promise<void> {
+		if (this.isTickInFlight) return;
+		this.isTickInFlight = true;
 		try {
 			const data = await this.fetchFn();
 			if (!this.isRunning) return; // Extension deactivated during fetch
@@ -127,6 +131,8 @@ export class PollingTimer {
 			if (this.isRunning) {
 				this.scheduleNext(FAILURE_INTERVAL_MS);
 			}
+		} finally {
+			this.isTickInFlight = false;
 		}
 	}
 }

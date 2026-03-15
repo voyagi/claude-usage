@@ -106,7 +106,7 @@ export class StatusBarManager {
 
 		// Skip redundant re-renders via signature hash
 		const staleness = data.staleness;
-		const signature = `${sessionPct}|${weeklyPct}|${sonnetPct}|${staleness}|${sCd}|${wCd}|${soCd}`;
+		const signature = `${sessionPct}|${weeklyPct}|${sonnetPct}|${staleness}|${sCd}|${wCd}|${soCd}|${data.todayCost.toFixed(2)}|${Math.round(data.burnRate)}`;
 		if (signature === this.lastSignature) return;
 		this.lastSignature = signature;
 
