@@ -8,6 +8,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { aggregateUsage } from "./aggregation/timeBuckets.js";
+import { PollingTimer } from "./api/pollingTimer.js";
+import { UsageCache } from "./api/usageCache.js";
 import { fetchApiUsage } from "./api/usageApi.js";
 import { exportUsageData } from "./commands/exportData.js";
 import type { BurnRateTracker } from "./core/burnRate.js";
@@ -26,7 +28,13 @@ import {
 } from "./pricing/pricingEngine.js";
 import { CredentialsWatcher } from "./storage/credentialsWatcher.js";
 import { UsageStore } from "./storage/usageStore.js";
-import type { ApiUsageData, PlanType, RefinedLimits } from "./types.js";
+import { mapTierStringToPlanType } from "./core/tierDetection.js";
+import type {
+	ApiUsageData,
+	PlanType,
+	RefinedLimits,
+	TimeBuckets,
+} from "./types.js";
 import { formatTokens } from "./ui/formatting.js";
 import { showPlanPicker, showUsageMenu } from "./ui/quickPick.js";
 import { StatusBarManager } from "./ui/statusBar.js";
@@ -46,7 +54,11 @@ let refinedLimits: RefinedLimits | null = null;
 let lastKnownSessionTokens = 0;
 let lastKnownWeeklyTokens = 0;
 let cachedApiUsage: ApiUsageData | null = null;
-let lastApiFetchTime = 0;
+let pollingTimer: PollingTimer | null = null;
+let usageCache: UsageCache | null = null;
+let lastKnownBuckets: TimeBuckets | null = null;
+let lastKnownStats: { filesProcessed: number; linesSkipped: number } | null =
+	null;
 
 /**
  * Read current plan selection with auto-detection fallback
@@ -177,9 +189,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Create SessionWatcher with onUpdate callback and rate limit event handler
+	// API fetching is now handled by the PollingTimer, not triggered by file changes
 	sessionWatcher = new SessionWatcher(
 		context,
 		(buckets, stats) => {
+			// Store for refreshStatusBar() to use when API data arrives
+			lastKnownBuckets = buckets;
+			lastKnownStats = stats;
+
 			// Calculate EMA burn rate
 			const burnResult = calculateBurnRateEMA(
 				buckets,
@@ -187,34 +204,6 @@ export async function activate(context: vscode.ExtensionContext) {
 				getBurnRateWindow(),
 			);
 			burnRateTracker = burnResult.tracker;
-
-			// Fetch real-time rate limits from API (non-blocking, throttled to 60s)
-			const now = Date.now();
-			if (now - lastApiFetchTime >= 60_000) {
-				lastApiFetchTime = now;
-				fetchApiUsage(logger).then((apiData) => {
-					if (apiData) {
-						cachedApiUsage = apiData;
-						// Re-render status bar with fresh API data
-						const freshData = buildStatusBarData(
-							buckets,
-							stats,
-							getSelectedPlan(),
-							burnResult.rate,
-							refinedLimits,
-							cachedApiUsage,
-						);
-						statusBar.update(freshData);
-						if (dashboardProvider) {
-							dashboardProvider.updateBuckets(
-								buckets,
-								freshData,
-								getSelectedPlan(),
-							);
-						}
-					}
-				});
-			}
 
 			// Transform buckets into StatusBarData and update display
 			const data = buildStatusBarData(
@@ -261,6 +250,97 @@ export async function activate(context: vscode.ExtensionContext) {
 			logger.warn(`Credentials detection failed: ${err.message}`);
 		});
 
+	// --- Shared cache + adaptive polling (API-first architecture) ---
+
+	// Helper: refresh status bar from latest API + JSONL data
+	function refreshStatusBar(): void {
+		if (!lastKnownBuckets || !lastKnownStats) return;
+		const burnResult = calculateBurnRateEMA(
+			lastKnownBuckets,
+			burnRateTracker!,
+			getBurnRateWindow(),
+		);
+		burnRateTracker = burnResult.tracker;
+		const data = buildStatusBarData(
+			lastKnownBuckets,
+			lastKnownStats,
+			getSelectedPlan(),
+			burnResult.rate,
+			refinedLimits,
+			cachedApiUsage,
+		);
+		statusBar.update(data);
+		if (dashboardProvider) {
+			dashboardProvider.updateBuckets(
+				lastKnownBuckets,
+				data,
+				getSelectedPlan(),
+			);
+		}
+	}
+
+	// Create shared cache for multi-window consistency
+	usageCache = new UsageCache(logger);
+
+	// Load existing cache for instant startup display
+	const existingCache = await usageCache.readCache();
+	if (existingCache) {
+		cachedApiUsage = existingCache.apiUsage;
+		logger.info(
+			`Loaded cached API data (written ${new Date(existingCache.writtenAt).toISOString()})`,
+		);
+	}
+
+	// Create polling timer: fetches API independently of file changes
+	pollingTimer = new PollingTimer(
+		() => fetchApiUsage(logger),
+		(apiData) => {
+			cachedApiUsage = apiData;
+
+			// Auto-detect tier from API response
+			if (apiData.rateLimitTier) {
+				const mapped = mapTierStringToPlanType(apiData.rateLimitTier);
+				if (mapped && mapped !== detectedTier) {
+					detectedTier = mapped;
+					logger.info(`Auto-detected tier from API: ${mapped}`);
+				}
+			}
+
+			// Write to shared cache for other windows
+			usageCache!
+				.writeCache({
+					apiUsage: apiData,
+					rateLimitTier: apiData.rateLimitTier,
+					writtenAt: new Date().toISOString(),
+					writtenBy: String(process.pid),
+				})
+				.catch((err) => {
+					logger.warn(`Failed to write usage cache: ${err}`);
+				});
+
+			// Refresh status bar with fresh API data
+			refreshStatusBar();
+		},
+		() => {
+			// On error: refresh to update staleness indicator
+			refreshStatusBar();
+		},
+		logger,
+	);
+	pollingTimer.start();
+	context.subscriptions.push({ dispose: () => pollingTimer?.dispose() });
+
+	// Watch cache file for changes from other VS Code windows
+	const cacheWatcher = usageCache.startWatching((cacheData) => {
+		// Skip our own writes
+		if (cacheData.writtenBy === String(process.pid)) return;
+
+		cachedApiUsage = cacheData.apiUsage;
+		logger.info("Updated API data from shared cache (other window wrote)");
+		refreshStatusBar();
+	});
+	context.subscriptions.push(cacheWatcher);
+
 	// Register showMenu command
 	context.subscriptions.push(
 		vscode.commands.registerCommand("claude-usage.showMenu", () =>
@@ -280,7 +360,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("claude-usage.refresh", async () => {
 			statusBar.showRefreshing();
 			try {
+				// Force immediate API refresh + JSONL reparse
+				const refreshPromise = pollingTimer?.forceRefresh();
 				await performInitialParse(store, statusBar, sessionWatcher!);
+				await refreshPromise;
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				logger.error(
@@ -452,10 +535,15 @@ export async function activate(context: vscode.ExtensionContext) {
  * Deactivation cleanup
  */
 export function deactivate() {
+	pollingTimer?.dispose();
+	pollingTimer = null;
+	usageCache = null;
 	sessionWatcher?.dispose();
 	sessionWatcher = null;
 	dashboardProvider = null;
 	burnRateTracker = null;
+	lastKnownBuckets = null;
+	lastKnownStats = null;
 	logger.info("Claude Usage Monitor deactivated");
 }
 
@@ -474,27 +562,13 @@ async function performInitialParse(
 		return config.get<number>("burnRate.windowMinutes", 15);
 	}
 
-	// Fetch API usage data (non-blocking, runs in parallel with cache load)
-	const apiUsagePromise = fetchApiUsage(logger).then((apiData) => {
-		if (apiData) {
-			cachedApiUsage = apiData;
-			logger.info(
-				`API usage fetched: session ${Math.round((apiData.fiveHour?.utilization ?? 0) * 100)}%, weekly ${Math.round((apiData.sevenDay?.utilization ?? 0) * 100)}%`,
-			);
-		}
-		return apiData;
-	});
-
-	// Try cached data first for instant status bar update
+	// Try cached JSONL data first for instant status bar update
+	// (API data comes from the PollingTimer independently)
 	const cached = await store.loadUsageData();
 	if (cached) {
 		logger.info("Loaded cached usage data, showing immediately");
-		// Wait briefly for API data (up to 2s) for accurate first display
-		await Promise.race([
-			apiUsagePromise,
-			new Promise((r) => setTimeout(r, 2000)),
-		]);
-		// Calculate EMA burn rate for cached data
+		lastKnownBuckets = cached.buckets;
+		lastKnownStats = cached.stats;
 		const burnResult = calculateBurnRateEMA(
 			cached.buckets,
 			burnRateTracker!,
@@ -510,7 +584,6 @@ async function performInitialParse(
 			cachedApiUsage,
 		);
 		statusBar.update(data);
-		// Update dashboard with cached data
 		if (dashboardProvider) {
 			dashboardProvider.updateBuckets(cached.buckets, data, getSelectedPlan());
 		}
@@ -560,6 +633,10 @@ async function performInitialParse(
 	// Save to globalState
 	await store.saveUsageData(buckets, stats);
 
+	// Store for refreshStatusBar() to use
+	lastKnownBuckets = buckets;
+	lastKnownStats = stats;
+
 	// Calculate EMA burn rate for fresh data
 	const burnResult = calculateBurnRateEMA(
 		buckets,
@@ -568,13 +645,7 @@ async function performInitialParse(
 	);
 	burnRateTracker = burnResult.tracker;
 
-	// Ensure API data is available for fresh display
-	await Promise.race([
-		apiUsagePromise,
-		new Promise((r) => setTimeout(r, 2000)),
-	]);
-
-	// Update status bar with fresh data
+	// Update status bar with fresh data (uses cachedApiUsage kept fresh by PollingTimer)
 	const data = buildStatusBarData(
 		buckets,
 		stats,

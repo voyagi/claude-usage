@@ -12,6 +12,7 @@ import {
 	startOfWeek,
 	subHours,
 } from "date-fns";
+import { getStaleness } from "../api/usageCache.js";
 import { getPlanConfig } from "../pricing/plans.js";
 import type {
 	ApiUsageData,
@@ -227,6 +228,7 @@ export function buildStatusBarData(
 				: calculateBurnRate(buckets),
 		rateLimits: calculateRateLimits(buckets, planType, refinedLimits),
 		apiUsage: apiUsage ?? null,
+		staleness: getStaleness(apiUsage?.fetchedAt ?? null),
 		lastUpdated: now,
 		filesProcessed: stats.filesProcessed,
 		linesSkipped: stats.linesSkipped,

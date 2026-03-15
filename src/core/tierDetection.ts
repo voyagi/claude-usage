@@ -41,6 +41,18 @@ export function parseCredentialsFile(content: string): CredentialsData | null {
 }
 
 /**
+ * Map a tier string (from API or credentials) to a PlanType
+ * Returns null if the string doesn't match any known tier
+ */
+export function mapTierStringToPlanType(tier: string): PlanType | null {
+	const lower = tier.toLowerCase();
+	if (lower.includes("max_20") || lower.includes("max20")) return "max20";
+	if (lower.includes("max_5") || lower.includes("max5")) return "max5";
+	if (lower.includes("pro") || lower.includes("standard")) return "pro";
+	return null;
+}
+
+/**
  * Detect plan tier from credentials
  *
  * @param credentials Parsed credentials data (or null if file missing/invalid)
@@ -55,21 +67,16 @@ export function detectTierFromCredentials(
 		return fallback;
 	}
 
-	// Check rateLimitTier field (case-insensitive)
+	// Check rateLimitTier field
 	if (credentials.rateLimitTier) {
-		const tier = credentials.rateLimitTier.toLowerCase();
-
-		if (tier.includes("max_20")) {
-			return "max20";
-		}
-		if (tier.includes("max_5")) {
-			return "max5";
-		}
+		const mapped = mapTierStringToPlanType(credentials.rateLimitTier);
+		if (mapped) return mapped;
 	}
 
 	// Check subscriptionType field
-	if (credentials.subscriptionType === "pro") {
-		return "pro";
+	if (credentials.subscriptionType) {
+		const mapped = mapTierStringToPlanType(credentials.subscriptionType);
+		if (mapped) return mapped;
 	}
 
 	// No match - use fallback
