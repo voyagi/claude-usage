@@ -149,7 +149,21 @@ export interface ApiUsageData {
 	fiveHour: ApiRateLimitWindow | null;
 	sevenDay: ApiRateLimitWindow | null;
 	sevenDaySonnet: ApiRateLimitWindow | null;
+	sevenDayOpus: ApiRateLimitWindow | null;
+	rateLimitTier: string | null;
+	extraUsage: { creditsUsed: number; creditsTotal: number } | null;
 	fetchedAt: Date;
+}
+
+/** Staleness level of API data */
+export type StalenessLevel = "fresh" | "normal" | "dim" | "stale" | "critical";
+
+/** Shared cache file format for multi-window consistency */
+export interface UsageCacheData {
+	apiUsage: ApiUsageData;
+	rateLimitTier: string | null;
+	writtenAt: string; // ISO timestamp
+	writtenBy: string; // process.pid of the writer
 }
 
 /**
@@ -164,6 +178,7 @@ export interface StatusBarData {
 	burnRate: number; // tokens per minute, 0 if no recent activity
 	rateLimits: RateLimitStatus;
 	apiUsage: ApiUsageData | null; // exact percentages from Anthropic API (when available)
+	staleness: StalenessLevel;
 	lastUpdated: Date;
 	filesProcessed: number;
 	linesSkipped: number;

@@ -7,19 +7,8 @@ import * as fs from "node:fs/promises";
 import * as https from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { ApiRateLimitWindow, ApiUsageData } from "../types.js";
 import type { Logger } from "../utils/logger.js";
-
-export interface ApiRateLimitWindow {
-	utilization: number; // 0.0-1.0
-	resetsAt: string | null; // ISO timestamp
-}
-
-export interface ApiUsageData {
-	fiveHour: ApiRateLimitWindow | null;
-	sevenDay: ApiRateLimitWindow | null;
-	sevenDaySonnet: ApiRateLimitWindow | null;
-	fetchedAt: Date;
-}
 
 interface OAuthCredentials {
 	claudeAiOauth?: {
@@ -105,10 +94,22 @@ export async function fetchApiUsage(
 					}
 					try {
 						const json = JSON.parse(data);
+						const extraRaw = json.extra_usage;
 						resolve({
 							fiveHour: parseWindow(json.five_hour),
 							sevenDay: parseWindow(json.seven_day),
 							sevenDaySonnet: parseWindow(json.seven_day_sonnet),
+							sevenDayOpus: parseWindow(json.seven_day_opus),
+							rateLimitTier: json.rate_limit_tier ?? null,
+							extraUsage:
+								extraRaw &&
+								typeof extraRaw.usedCredits === "number" &&
+								typeof extraRaw.monthlyLimit === "number"
+									? {
+											creditsUsed: extraRaw.usedCredits,
+											creditsTotal: extraRaw.monthlyLimit,
+										}
+									: null,
 							fetchedAt: new Date(),
 						});
 					} catch (parseError) {
