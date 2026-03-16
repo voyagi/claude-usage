@@ -5,3 +5,4 @@ jobs:
     uses: voyagi/.github-workflows/.github/workflows/node-ci.yml@main
     with:
       run-knip: false
+    secrets: inherit
