@@ -162,7 +162,7 @@ export function formatBurnRate(tokensPerMin: number): string {
  * @param percentage 0-100
  * @param width Number of bar segments (default 20)
  */
-export function formatBarGraph(percentage: number, width = 20): string {
+export function formatBarGraph(percentage: number, width = 12): string {
 	const clamped = Math.max(0, Math.min(100, percentage));
 	const filled = Math.round((clamped / 100) * width);
 	const bar = "\u2588".repeat(filled) + "\u2591".repeat(width - filled);

@@ -243,10 +243,10 @@ export class StatusBarManager {
 				? Date.now() - new Date(api.fetchedAt).getTime()
 				: 0;
 			const ageMin = Math.round(ageMs / 60_000);
-			tooltip.appendMarkdown(`$(warning) _API data is ${ageMin}m old_\n\n`);
+			tooltip.appendMarkdown(`\u26A0\uFE0F _API data is ${ageMin}m old_\n\n`);
 		} else if (!api) {
 			tooltip.appendMarkdown(
-				"$(info) _Rate limits estimated (API unavailable)_\n\n",
+				"\u2139\uFE0F _Rate limits estimated (API unavailable)_\n\n",
 			);
 		}
 
