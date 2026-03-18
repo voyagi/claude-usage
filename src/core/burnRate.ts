@@ -118,8 +118,8 @@ export function predictTimeUntilLimit(
 	limitTokens: number,
 	burnRatePerMin: number,
 ): number | null {
-	// Can't predict if no burn rate
-	if (burnRatePerMin === 0) {
+	// Can't predict if no burn rate or unknown limit
+	if (burnRatePerMin === 0 || limitTokens <= 0) {
 		return null;
 	}
 

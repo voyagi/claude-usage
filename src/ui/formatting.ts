@@ -158,14 +158,14 @@ export function formatBurnRate(tokensPerMin: number): string {
 
 /**
  * Visual bar graph for tooltip display
- * E.g. "[████████████░░░░░░░░] 73%"
+ * E.g. "[━━━━━━━━━───] 73%"
  * @param percentage 0-100
  * @param width Number of bar segments (default 20)
  */
 export function formatBarGraph(percentage: number, width = 12): string {
 	const clamped = Math.max(0, Math.min(100, percentage));
 	const filled = Math.round((clamped / 100) * width);
-	const bar = "\u2588".repeat(filled) + "\u2591".repeat(width - filled);
+	const bar = "\u2501".repeat(filled) + "\u2500".repeat(width - filled);
 	return `[${bar}] ${Math.round(clamped)}%`;
 }
 

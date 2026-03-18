@@ -260,37 +260,37 @@ describe("BREAKIT: formatBarGraph", () => {
 	describe("Boundary Assault", () => {
 		it("0% has no filled blocks", () => {
 			const result = formatBarGraph(0);
-			expect(result).toMatch(/^\[░{12}\] 0%$/);
+			expect(result).toMatch(/^\[─{12}\] 0%$/);
 		});
 
 		it("100% has all filled blocks", () => {
 			const result = formatBarGraph(100);
-			expect(result).toMatch(/^\[█{12}\] 100%$/);
+			expect(result).toMatch(/^\[━{12}\] 100%$/);
 		});
 
 		it("50% has exactly 6 filled blocks", () => {
 			const result = formatBarGraph(50);
-			const filled = (result.match(/█/g) || []).length;
+			const filled = (result.match(/━/g) || []).length;
 			expect(filled).toBe(6);
 		});
 
 		it("clamps negative values to 0%", () => {
 			const result = formatBarGraph(-50);
 			expect(result).toMatch(/0%$/);
-			const filled = (result.match(/█/g) || []).length;
+			const filled = (result.match(/━/g) || []).length;
 			expect(filled).toBe(0);
 		});
 
 		it("clamps values over 100 to 100%", () => {
 			const result = formatBarGraph(200);
 			expect(result).toMatch(/100%$/);
-			const filled = (result.match(/█/g) || []).length;
+			const filled = (result.match(/━/g) || []).length;
 			expect(filled).toBe(12);
 		});
 
 		it("custom width=1 works at 100%", () => {
 			const result = formatBarGraph(100, 1);
-			expect(result).toBe("[█] 100%");
+			expect(result).toBe("[━] 100%");
 		});
 
 		it("custom width=0 shows empty bar", () => {
@@ -304,7 +304,7 @@ describe("BREAKIT: formatBarGraph", () => {
 			const result = formatBarGraph(NaN);
 			// Math.max(0, Math.min(100, NaN)) => Math.max(0, NaN) => NaN
 			// Math.round(NaN/100 * 20) => NaN
-			// "█".repeat(NaN) => "" and "░".repeat(NaN - NaN) => ""
+			// "━".repeat(NaN) => "" and "─".repeat(NaN - NaN) => ""
 			// But the % label will show NaN
 			expect(result).toContain("NaN");
 		});
@@ -334,8 +334,8 @@ describe("BREAKIT: formatBarGraph", () => {
 		it("filled + empty always equals width for any percentage", () => {
 			for (let pct = 0; pct <= 100; pct++) {
 				const result = formatBarGraph(pct, 10);
-				const filled = (result.match(/█/g) || []).length;
-				const empty = (result.match(/░/g) || []).length;
+				const filled = (result.match(/━/g) || []).length;
+				const empty = (result.match(/─/g) || []).length;
 				expect(filled + empty).toBe(10);
 			}
 		});
@@ -344,7 +344,7 @@ describe("BREAKIT: formatBarGraph", () => {
 			let prevFilled = 0;
 			for (let pct = 0; pct <= 100; pct++) {
 				const result = formatBarGraph(pct, 20);
-				const filled = (result.match(/█/g) || []).length;
+				const filled = (result.match(/━/g) || []).length;
 				expect(filled).toBeGreaterThanOrEqual(prevFilled);
 				prevFilled = filled;
 			}
@@ -965,7 +965,7 @@ describe("BREAKIT: Resource Pressure", () => {
 	it("formatBarGraph with width=10000", () => {
 		const result = formatBarGraph(50, 10_000);
 		expect(result.length).toBeGreaterThan(10_000);
-		const filled = (result.match(/█/g) || []).length;
+		const filled = (result.match(/━/g) || []).length;
 		expect(filled).toBe(5_000);
 	}, 5000);
 
@@ -1004,19 +1004,19 @@ describe("ESCALATION: Combined Boundary + Type Confusion", () => {
 
 		it("Infinity percentage with width=1", () => {
 			const result = formatBarGraph(Infinity, 1);
-			expect(result).toBe("[█] 100%");
+			expect(result).toBe("[━] 100%");
 		});
 
 		it("-Infinity percentage with large width", () => {
 			const result = formatBarGraph(-Infinity, 100);
-			const filled = (result.match(/█/g) || []).length;
+			const filled = (result.match(/━/g) || []).length;
 			expect(filled).toBe(0);
 		});
 
 		it("fractional percentages near rounding boundaries", () => {
 			// 2.5% of 20 = 0.5, Math.round(0.5) = 1
 			const result = formatBarGraph(2.5, 20);
-			const filled = (result.match(/█/g) || []).length;
+			const filled = (result.match(/━/g) || []).length;
 			// Either 0 or 1 is acceptable, but must be consistent
 			expect(filled).toBeGreaterThanOrEqual(0);
 			expect(filled).toBeLessThanOrEqual(1);
@@ -1197,7 +1197,7 @@ describe("ESCALATION: getStaleness time-edge precision", () => {
 describe("ESCALATION: formatBarGraph NaN propagation", () => {
 	it("NaN produces empty bar (no filled, no empty blocks)", () => {
 		const result = formatBarGraph(NaN, 20);
-		// "█".repeat(NaN) = "" and "░".repeat(NaN) = ""
+		// "━".repeat(NaN) = "" and "─".repeat(NaN) = ""
 		// So bar is "[]" with no blocks - total bar length is 0, not 20
 		const barContent = result.match(/\[(.*?)\]/)?.[1] ?? "";
 		// This BREAKS the property that bar length === width
