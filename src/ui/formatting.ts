@@ -149,11 +149,43 @@ export function formatBurnRate(tokensPerMin: number): string {
 		return "";
 	}
 
-	if (tokensPerMin < 100) {
+	if (tokensPerMin < 1_000) {
 		return `${Math.round(tokensPerMin)}/min`;
 	}
 
 	return `${formatTokens(tokensPerMin)}/min`;
+}
+
+/**
+ * Visual bar graph for tooltip display
+ * E.g. "[━━━━━━━━━───] 73%"
+ * @param percentage 0-100
+ * @param width Number of bar segments (default 20)
+ */
+export function formatBarGraph(percentage: number, width = 12): string {
+	const clamped = Math.max(0, Math.min(100, percentage));
+	const filled = Math.round((clamped / 100) * width);
+	const bar = "\u2501".repeat(filled) + "\u2500".repeat(width - filled);
+	return `[${bar}] ${Math.round(clamped)}%`;
+}
+
+/**
+ * Format pace forecast for tooltip
+ * E.g. "Session: ~2h 15m at current pace"
+ */
+export function formatPaceForecast(
+	minutesUntilLimit: number | null,
+	limitName: string,
+): string {
+	if (minutesUntilLimit === null) return "";
+	if (minutesUntilLimit === 0) return `${limitName}: LIMIT HIT`;
+	if (minutesUntilLimit < 1) return `${limitName}: <1m at current pace`;
+	if (minutesUntilLimit < 60) {
+		return `${limitName}: ~${Math.round(minutesUntilLimit)}m at current pace`;
+	}
+	const hours = Math.floor(minutesUntilLimit / 60);
+	const mins = Math.round(minutesUntilLimit % 60);
+	return `${limitName}: ~${hours}h ${mins}m at current pace`;
 }
 
 /**

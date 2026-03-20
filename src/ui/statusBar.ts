@@ -7,13 +7,14 @@ import * as vscode from "vscode";
 import { predictTimeUntilLimit } from "../core/burnRate.js";
 import type { StatusBarData } from "../types.js";
 import {
+	formatBarGraph,
 	formatBurnRate,
 	formatCooldown,
 	formatCooldownCompact,
 	formatCost,
+	formatPaceForecast,
 	formatPercentage,
 	formatResetTime24h,
-	formatTimeUntilLimit,
 	formatTokensExact,
 } from "./formatting.js";
 
@@ -21,6 +22,8 @@ import {
 const SESSION_COLOR = "#4EC9B0"; // teal
 const WEEKLY_COLOR = "#DCDCAA"; // yellow
 const SONNET_COLOR = "#C586C0"; // purple
+const STALE_COLOR = "#808080"; // gray for dim/stale data
+const CRITICAL_COLOR = "#555555"; // very dim for critical staleness
 
 export class StatusBarManager {
 	private sessionItem: vscode.StatusBarItem;
@@ -28,6 +31,7 @@ export class StatusBarManager {
 	private sonnetItem: vscode.StatusBarItem;
 	private errorTimer: NodeJS.Timeout | undefined;
 	private _visible = true;
+	private lastSignature = "";
 
 	constructor(context: vscode.ExtensionContext) {
 		// Use high, adjacent priorities so all 3 stay grouped together
@@ -100,9 +104,34 @@ export class StatusBarManager {
 		const wCd = formatCooldownCompact(weeklyReset);
 		const soCd = formatCooldownCompact(sonnetReset);
 
-		this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}`;
+		// Skip redundant re-renders via signature hash
+		const staleness = data.staleness;
+		const signature = `${sessionPct}|${weeklyPct}|${sonnetPct}|${staleness}|${sCd}|${wCd}|${soCd}|${data.todayCost.toFixed(2)}|${Math.round(data.burnRate)}`;
+		if (signature === this.lastSignature) return;
+		this.lastSignature = signature;
+
+		// Staleness indicator: append ? when data is old
+		const staleMarker =
+			staleness === "stale" || staleness === "critical" ? " ?" : "";
+
+		this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}${staleMarker}`;
 		this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ""}`;
 		this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ""}`;
+
+		// Apply staleness dimming
+		if (staleness === "critical") {
+			this.sessionItem.color = CRITICAL_COLOR;
+			this.weeklyItem.color = CRITICAL_COLOR;
+			this.sonnetItem.color = CRITICAL_COLOR;
+		} else if (staleness === "dim" || staleness === "stale") {
+			this.sessionItem.color = STALE_COLOR;
+			this.weeklyItem.color = STALE_COLOR;
+			this.sonnetItem.color = STALE_COLOR;
+		} else {
+			this.sessionItem.color = SESSION_COLOR;
+			this.weeklyItem.color = WEEKLY_COLOR;
+			this.sonnetItem.color = SONNET_COLOR;
+		}
 
 		// Build shared tooltip (same on all 3 items)
 		const tooltip = this.buildTooltip(
@@ -162,7 +191,8 @@ export class StatusBarManager {
 		];
 
 		for (const entry of limitEntries) {
-			let line = `- ${entry.name}: **${formatPercentage(entry.pct)}**`;
+			const bar = formatBarGraph(entry.pct);
+			let line = `\`${bar}\` ${entry.name}`;
 			const cd = formatCooldown(entry.resetTime);
 			const exactTime = formatResetTime24h(entry.resetTime);
 			if (cd && exactTime) {
@@ -177,21 +207,59 @@ export class StatusBarManager {
 			tooltip.appendMarkdown(
 				`**Burn Rate:** ${formatBurnRate(data.burnRate)}\n\n`,
 			);
-			const minutesUntilSession = predictTimeUntilLimit(
-				data.rateLimits.session5h.currentTokens,
-				data.rateLimits.session5h.estimatedLimit,
-				data.burnRate,
-			);
-			if (minutesUntilSession !== null) {
-				tooltip.appendMarkdown(
-					`**Est. Time to Session Limit:** ${formatTimeUntilLimit(minutesUntilSession)}\n\n`,
-				);
+
+			// Pace forecast: use API utilization when available (accurate),
+			// fall back to JSONL token estimates (inaccurate)
+			const forecasts = [
+				{
+					name: "Session",
+					pct: api?.fiveHour?.utilization,
+					current: data.rateLimits.session5h.currentTokens,
+					limit: data.rateLimits.session5h.estimatedLimit,
+				},
+				{
+					name: "Weekly",
+					pct: api?.sevenDay?.utilization,
+					current: data.rateLimits.weekly.currentTokens,
+					limit: data.rateLimits.weekly.estimatedLimit,
+				},
+			];
+			for (const f of forecasts) {
+				let current = f.current;
+				let limit = f.limit;
+				// When API utilization is available, synthesize current/limit
+				// from it so the forecast matches the API percentage
+				if (f.pct != null && limit > 0) {
+					current = f.pct * limit;
+				} else if (f.pct != null) {
+					// No JSONL limit but have API pct: use a synthetic limit
+					limit = 1_000_000;
+					current = f.pct * limit;
+				}
+				const minutes = predictTimeUntilLimit(current, limit, data.burnRate);
+				const forecast = formatPaceForecast(minutes, f.name);
+				if (forecast) {
+					tooltip.appendMarkdown(`${forecast}\n\n`);
+				}
 			}
 		}
 
 		tooltip.appendMarkdown(
 			`**Tokens:** ${formatTokensExact(data.totalInputTokens)} in / ${formatTokensExact(data.totalOutputTokens)} out\n\n`,
 		);
+		// Staleness warning
+		if (data.staleness === "stale" || data.staleness === "critical") {
+			const ageMs = api?.fetchedAt
+				? Date.now() - new Date(api.fetchedAt).getTime()
+				: 0;
+			const ageMin = Math.round(ageMs / 60_000);
+			tooltip.appendMarkdown(`\u26A0\uFE0F _API data is ${ageMin}m old_\n\n`);
+		} else if (!api) {
+			tooltip.appendMarkdown(
+				"\u2139\uFE0F _Rate limits estimated (API unavailable)_\n\n",
+			);
+		}
+
 		tooltip.appendMarkdown(
 			`Files: ${data.filesProcessed} | Updated: ${data.lastUpdated.toLocaleTimeString()}`,
 		);
