@@ -208,25 +208,35 @@ export class StatusBarManager {
 				`**Burn Rate:** ${formatBurnRate(data.burnRate)}\n\n`,
 			);
 
-			// Pace forecast for each limit
+			// Pace forecast: use API utilization when available (accurate),
+			// fall back to JSONL token estimates (inaccurate)
 			const forecasts = [
 				{
 					name: "Session",
+					pct: api?.fiveHour?.utilization,
 					current: data.rateLimits.session5h.currentTokens,
 					limit: data.rateLimits.session5h.estimatedLimit,
 				},
 				{
 					name: "Weekly",
+					pct: api?.sevenDay?.utilization,
 					current: data.rateLimits.weekly.currentTokens,
 					limit: data.rateLimits.weekly.estimatedLimit,
 				},
 			];
 			for (const f of forecasts) {
-				const minutes = predictTimeUntilLimit(
-					f.current,
-					f.limit,
-					data.burnRate,
-				);
+				let current = f.current;
+				let limit = f.limit;
+				// When API utilization is available, synthesize current/limit
+				// from it so the forecast matches the API percentage
+				if (f.pct != null && limit > 0) {
+					current = f.pct * limit;
+				} else if (f.pct != null) {
+					// No JSONL limit but have API pct: use a synthetic limit
+					limit = 1_000_000;
+					current = f.pct * limit;
+				}
+				const minutes = predictTimeUntilLimit(current, limit, data.burnRate);
 				const forecast = formatPaceForecast(minutes, f.name);
 				if (forecast) {
 					tooltip.appendMarkdown(`${forecast}\n\n`);

@@ -149,7 +149,7 @@ export function formatBurnRate(tokensPerMin: number): string {
 		return "";
 	}
 
-	if (tokensPerMin < 100) {
+	if (tokensPerMin < 1_000) {
 		return `${Math.round(tokensPerMin)}/min`;
 	}
 
