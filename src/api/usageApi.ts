@@ -88,7 +88,15 @@ export async function fetchApiUsage(
 				});
 				res.on("end", () => {
 					if (res.statusCode !== 200) {
-						logger.warn(`Usage API returned ${res.statusCode}`);
+						if (res.statusCode === 401) {
+							logger.warn(
+								"Usage API: auth token expired (401). Will retry when Claude Code refreshes it.",
+							);
+						} else {
+							logger.warn(
+								`Usage API returned ${res.statusCode}: ${data.slice(0, 200)}`,
+							);
+						}
 						resolve(null);
 						return;
 					}

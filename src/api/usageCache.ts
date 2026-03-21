@@ -137,9 +137,11 @@ export class UsageCache {
 export function getStaleness(fetchedAt: Date | null): StalenessLevel {
 	if (!fetchedAt) return "critical";
 	const ageMs = Date.now() - fetchedAt.getTime();
-	if (ageMs < 5 * 60_000) return "fresh";
-	if (ageMs < 10 * 60_000) return "normal";
-	if (ageMs < 20 * 60_000) return "dim";
-	if (ageMs < 30 * 60_000) return "stale";
-	return "critical";
+	// Rate limits are 5h/7d windows -- data changes slowly.
+	// Only warn when data is truly old enough to be misleading.
+	if (ageMs < 30 * 60_000) return "fresh"; // <30m: perfectly fine
+	if (ageMs < 60 * 60_000) return "normal"; // 30-60m: still good
+	if (ageMs < 120 * 60_000) return "dim"; // 1-2h: slightly old
+	if (ageMs < 240 * 60_000) return "stale"; // 2-4h: getting old
+	return "critical"; // 4h+: data may be wrong
 }
