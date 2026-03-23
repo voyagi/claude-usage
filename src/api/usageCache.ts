@@ -39,12 +39,26 @@ export class UsageCache {
 			if (!parsed.apiUsage || !parsed.writtenAt) {
 				return null;
 			}
-			// Restore Date object from ISO string (guard against missing/invalid)
+			// Restore Date object from ISO string
+			// Return null if fetchedAt is missing/invalid -- don't lie about freshness
 			if (typeof parsed.apiUsage.fetchedAt === "string") {
 				const d = new Date(parsed.apiUsage.fetchedAt);
-				parsed.apiUsage.fetchedAt = Number.isNaN(d.getTime()) ? new Date() : d;
+				if (Number.isNaN(d.getTime())) {
+					this.logger.warn("Cache has invalid fetchedAt, discarding");
+					return null;
+				}
+				parsed.apiUsage.fetchedAt = d;
+			} else if (typeof parsed.apiUsage.fetchedAt === "number") {
+				// Handle legacy format where fetchedAt was stored as Unix timestamp
+				const d = new Date(parsed.apiUsage.fetchedAt);
+				if (Number.isNaN(d.getTime())) {
+					this.logger.warn("Cache has invalid numeric fetchedAt, discarding");
+					return null;
+				}
+				parsed.apiUsage.fetchedAt = d;
 			} else {
-				parsed.apiUsage.fetchedAt = new Date();
+				this.logger.warn("Cache missing fetchedAt, discarding");
+				return null;
 			}
 			return parsed as UsageCacheData;
 		} catch (error) {
@@ -135,9 +149,11 @@ export class UsageCache {
  * Compute staleness level from a fetchedAt timestamp
  */
 export function getStaleness(fetchedAt: Date | null): StalenessLevel {
-	// No API data at all: show normal colors (JSONL data is fine)
-	if (!fetchedAt) return "normal";
+	// No API data at all: distinct state so UI can show "not connected"
+	if (!fetchedAt) return "unavailable";
 	const ageMs = Date.now() - fetchedAt.getTime();
+	// Guard against backward clock jumps (negative age reads as "fresh")
+	if (ageMs < 0) return "stale";
 	// Rate limits are 5h/7d windows -- data changes slowly.
 	// Only warn when data is truly old enough to be misleading.
 	if (ageMs < 30 * 60_000) return "fresh"; // <30m: perfectly fine

@@ -182,12 +182,22 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize burn rate tracker
 	burnRateTracker = createBurnRateTracker();
 
-	// Create credentials watcher for auto tier detection
-	const credentialsWatcher = new CredentialsWatcher(context, (newTier) => {
-		logger.info(`Tier changed to ${newTier}, refreshing...`);
-		detectedTier = newTier;
-		vscode.commands.executeCommand("claude-usage.refresh");
-	});
+	// Create credentials watcher for auto tier detection + token change signals
+	const credentialsWatcher = new CredentialsWatcher(
+		context,
+		(newTier) => {
+			logger.info(`Tier changed to ${newTier}, refreshing...`);
+			detectedTier = newTier;
+			vscode.commands.executeCommand("claude-usage.refresh");
+		},
+		() => {
+			// Token changed -- signal PollingTimer to recover from dead auth
+			if (pollingTimer) {
+				logger.info("Token change detected, resetting polling timer auth");
+				pollingTimer.resetAuth();
+			}
+		},
+	);
 
 	// Create SessionWatcher with onUpdate callback and rate limit event handler
 	// API fetching is now handled by the PollingTimer, not triggered by file changes
@@ -318,8 +328,14 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Refresh status bar with fresh API data
 			refreshStatusBar();
 		},
-		() => {
+		(reason) => {
 			// On error: refresh to update staleness indicator
+			logger.warn(`API poll error: ${reason}`);
+			refreshStatusBar();
+		},
+		(authState) => {
+			// Auth state changed: update status bar display
+			statusBar.setAuthState(authState);
 			refreshStatusBar();
 		},
 		logger,

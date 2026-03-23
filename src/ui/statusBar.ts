@@ -5,7 +5,7 @@
 
 import * as vscode from "vscode";
 import { predictTimeUntilLimit } from "../core/burnRate.js";
-import type { StatusBarData } from "../types.js";
+import type { AuthState, StatusBarData } from "../types.js";
 import {
 	formatBarGraph,
 	formatBurnRate,
@@ -32,6 +32,7 @@ export class StatusBarManager {
 	private errorTimer: NodeJS.Timeout | undefined;
 	private _visible = true;
 	private lastSignature = "";
+	private _authState: AuthState = "healthy";
 
 	constructor(context: vscode.ExtensionContext) {
 		// Use high, adjacent priorities so all 3 stay grouped together
@@ -110,20 +111,28 @@ export class StatusBarManager {
 		if (signature === this.lastSignature) return;
 		this.lastSignature = signature;
 
-		// Staleness indicator: append ? when data is old
-		const staleMarker =
-			staleness === "stale" || staleness === "critical" ? " ?" : "";
+		// Staleness indicator: append ? when data is old, ! when auth is dead
+		let staleMarker = "";
+		if (this._authState === "dead") {
+			staleMarker = " !";
+		} else if (staleness === "stale" || staleness === "critical") {
+			staleMarker = " ?";
+		}
 
 		this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}${staleMarker}`;
 		this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ""}`;
 		this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ""}`;
 
 		// Apply staleness dimming
-		if (staleness === "critical") {
+		if (this._authState === "dead" || staleness === "critical") {
 			this.sessionItem.color = CRITICAL_COLOR;
 			this.weeklyItem.color = CRITICAL_COLOR;
 			this.sonnetItem.color = CRITICAL_COLOR;
-		} else if (staleness === "dim" || staleness === "stale") {
+		} else if (
+			staleness === "dim" ||
+			staleness === "stale" ||
+			staleness === "unavailable"
+		) {
 			this.sessionItem.color = STALE_COLOR;
 			this.weeklyItem.color = STALE_COLOR;
 			this.sonnetItem.color = STALE_COLOR;
@@ -247,13 +256,23 @@ export class StatusBarManager {
 		tooltip.appendMarkdown(
 			`**Tokens:** ${formatTokensExact(data.totalInputTokens)} in / ${formatTokensExact(data.totalOutputTokens)} out\n\n`,
 		);
-		// Staleness warning
-		if (data.staleness === "stale" || data.staleness === "critical") {
+		// Auth/staleness warning with actionable hints
+		if (this._authState === "dead") {
+			tooltip.appendMarkdown(
+				"\u26D4 _Auth expired. Re-authenticate in Claude Code to restore live data._\n\n",
+			);
+		} else if (data.staleness === "stale" || data.staleness === "critical") {
 			const ageMs = api?.fetchedAt
 				? Date.now() - new Date(api.fetchedAt).getTime()
 				: 0;
 			const ageMin = Math.round(ageMs / 60_000);
-			tooltip.appendMarkdown(`\u26A0\uFE0F _API data is ${ageMin}m old_\n\n`);
+			tooltip.appendMarkdown(
+				`\u26A0\uFE0F _API data is ${ageMin}m old. Click to refresh._\n\n`,
+			);
+		} else if (data.staleness === "unavailable") {
+			tooltip.appendMarkdown(
+				"\u2139\uFE0F _API not connected. Rate limits are estimated from local data._\n\n",
+			);
 		} else if (!api) {
 			tooltip.appendMarkdown(
 				"\u2139\uFE0F _Rate limits estimated (API unavailable)_\n\n",
@@ -265,6 +284,16 @@ export class StatusBarManager {
 		);
 
 		return tooltip;
+	}
+
+	/**
+	 * Update the auth state for display purposes.
+	 * Called by the extension when PollingTimer's auth state changes.
+	 */
+	setAuthState(state: AuthState): void {
+		this._authState = state;
+		// Invalidate signature to force re-render on next update()
+		this.lastSignature = "";
 	}
 
 	showRefreshing(): void {
