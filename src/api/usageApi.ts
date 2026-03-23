@@ -10,7 +10,6 @@ import * as fs from "node:fs/promises";
 import * as https from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as vscode from "vscode";
 import type {
 	ApiRateLimitWindow,
 	ApiUsageData,
@@ -53,17 +52,11 @@ async function refreshOAuthToken(
 
 	logger.info("OAuth token expired, attempting refresh...");
 
-	const config = vscode.workspace.getConfiguration("claude-usage");
-	const clientId = config.get<string>(
-		"oauthClientId",
-		"9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-	);
-
 	return new Promise((resolve) => {
 		const postData = JSON.stringify({
 			grant_type: "refresh_token",
 			refresh_token: refreshToken,
-			client_id: clientId,
+			client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
 		});
 
 		const req = https.request(

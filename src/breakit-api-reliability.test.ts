@@ -16,7 +16,7 @@ import {
 	mapTierStringToPlanType,
 	parseCredentialsFile,
 } from "./core/tierDetection";
-import type { ApiUsageData, FetchResult } from "./types";
+import type { ApiUsageData, FetchErrorReason, FetchResult } from "./types";
 import {
 	formatBarGraph,
 	formatBurnRate,
@@ -57,7 +57,7 @@ function okResult(data?: ApiUsageData): FetchResult {
 	return { ok: true, data: data ?? makeApiData() };
 }
 
-function failResult(error = "network" as const): FetchResult {
+function failResult(error: FetchErrorReason = "network"): FetchResult {
 	return { ok: false, error };
 }
 
@@ -866,6 +866,221 @@ describe("BREAKIT: PollingTimer", () => {
 			const lastBackoff = warnCalls[warnCalls.length - 1];
 			expect(lastBackoff).toContain("300s");
 
+			timer.stop();
+		});
+	});
+
+	describe("Auth State Machine", () => {
+		it("enters dead state on auth_dead error", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("auth_dead"));
+			const onAuthStateChange = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				onAuthStateChange,
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+
+			expect(timer.authState).toBe("dead");
+			expect(onAuthStateChange).toHaveBeenCalledWith("dead");
+			timer.stop();
+		});
+
+		it("enters dead state after 3 consecutive auth_expired errors", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("auth_expired"));
+			const onAuthStateChange = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				onAuthStateChange,
+				makeLogger(),
+			);
+
+			timer.start();
+			// 1st failure
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("degraded");
+
+			// 2nd failure
+			jest.advanceTimersByTime(30_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("degraded");
+
+			// 3rd failure -> dead
+			jest.advanceTimersByTime(60_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("dead");
+			timer.stop();
+		});
+
+		it("stops polling in dead state", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("auth_dead"));
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("dead");
+
+			// Should NOT schedule another tick
+			fetchFn.mockClear();
+			jest.advanceTimersByTime(300_000);
+			await Promise.resolve();
+			expect(fetchFn).not.toHaveBeenCalled();
+			timer.stop();
+		});
+
+		it("resetAuth() resumes polling from dead state", async () => {
+			const fetchFn = jest
+				.fn()
+				.mockResolvedValueOnce(failResult("auth_dead"))
+				.mockResolvedValue(okResult());
+			const onData = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				onData,
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			await jest.advanceTimersByTimeAsync(5_000);
+			expect(timer.authState).toBe("dead");
+			expect(fetchFn).toHaveBeenCalledTimes(1);
+
+			// Simulate credential file change -- should reset and schedule
+			timer.resetAuth();
+			expect(timer.authState).toBe("healthy");
+
+			// Advance past initial interval and flush async
+			await jest.advanceTimersByTimeAsync(5_001);
+			// The second fetch should have fired and succeeded
+			expect(fetchFn).toHaveBeenCalledTimes(2);
+			expect(onData).toHaveBeenCalledTimes(1);
+			timer.stop();
+		});
+
+		it("network errors do not trigger auth death", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("network"));
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			// 5 consecutive network failures
+			for (let i = 0; i < 5; i++) {
+				jest.advanceTimersByTime(i === 0 ? 5_000 : 300_000);
+				await Promise.resolve();
+			}
+
+			// Should still be healthy (network errors don't count as auth failures)
+			expect(timer.authState).toBe("healthy");
+			timer.stop();
+		});
+
+		it("success resets auth state from degraded to healthy", async () => {
+			const fetchFn = jest
+				.fn()
+				.mockResolvedValueOnce(failResult("auth_expired"))
+				.mockResolvedValueOnce(okResult());
+			const onAuthStateChange = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				onAuthStateChange,
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("degraded");
+
+			jest.advanceTimersByTime(30_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("healthy");
+			timer.stop();
+		});
+
+		it("forceRefresh from dead state resets auth and fetches", async () => {
+			const fetchFn = jest
+				.fn()
+				.mockResolvedValueOnce(failResult("auth_dead"))
+				.mockResolvedValue(okResult());
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("dead");
+
+			await timer.forceRefresh();
+			await Promise.resolve();
+
+			expect(timer.authState).toBe("healthy");
+			expect(fetchFn).toHaveBeenCalledTimes(2);
+			timer.stop();
+		});
+
+		it("pendingForceRefresh fires after in-flight tick completes", async () => {
+			let resolveFetch: (v: FetchResult) => void;
+			const fetchFn = jest.fn().mockImplementation(
+				() =>
+					new Promise<FetchResult>((resolve) => {
+						resolveFetch = resolve;
+					}),
+			);
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			// tick in flight
+
+			// Queue a force refresh
+			const forcePromise = timer.forceRefresh();
+			expect(fetchFn).toHaveBeenCalledTimes(1);
+
+			// Complete the in-flight tick
+			resolveFetch!(okResult());
+			await forcePromise;
+			await Promise.resolve();
+
+			// The queued force refresh should fire via setTimeout(0)
+			jest.advanceTimersByTime(0);
+			await Promise.resolve();
+
+			expect(fetchFn).toHaveBeenCalledTimes(2);
 			timer.stop();
 		});
 	});

@@ -85,12 +85,17 @@ export class PollingTimer {
 		if (!this.isRunning) return;
 
 		// In dead state, forceRefresh is allowed (user explicitly asked)
-		// but only if credentials might have changed
 		if (this._authState === "dead") {
 			this.logger.info(
 				"Force refresh in dead state -- resetting auth to retry",
 			);
 			this.resetAuth();
+			// resetAuth() may have scheduled a timer -- cancel it since
+			// we're about to tick directly below
+			if (this.timer) {
+				clearTimeout(this.timer);
+				this.timer = null;
+			}
 		}
 
 		if (this.isTickInFlight) {
@@ -156,6 +161,7 @@ export class PollingTimer {
 	private async tick(): Promise<void> {
 		if (this.isTickInFlight) return;
 		this.isTickInFlight = true;
+		this.timer = null; // Clear consumed timer handle
 		try {
 			const result = await this.fetchFn();
 			if (!this.isRunning) return; // Extension deactivated during fetch
