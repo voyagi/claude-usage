@@ -267,7 +267,10 @@ export class StatusBarManager {
 			tooltip.appendMarkdown(
 				"\u26D4 _Auth expired. Re-authenticate in Claude Code to restore live data._\n\n",
 			);
-		} else if (data.staleness === "stale" || data.staleness === "critical") {
+		} else if (
+			!this._rateLimited &&
+			(data.staleness === "stale" || data.staleness === "critical")
+		) {
 			const ageMs = api?.fetchedAt
 				? Date.now() - new Date(api.fetchedAt).getTime()
 				: 0;
