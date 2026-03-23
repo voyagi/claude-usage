@@ -33,6 +33,7 @@ export class StatusBarManager {
 	private _visible = true;
 	private lastSignature = "";
 	private _authState: AuthState = "healthy";
+	private _rateLimited = false;
 
 	constructor(context: vscode.ExtensionContext) {
 		// Use high, adjacent priorities so all 3 stay grouped together
@@ -117,18 +118,27 @@ export class StatusBarManager {
 			this.sonnetItem.text = `So:${formatPercentage(sonnetPct)} ?`;
 		} else {
 			const staleMarker =
-				staleness === "stale" || staleness === "critical" ? " ?" : "";
+				!this._rateLimited &&
+				(staleness === "stale" || staleness === "critical")
+					? " ?"
+					: "";
 			this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}${staleMarker}`;
 			this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ""}`;
 			this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ""}`;
 		}
 
 		// Apply staleness dimming
-		if (this._authState === "dead" || staleness === "critical") {
+		// When rate-limited (429), suppress dimming: the data is still valid
+		// because rate limits are 5h/7d windows that change slowly.
+		const effectiveStaleness = this._rateLimited ? "normal" : staleness;
+		if (this._authState === "dead" || effectiveStaleness === "critical") {
 			this.sessionItem.color = CRITICAL_COLOR;
 			this.weeklyItem.color = CRITICAL_COLOR;
 			this.sonnetItem.color = CRITICAL_COLOR;
-		} else if (staleness === "stale" || staleness === "unavailable") {
+		} else if (
+			effectiveStaleness === "stale" ||
+			effectiveStaleness === "unavailable"
+		) {
 			this.sessionItem.color = STALE_COLOR;
 			this.weeklyItem.color = STALE_COLOR;
 			this.sonnetItem.color = STALE_COLOR;
@@ -289,6 +299,16 @@ export class StatusBarManager {
 	setAuthState(state: AuthState): void {
 		this._authState = state;
 		// Invalidate signature to force re-render on next update()
+		this.lastSignature = "";
+	}
+
+	/**
+	 * Mark whether the API is rate-limited (429).
+	 * When rate-limited, staleness dimming is suppressed because the data
+	 * is still valid (rate limits are 5h/7d windows that change slowly).
+	 */
+	setRateLimited(limited: boolean): void {
+		this._rateLimited = limited;
 		this.lastSignature = "";
 	}
 

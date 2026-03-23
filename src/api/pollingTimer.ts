@@ -14,7 +14,7 @@ import type { ApiUsageData, AuthState, FetchResult } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 
 const INITIAL_INTERVAL_MS = 5_000;
-const SUCCESS_INTERVAL_MS = 120_000;
+const SUCCESS_INTERVAL_MS = 300_000;
 const FAILURE_INTERVAL_MS = 30_000;
 const MAX_FAILURE_INTERVAL_MS = 300_000;
 const AUTH_DEAD_THRESHOLD = 3;
@@ -208,6 +208,17 @@ export class PollingTimer {
 	}
 
 	private handleFailure(error: string): void {
+		// 429 is expected behavior on this endpoint (budget of ~5 requests
+		// per access token). Don't count as failure, just poll slower.
+		if (error === "rate_limited") {
+			const retryMs = 600_000; // 10 minutes
+			this.logger.info(
+				`API rate-limited (429). This is normal. Retry in ${retryMs / 1000}s`,
+			);
+			this.scheduleNext(retryMs);
+			return; // Don't touch failure counters or auth state
+		}
+
 		const isAuthError =
 			error === "auth_dead" ||
 			error === "auth_expired" ||
