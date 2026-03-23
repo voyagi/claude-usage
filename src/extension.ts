@@ -305,6 +305,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		() => fetchApiUsage(logger),
 		(apiData) => {
 			cachedApiUsage = apiData;
+			statusBar.setRateLimited(false);
 
 			// Auto-detect tier from API response
 			if (apiData.rateLimitTier) {
@@ -333,6 +334,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		(reason) => {
 			// On error: refresh to update staleness indicator
 			logger.warn(`API poll error: ${reason}`);
+			statusBar.setRateLimited(reason === "rate_limited");
 			refreshStatusBar();
 		},
 		(authState) => {
