@@ -337,6 +337,21 @@ export async function activate(context: vscode.ExtensionContext) {
 			// Auth state changed: update status bar display
 			statusBar.setAuthState(authState);
 			refreshStatusBar();
+
+			if (authState === "dead") {
+				void vscode.window
+					.showWarningMessage(
+						"Claude Usage: Auth expired. Run `claude login` to restore live data.",
+						"Open Terminal",
+					)
+					.then((action) => {
+						if (action === "Open Terminal") {
+							const terminal = vscode.window.createTerminal("Claude Auth");
+							terminal.show();
+							terminal.sendText("claude login");
+						}
+					});
+			}
 		},
 		logger,
 	);

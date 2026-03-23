@@ -134,8 +134,10 @@ export class CredentialsWatcher {
 
 			const tier = detectTierFromCredentials(credentials, fallback);
 
-			// Hash the access token to detect changes without storing it
-			const accessToken = (credentials as any)?.claudeAiOauth?.accessToken;
+			// parseCredentialsFile strips claudeAiOauth, so extract from raw parse.
+			// content is already validated JSON above, so this won't throw.
+			const accessToken = (JSON.parse(content) as Record<string, any>)
+				?.claudeAiOauth?.accessToken as string | undefined;
 			const tokenHash = accessToken
 				? crypto
 						.createHash("sha256")

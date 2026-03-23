@@ -5,6 +5,9 @@ module.exports = {
 	testMatch: ["**/*.test.ts"],
 	collectCoverageFrom: ["src/**/*.ts", "!src/**/*.test.ts", "!src/types.ts"],
 	moduleFileExtensions: ["ts", "js"],
+	moduleNameMapper: {
+		"^(\\.\\.?/.*)\\.js$": "$1",
+	},
 	transform: {
 		"^.+\\.ts$": "ts-jest",
 	},

@@ -121,6 +121,7 @@ export class PollingTimer {
 		if (this._authState === "dead") {
 			this.logger.info("Auth reset -- credentials changed, resuming polling");
 		}
+		// Fresh token = clean slate for all failure tracking
 		this.consecutiveAuthFailures = 0;
 		this.consecutiveFailures = 0;
 		this.setAuthState("healthy");

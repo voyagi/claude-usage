@@ -111,17 +111,17 @@ export class StatusBarManager {
 		if (signature === this.lastSignature) return;
 		this.lastSignature = signature;
 
-		// Staleness indicator: append ? when data is old, ! when auth is dead
-		let staleMarker = "";
 		if (this._authState === "dead") {
-			staleMarker = " !";
-		} else if (staleness === "stale" || staleness === "critical") {
-			staleMarker = " ?";
+			this.sessionItem.text = "$(key) Auth expired";
+			this.weeklyItem.text = `W:${formatPercentage(weeklyPct)} ?`;
+			this.sonnetItem.text = `So:${formatPercentage(sonnetPct)} ?`;
+		} else {
+			const staleMarker =
+				staleness === "stale" || staleness === "critical" ? " ?" : "";
+			this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}${staleMarker}`;
+			this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ""}`;
+			this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ""}`;
 		}
-
-		this.sessionItem.text = `S:${formatPercentage(sessionPct)}${sCd ? ` ${sCd}` : ""}${staleMarker}`;
-		this.weeklyItem.text = `W:${formatPercentage(weeklyPct)}${wCd ? ` ${wCd}` : ""}`;
-		this.sonnetItem.text = `So:${formatPercentage(sonnetPct)}${soCd ? ` ${soCd}` : ""}`;
 
 		// Apply staleness dimming
 		if (this._authState === "dead" || staleness === "critical") {
