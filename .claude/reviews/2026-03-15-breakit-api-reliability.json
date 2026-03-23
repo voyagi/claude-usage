@@ -1,0 +1,148 @@
+{
+	"runAt": "2026-03-15T09:15:00.000Z",
+	"target": "git diff master...HEAD (API-first reliability: pollingTimer, usageCache, formatting, tierDetection, burnRate)",
+	"testFramework": "jest",
+	"testFile": "src/breakit-api-reliability.test.ts",
+	"categoriesApplied": [
+		"boundary-assault",
+		"type-confusion",
+		"property-violations",
+		"mutation-detectors",
+		"security-payloads",
+		"error-torture",
+		"state-corruption",
+		"resource-pressure"
+	],
+	"functionsTargeted": 12,
+	"testsGenerated": 146,
+	"results": {
+		"failed": 0,
+		"passed": 146,
+		"errored": 0,
+		"escalated": true
+	},
+	"breaks": [],
+	"held": [
+		{
+			"function": "getStaleness",
+			"categories": [
+				"boundary-assault",
+				"type-confusion",
+				"mutation-detectors"
+			],
+			"casesRun": 16
+		},
+		{
+			"function": "mapTierStringToPlanType",
+			"categories": [
+				"boundary-assault",
+				"type-confusion",
+				"mutation-detectors",
+				"security-payloads"
+			],
+			"casesRun": 24
+		},
+		{
+			"function": "formatBarGraph",
+			"categories": [
+				"boundary-assault",
+				"type-confusion",
+				"property-violations",
+				"resource-pressure"
+			],
+			"casesRun": 15
+		},
+		{
+			"function": "formatPaceForecast",
+			"categories": [
+				"boundary-assault",
+				"type-confusion",
+				"mutation-detectors"
+			],
+			"casesRun": 13
+		},
+		{
+			"function": "formatTimeUntilLimit",
+			"categories": ["boundary-assault", "mutation-detectors"],
+			"casesRun": 7
+		},
+		{
+			"function": "formatCooldownCompact",
+			"categories": ["boundary-assault"],
+			"casesRun": 5
+		},
+		{
+			"function": "predictTimeUntilLimit",
+			"categories": [
+				"boundary-assault",
+				"property-violations",
+				"mutation-detectors"
+			],
+			"casesRun": 15
+		},
+		{
+			"function": "PollingTimer",
+			"categories": [
+				"boundary-assault",
+				"error-torture",
+				"state-corruption",
+				"mutation-detectors"
+			],
+			"casesRun": 14
+		},
+		{
+			"function": "parseCredentialsFile",
+			"categories": ["security-payloads", "error-torture", "resource-pressure"],
+			"casesRun": 7
+		},
+		{
+			"function": "formatCost",
+			"categories": ["mutation-detectors"],
+			"casesRun": 5
+		},
+		{
+			"function": "formatPercentage",
+			"categories": ["boundary-assault", "type-confusion"],
+			"casesRun": 5
+		},
+		{
+			"function": "formatBurnRate",
+			"categories": ["boundary-assault", "type-confusion"],
+			"casesRun": 5
+		}
+	],
+	"observations": [
+		{
+			"function": "formatBarGraph",
+			"category": "type-confusion",
+			"severity": "LOW",
+			"note": "NaN input produces bar with 0 characters instead of 20. String.repeat(NaN) returns empty string. Not a crash but breaks the width invariant. Cosmetic only since NaN percentage is not a real-world scenario."
+		},
+		{
+			"function": "predictTimeUntilLimit",
+			"category": "type-confusion",
+			"severity": "LOW",
+			"note": "NaN and negative burn rates propagate without guard. NaN burnRate returns NaN (not null), negative burnRate returns negative minutes. Both are edge cases that can't occur through normal code paths since burnRate is always >= 0 (Math.max enforced in calculateBurnRateEMA)."
+		},
+		{
+			"function": "formatPaceForecast",
+			"category": "type-confusion",
+			"severity": "LOW",
+			"note": "NaN/Infinity minutes propagate to user-visible strings ('~NaNh NaNm', '~Infinityh'). Only possible if predictTimeUntilLimit returns NaN/Infinity, which requires NaN inputs."
+		},
+		{
+			"function": "parseCredentialsFile",
+			"category": "error-torture",
+			"severity": "LOW",
+			"note": "BOM-prefixed JSON (Windows Notepad saves with BOM) is rejected. File returns null, graceful degradation to fallback tier. Credentials file is written by Claude Code itself (no BOM), so not a real risk."
+		}
+	],
+	"verdict": "RESILIENT",
+	"summary": {
+		"critical": 0,
+		"high": 0,
+		"medium": 0,
+		"low": 0,
+		"passed": true
+	}
+}

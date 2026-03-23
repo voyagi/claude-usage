@@ -14,6 +14,10 @@ Reads JSONL session files from ~/.claude/projects/ — zero network calls.
 MSYS bash on Windows defaults to /home/ instead of the workspace.
 Before any relative-path bash command, run: `cd /c/Users/Eagi/claude-usage`
 
+## Extension Debugging
+- Runtime debugging: add temp `fs.appendFileSync` to `dev/diag.log`, rebuild, reload, then Read the log. VS Code Output channel is inaccessible from Claude Code.
+- After fixing: `esbuild` → `vsce package` → `workbench.extensions.installExtension` → reload. Git push alone doesn't update the running extension.
+
 ## Key Constraints
 - Zero network calls — all data stays local, no telemetry
 - Must handle JSONL files being actively written by Claude Code

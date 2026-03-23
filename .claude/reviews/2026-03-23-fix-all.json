@@ -1,0 +1,140 @@
+{
+	"auditedAt": "2026-03-23T07:03:00+01:00",
+	"repo": "voyagi/claude-usage",
+	"ecosystem": "node",
+	"dimensions": [
+		{
+			"id": 0,
+			"name": "Working tree",
+			"status": "WARN",
+			"details": "4 modified, 6 untracked files (stashed for fixes)"
+		},
+		{
+			"id": 1,
+			"name": "Security vulnerabilities",
+			"status": "PASS",
+			"details": "Trivy: 0 HIGH/CRITICAL in prod deps. Dependabot flags 7 in dev deps."
+		},
+		{
+			"id": 2,
+			"name": "Secrets scan",
+			"status": "PASS",
+			"details": "Trivy: 0 secrets found"
+		},
+		{
+			"id": 3,
+			"name": "Build",
+			"status": "PASS",
+			"details": "esbuild succeeds (extension + webview bundles)"
+		},
+		{
+			"id": 4,
+			"name": "Lint/typecheck",
+			"status": "PASS",
+			"details": "Fixed: 24 biome errors auto-fixed. tsc --noEmit clean."
+		},
+		{
+			"id": 5,
+			"name": "Tests",
+			"status": "PASS",
+			"details": "Fixed: 169/169 passing. 13 stale breakit tests updated."
+		},
+		{
+			"id": 6,
+			"name": "CI on master",
+			"status": "STUCK",
+			"details": "All workflows fail: GitHub Actions billing issue"
+		},
+		{
+			"id": 7,
+			"name": "CI on PRs",
+			"status": "STUCK",
+			"details": "Same billing issue blocks all CI. PR #11 last passed before billing broke."
+		},
+		{
+			"id": 8,
+			"name": "Commit status",
+			"status": "STUCK",
+			"details": "All check runs failing due to billing"
+		},
+		{
+			"id": 9,
+			"name": "Deploy",
+			"status": "N/A",
+			"details": "No deployments configured"
+		},
+		{
+			"id": 10,
+			"name": "PR review comments",
+			"status": "PASS",
+			"details": "Only CodeRabbit review-skipped on bot PRs"
+		},
+		{
+			"id": 11,
+			"name": "Dependency PRs",
+			"status": "STUCK",
+			"details": "PR #8 (@types/node v24) open 21 days, major bump needs CI to merge"
+		},
+		{
+			"id": 12,
+			"name": "Stale branches",
+			"status": "PASS",
+			"details": "No merged remote branches to clean"
+		},
+		{
+			"id": 13,
+			"name": "Issues",
+			"status": "PASS",
+			"details": "Only Dependency Dashboard issue open"
+		},
+		{
+			"id": 14,
+			"name": ".gitattributes",
+			"status": "PASS",
+			"details": "Comprehensive eol=lf rules"
+		},
+		{
+			"id": 15,
+			"name": ".gitignore",
+			"status": "PASS",
+			"details": "Fixed: added .env.local, OS files; untracked .vscode/"
+		},
+		{
+			"id": 16,
+			"name": "Actions health",
+			"status": "WARN",
+			"details": "ci.yml and mirror.yml lack explicit permissions block"
+		},
+		{
+			"id": 17,
+			"name": "Repo settings",
+			"status": "WARN",
+			"details": "No branch protection on master"
+		},
+		{
+			"id": 18,
+			"name": "Lockfile",
+			"status": "PASS",
+			"details": "v3, no conflicts"
+		}
+	],
+	"fixesApplied": [
+		{
+			"dimension": 4,
+			"commit": "6a008b2",
+			"description": "Auto-fix 24 biome lint errors (formatting, unused imports, style)"
+		},
+		{
+			"dimension": 5,
+			"commit": "0baa2a7",
+			"description": "Fix 13 stale breakit tests to match current getStaleness boundaries"
+		},
+		{
+			"dimension": 15,
+			"commit": "9ee2295",
+			"description": "Improve .gitignore and untrack .vscode files"
+		}
+	],
+	"cycles": 1,
+	"finalStatus": "STUCK_4"
+}

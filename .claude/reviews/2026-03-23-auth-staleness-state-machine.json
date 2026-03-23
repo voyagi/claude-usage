@@ -1,0 +1,62 @@
+{
+	"reviewedAt": "2026-03-23T00:00:00.000Z",
+	"diffRange": "b1eb075..ba54913",
+	"branch": "fix/auth-staleness-state-machine",
+	"totalFiles": 8,
+	"findings": [
+		{
+			"severity": "HIGH",
+			"category": "logic",
+			"file": "src/api/pollingTimer.ts",
+			"line": 89,
+			"description": "forceRefresh() in dead state calls resetAuth() which immediately schedules a new poll (line 124-126 in resetAuth), then falls through to check isTickInFlight and calls tick() again via the bottom of forceRefresh (line 108). This means resetAuth already scheduled one tick via scheduleNext(INITIAL_INTERVAL_MS), and then forceRefresh calls tick() directly too. Two fetch paths fire: the scheduled 5s timer fires AND the immediate await tick() fires concurrently. The isTickInFlight guard on tick() prevents actual double-fetch -- but resetAuth also has a race: if isTickInFlight is false when resetAuth runs (it always is here since the check at line 96 comes after resetAuth), scheduleNext fires the 5s timer, then forceRefresh immediately calls tick() at line 108. The 5s timer will then call tick() a second time, but isTickInFlight protects it. However, pendingForceRefresh set to true during the in-flight tick (from the timer that resetAuth scheduled racing against the direct tick() call) could cause a third fetch after the first one completes. Net result: redundant scheduling noise, not a double-fetch, but the interaction is fragile and undocumented.",
+			"suggestion": "In forceRefresh(), after resetAuth(), explicitly cancel the timer it may have created before proceeding: after calling this.resetAuth(), add 'if (this.timer) { clearTimeout(this.timer); this.timer = null; }' before the isTickInFlight check. This mirrors what the non-dead path already does at line 104-107."
+		},
+		{
+			"severity": "HIGH",
+			"category": "logic",
+			"file": "src/api/pollingTimer.ts",
+			"line": 176,
+			"description": "consecutiveFailures is incremented (line 176) before handleFailure() is called (line 177). Inside handleFailure(), when error === 'auth_dead', the method fires onError and returns without scheduling -- but consecutiveFailures was already bumped. When resetAuth() is later called, it resets consecutiveAuthFailures and consecutiveFailures to 0, which is correct. However, if auth_dead fires on failure #1, the backoff calculation on any subsequent transient error path (lines 250-252) uses consecutiveFailures-1 = 0, giving FAILURE_INTERVAL_MS * 2^0 = 30s. This is the intended base case so it works out, but if the dead-then-resetAuth path fires, the counter is 0 but the timer returns to INITIAL_INTERVAL_MS via resetAuth, not the standard backoff path. Acceptable behavior, but the two counter reset sites (resetAuth vs success path at lines 164-165) have different semantics: resetAuth also resets consecutiveFailures to 0 which erases accumulated network-failure history after a token change. After token rotation, even prior network failures are forgotten, so any non-auth error right after token rotation jumps straight to 30s minimum backoff instead of using the accumulated exponential position. This is probably intentional (fresh start on new token) but is undocumented.",
+			"suggestion": "Add a comment to resetAuth() explaining that it also clears consecutiveFailures (not just consecutiveAuthFailures) and why: 'Reset consecutiveFailures too -- fresh token means we give network a clean slate.' Without this, future reviewers may treat the double-reset as a bug."
+		},
+		{
+			"severity": "HIGH",
+			"category": "incomplete",
+			"file": "src/api/usageApi.ts",
+			"line": 56,
+			"description": "refreshOAuthToken() reads 'claude-usage.oauthClientId' from VS Code configuration at line 56-60, but this setting is not declared in package.json's contributes.configuration. The setting is completely invisible to users (no IntelliSense, no docs, no validation). Any user who tries to set it gets no autocomplete and no type checking in their settings.json. The hardcoded default '9d1c250a-e61b-44d9-88ed-5944d1962f5e' is used silently. This is an undocumented escape hatch that most users don't know exists and can't discover.",
+			"suggestion": "Either (a) declare 'claude-usage.oauthClientId' in package.json contributes.configuration with type string, description explaining it's an advanced override, and the default value; or (b) remove the config lookup and keep only the hardcoded constant. Option (b) is simpler -- the client ID is part of the OAuth app registration and users should never need to change it."
+		},
+		{
+			"severity": "HIGH",
+			"category": "testing",
+			"file": "src/breakit-api-reliability.test.ts",
+			"line": 587,
+			"description": "The entire auth state machine (the core feature of this commit) has zero test coverage. The test file updates existing PollingTimer tests to use FetchResult types but adds no new tests for: (1) entering dead state on auth_dead error, (2) entering dead state after AUTH_DEAD_THRESHOLD consecutive auth_expired errors, (3) scheduleNext() being suppressed in dead state, (4) resetAuth() resuming polling, (5) forceRefresh() in dead state calling resetAuth() then proceeding, (6) onAuthStateChange callback being fired on state transitions, (7) the degraded state transition on first auth error. This commit fixes a bug that has recurred 7 times. Without state machine tests, the same regression can silently re-appear.",
+			"suggestion": "Add a describe('Auth State Machine') block covering at minimum: dead state entered on auth_dead result, dead state entered after 3 auth_expired results, polling stops (no scheduleNext) in dead state, resetAuth() re-schedules, forceRefresh() from dead state resets and fetches, onAuthStateChange fires with correct state values."
+		},
+		{
+			"severity": "MEDIUM",
+			"category": "logic",
+			"file": "src/storage/credentialsWatcher.ts",
+			"line": 107,
+			"description": "Token change detection at line 107 fires onTokenChange() only when tokenHash is non-null AND changed. If the user re-authenticates and the new credentials file happens to produce the same 16-character hash prefix (astronomically unlikely but not impossible with a truncated hash), the polling timer will not reset. More practically: if credentials are written with accessToken=null or missing (e.g., mid-rotation), tokenHash is null, lastKnownTokenHash stays at the old value, and when the full token is written in a second event, 'tokenHash !== this.lastKnownTokenHash' fires correctly. But if the file is written twice rapidly (common with atomic writes), two change events fire. The first may see the partial state, the second sees the final state. If the first event sets lastKnownTokenHash = newHash and fires onTokenChange(), the second event sees the same hash and silently skips. This is correct behavior, but it means onTokenChange fires once per write sequence, which is right.",
+			"suggestion": "Reduce the hash to 8 chars is fine for dedup but document why it's truncated ('dedup only, not a security hash'). No code change required -- behavior is correct, just clarify intent in a comment."
+		},
+		{
+			"severity": "MEDIUM",
+			"category": "logic",
+			"file": "src/api/usageApi.ts",
+			"line": 156,
+			"description": "When oauth.expiresAt is falsy (0, null, undefined, not set), the expiry check is skipped entirely (line 156: 'if (oauth.expiresAt && ...'). The existing accessToken is returned directly without refresh. If expiresAt is missing because it was never set or was corrupted, the code silently uses whatever token is present without attempting to check its validity. This is not new behavior -- it existed before this commit -- but the refactor makes it permanent. The old code had the same gap, but when the token fails with 401, the new code now returns auth_expired (not auth_dead), so the circuit breaker will eventually kick in after 3 failures. So the behavior is acceptable, just surprising.",
+			"suggestion": "Add a comment: '// If expiresAt is absent, token was created without expiry info -- use it and let the API reject it if invalid.'"
+		}
+	],
+	"summary": {
+		"critical": 0,
+		"high": 4,
+		"medium": 2,
+		"passed": false
+	}
+}

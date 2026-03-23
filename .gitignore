@@ -14,3 +14,10 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project-local config
+.claude/settings.json
+.mcp.json
+CRASH-BUFFER.md
+coverage/
+dev/

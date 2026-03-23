@@ -1,0 +1,161 @@
+{
+	"reviewedAt": "2026-03-15T08:33:00.000Z",
+	"target": "git diff 5450bfc...HEAD (9 files, 556+/90-)",
+	"targetType": "code",
+	"lensesApplied": [
+		"code-review",
+		"logic-trace",
+		"error-paths",
+		"concurrency",
+		"regression",
+		"plan-critique",
+		"assumptions",
+		"integration",
+		"api-contracts",
+		"failure-sim",
+		"stress-scale",
+		"config",
+		"deps",
+		"debate",
+		"devils-advocate",
+		"test-gen"
+	],
+	"rootCauseClusters": [
+		{
+			"name": "Unguarded Concurrent Execution in PollingTimer",
+			"severity": "HIGH",
+			"description": "PollingTimer has no mutex or isTickInFlight flag. forceRefresh() bypasses isRunning guard. Concurrent tick() calls leak duplicate timer chains and corrupt shared state.",
+			"findingIds": [0, 1]
+		},
+		{
+			"name": "EMA Burn Rate Drift from Duplicate Calculations",
+			"severity": "HIGH",
+			"description": "refreshStatusBar() unconditionally recalculates burn rate EMA on every call (API poll, API error, cache watcher). Without new JSONL data, repeated EMA steps decay burn rate toward zero.",
+			"findingIds": [2]
+		},
+		{
+			"name": "Incomplete Signature Hash Blocks Valid Updates",
+			"severity": "HIGH",
+			"description": "Status bar signature hash includes only rate limit percentages and cooldowns. Cost, token count, burn rate, and file count changes are silently blocked from rendering.",
+			"findingIds": [3]
+		}
+	],
+	"findings": [
+		{
+			"id": 0,
+			"severity": "HIGH",
+			"lens": "concurrency",
+			"category": "race condition",
+			"file": "src/api/pollingTimer.ts",
+			"line": 68,
+			"description": "forceRefresh() calls tick() without checking isRunning or whether a tick is already in-flight. Two concurrent tick() calls produce duplicate timer chains (leaked setTimeout references) and doubled API calls.",
+			"suggestion": "Add an isTickInFlight boolean flag. Set true before fetchFn(), set false after. forceRefresh() should check isRunning and wait for or skip in-flight ticks."
+		},
+		{
+			"id": 1,
+			"severity": "HIGH",
+			"lens": "error-paths",
+			"category": "null dereference",
+			"file": "src/extension.ts",
+			"line": 310,
+			"description": "If forceRefresh() is called after stop() (e.g. during deactivation race), tick() runs, onData fires, and usageCache!.writeCache() dereferences null usageCache (set to null in deactivate()). The non-null assertion throws TypeError.",
+			"suggestion": "forceRefresh() should check isRunning before calling tick(). Additionally, the onData callback should guard usageCache with optional chaining."
+		},
+		{
+			"id": 2,
+			"severity": "HIGH",
+			"lens": "logic-trace",
+			"category": "state corruption",
+			"file": "src/extension.ts",
+			"line": 258,
+			"description": "refreshStatusBar() calls calculateBurnRateEMA() and replaces burnRateTracker on every invocation, even without new JSONL data. Each API poll/error/cache event applies an extra EMA smoothing step, decaying burn rate toward zero during normal operation.",
+			"suggestion": "Only recalculate burn rate EMA in the SessionWatcher onUpdate callback (when new JSONL data arrives). In refreshStatusBar(), reuse the last computed burn rate instead of recalculating."
+		},
+		{
+			"id": 3,
+			"severity": "HIGH",
+			"lens": "regression",
+			"category": "render skip",
+			"file": "src/ui/statusBar.ts",
+			"line": 109,
+			"description": "Signature hash excludes todayCost, monthCost, burnRate, totalInputTokens, totalOutputTokens. When JSONL data changes these values without crossing a percentage rounding boundary, the update() method returns early. Tooltip shows stale cost/token data.",
+			"suggestion": "Include todayCost, monthCost, and burnRate in the signature. Or compute signature from all displayed fields."
+		},
+		{
+			"id": 4,
+			"severity": "MEDIUM",
+			"lens": "error-paths",
+			"category": "NaN propagation",
+			"file": "src/api/usageCache.ts",
+			"line": 43,
+			"description": "readCache() does new Date(parsed.apiUsage.fetchedAt) without validating the field exists. If undefined, produces Invalid Date. getStaleness() handles this (returns 'critical') but statusBar.ts tooltip computes NaN age, displaying 'API data is NaNm old'.",
+			"suggestion": "Validate fetchedAt exists and is a valid date string before the Date constructor. If invalid, set fetchedAt to null or current date."
+		},
+		{
+			"id": 5,
+			"severity": "MEDIUM",
+			"lens": "code-review",
+			"category": "dead code",
+			"file": "src/api/usageCache.ts",
+			"line": 94,
+			"description": "isFresh() method is defined but never called anywhere in the codebase.",
+			"suggestion": "Remove it. If needed later, re-add with actual callers."
+		},
+		{
+			"id": 6,
+			"severity": "MEDIUM",
+			"lens": "integration",
+			"category": "timing",
+			"file": "src/extension.ts",
+			"line": 330,
+			"description": "pollingTimer.start() fires before performInitialParse() completes. First API result (5s) may arrive when lastKnownBuckets is still null. refreshStatusBar() silently returns, losing the display opportunity. Next API data arrives at 120s.",
+			"suggestion": "Start pollingTimer after performInitialParse completes, or set lastKnownBuckets from cached store data before starting the timer."
+		},
+		{
+			"id": 7,
+			"severity": "MEDIUM",
+			"lens": "failure-sim",
+			"category": "platform reliability",
+			"file": "src/api/usageCache.ts",
+			"line": 106,
+			"description": "vscode.workspace.createFileSystemWatcher with RelativePattern on non-workspace path (~/.claude/cache/) has inconsistent behavior across platforms. May not fire on some VS Code versions or with remote file systems.",
+			"suggestion": "Consider a fallback: if no file change event arrives within 2x the expected polling interval, do a manual readCache() check."
+		}
+	],
+	"planAttacks": [
+		{
+			"attack": "The architecture introduces 9 module-level mutable variables with no synchronization, creating a large surface for race conditions between SessionWatcher, PollingTimer, and cache watcher callbacks.",
+			"defense": "JavaScript is single-threaded; all callbacks run on the event loop. True data races are impossible. The only issue is interleaved async operations, which the isRunning guard in PollingTimer handles for the deactivation case.",
+			"outcome": "Survived"
+		},
+		{
+			"attack": "Burn rate EMA is recalculated on every refreshStatusBar() call, not just on new data arrival. This silently corrupts a key metric during normal operation.",
+			"defense": "The EMA converges to the same value when called with unchanged data. But the time-dependent denominator (timeSpanMinutes) changes between calls, causing the rate to drift.",
+			"outcome": "Survived"
+		},
+		{
+			"attack": "The signature hash optimization blocks legitimate updates to cost and token data in the tooltip.",
+			"defense": "The status bar text only shows percentages and cooldowns, which are in the signature. The tooltip is only built on hover... but actually, the MarkdownString is pre-computed in update() and cached.",
+			"outcome": "Survived"
+		},
+		{
+			"attack": "Shared cache via filesystem is fragile - file watchers may not fire, atomic writes can fail, and format versioning is missing.",
+			"defense": "Filesystem IPC is the only reliable cross-window communication in VS Code extensions. Atomic write + EPERM retry handles Windows edge cases. The feature degrades gracefully (each window works independently).",
+			"outcome": "Deflected"
+		},
+		{
+			"attack": "The staleness system may show perpetual 'critical' dimming if the first API fetch fails and never recovers, making the status bar permanently gray.",
+			"defense": "Exponential backoff caps at 300s, so recovery attempts continue indefinitely. The critical color is intentionally attention-grabbing to signal the API is unreachable.",
+			"outcome": "Deflected"
+		}
+	],
+	"debateVerdict": "CAUTION",
+	"overallVerdict": "CAUTION",
+	"summary": {
+		"critical": 0,
+		"high": 4,
+		"medium": 4,
+		"clusters": 3,
+		"passed": false
+	}
+}

@@ -1,0 +1,54 @@
+{
+	"reviewedAt": "2026-03-23T00:00:00.000Z",
+	"diffRange": "47370cc~1..47370cc",
+	"branch": "fix/auth-staleness-state-machine",
+	"totalFiles": 9,
+	"findings": [
+		{
+			"severity": "HIGH",
+			"category": "logic",
+			"file": "src/extension.ts",
+			"line": 341,
+			"description": "The VS Code warning notification fires every time the auth state transitions to 'dead'. Since resetAuth() is called by credentialsWatcher on any token file change, and the polling timer can enter dead immediately if the new token also fails, a single credential file write event followed by a bad token produces a second notification. More critically, if the user has multiple VS Code windows open (each with its own PollingTimer), all windows will simultaneously display this modal notification. There is no deduplication guard, cooldown, or per-window suppression. The stress test at line 988 of breakit-auth-stress.test.ts explicitly validates the dead->resetAuth->dead cycle as correct behavior, but the extension will toast the user twice in that flow.",
+			"suggestion": "Track the last time the notification was shown and suppress repeat notifications within a cooldown window (e.g. 5 minutes). A module-level `let lastAuthDeadNotificationAt = 0` with a `Date.now() - lastAuthDeadNotificationAt > 5 * 60_000` guard is sufficient."
+		},
+		{
+			"severity": "HIGH",
+			"category": "logic",
+			"file": "src/storage/credentialsWatcher.ts",
+			"line": 139,
+			"description": "The fix for token hash reading calls JSON.parse(content) a second time on line 139, even though the content was already parsed earlier on line 127 via parseCredentialsFile(content). This is a redundant double-parse. More importantly, the comment says 'content is already validated JSON above, so this won't throw', but this is only true when parseCredentialsFile does not return null via a try/catch internally. If parseCredentialsFile silently swallows a parse error and returns null, control returns early at line 128-133 before reaching line 139, so the guard is actually correct by accident. However, this is fragile: if parseCredentialsFile is ever changed to return a default value instead of null on error, line 139 will throw on malformed JSON. The correct fix is to hold the parsed object from parseCredentialsFile and extend it, not re-parse the raw string.",
+			"suggestion": "Store the result of JSON.parse(content) once before calling parseCredentialsFile, and reuse it for both the tier detection and the token hash extraction. This removes the double-parse and the implicit reliance on parseCredentialsFile returning null on malformed input."
+		},
+		{
+			"severity": "MEDIUM",
+			"category": "testing",
+			"file": "src/storage/credentialsWatcher.test.ts",
+			"line": 1716,
+			"description": "The test file comment at line 1716 says 'NOTE: tokenHash detection currently broken (reads from parseCredentialsFile return which strips claudeAiOauth)'. This was the pre-fix behavior being documented. The credentialsWatcher.ts was changed in this same commit to fix that exact bug (the JSON.parse fix on line 139). However, the test comment was not updated to reflect that the fix is now in place -- it reads as if the bug is still present and the tests are documenting broken behavior, when in fact the token change detection tests (lines 1951-2012) are testing the fixed code. This is a documentation accuracy issue that will mislead future readers.",
+			"suggestion": "Remove or update the NOTE comment to reflect that token hash detection was fixed in this commit and the tests validate the correct behavior."
+		},
+		{
+			"severity": "MEDIUM",
+			"category": "testing",
+			"file": "src/breakit-auth-stress.test.ts",
+			"line": 1628,
+			"description": "The test 'mixed error types: network->auth->network cycle' (line 1628) contains an inline comment at line 1663-1668 that reads as live deliberation: 'Actually looking at the code, network errors DON'T reset consecutiveAuthFailures. So: call3=auth(1), call4=network(1), call5=auth(2), call6=auth(3)=dead. Wait -- let me re-read.' This stream-of-consciousness analysis is committed into a test file. It implies the test author was uncertain about the expected behavior while writing the test. The assertion at line 1669 (expect(timer.authState).toBe('dead')) is stated as a conclusion but the reasoning leading to it is visibly confused. Per the learned-rules.md coding pattern: 'delete deliberation; state ONE chosen approach'. If the network error does not reset consecutiveAuthFailures, that is the behavior being tested -- but the inline uncertainty undermines confidence in the assertion.",
+			"suggestion": "Replace the inline deliberation comment with a single declarative statement explaining the invariant: 'network errors do not increment OR reset consecutiveAuthFailures; only consecutive auth errors count toward the threshold'. Verify the assertion matches pollingTimer.ts line 211-218 (network is not in isAuthError, so it does not increment but also does not reset the counter, meaning calls 3,5,6 are auth failures but call 4 is network -- that is only 3 auth failures total, 2 of which are consecutive at the end, but call 5 and 6 are consecutive after call 3 with a gap. Re-examine whether dead is actually reached on the given input pattern.'"
+		},
+		{
+			"severity": "MEDIUM",
+			"category": "testing",
+			"file": "src/breakit-auth-stress.test.ts",
+			"line": 737,
+			"description": "The PollingTimer state-machine tests that use jest.useFakeTimers() combined with a single await Promise.resolve() after advanceTimersByTime() may not correctly drain the async tick chain. The PollingTimer.tick() is async and internally calls this.fetchFn() which is also async. A single Promise.resolve() microtask flush after advancing fake timers is not guaranteed to complete the full async chain when there are multiple awaits inside tick(). The test at line 737 uses a single await Promise.resolve() per timer advancement, and some tests use two. This is inconsistent and could produce timing-dependent test results where the state has not yet been fully updated when assertions run.",
+			"suggestion": "Use a helper like `async function flushPromises() { await new Promise(resolve => setImmediate(resolve)); }` and call it after each advanceTimersByTime() to drain the full microtask queue. This is a widely-used pattern for async timer tests in Jest."
+		}
+	],
+	"summary": {
+		"critical": 0,
+		"high": 2,
+		"medium": 3,
+		"passed": false
+	}
+}

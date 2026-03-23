@@ -1,0 +1,38 @@
+{
+	"reviewedAt": "2026-03-23T00:00:00.000Z",
+	"diffRange": "a20bfa7~1..a20bfa7",
+	"branch": "fix/auth-staleness-state-machine",
+	"totalFiles": 3,
+	"findings": [
+		{
+			"severity": "HIGH",
+			"category": "logic",
+			"file": "src/storage/credentialsWatcher.ts",
+			"line": 127,
+			"description": "rawParsed is populated by JSON.parse(content) before parseCredentialsFile(content) is called. parseCredentialsFile also calls JSON.parse internally (line 26 of tierDetection.ts). The double-parse was not eliminated — it was just restructured so that rawParsed is parsed first and the result discarded if parseCredentialsFile later returns null. The only saving is avoiding a second parse in the success path; the malformed-JSON failure path still enters parseCredentialsFile which re-parses and fails again. The stated goal of 'eliminating double JSON.parse' is only half-achieved. More importantly, the new early-return on malformed JSON (lines 130-135) now makes the `parseCredentialsFile` null return on line 138 unreachable for malformed JSON — it only triggers for valid JSON that produces no recognised fields (empty object {}). The warning message 'Credentials file has no usable fields' is now accurate for that case, but the architecture is misleading: rawParsed is validated separately from what parseCredentialsFile validates, creating two divergent parse paths that could silently diverge if parseCredentialsFile's internal validation logic changes.",
+			"suggestion": "To truly eliminate the double parse, replace the parseCredentialsFile(content) call with a direct extraction from rawParsed: pull rateLimitTier and subscriptionType from rawParsed directly, then pass them to detectTierFromCredentials. This removes the second JSON.parse entirely. Alternatively, refactor parseCredentialsFile to accept an already-parsed object so the caller controls the single parse."
+		},
+		{
+			"severity": "HIGH",
+			"category": "logic",
+			"file": "src/extension.ts",
+			"line": 60,
+			"description": "lastAuthDeadNotifyAt is a module-level variable (not reset in deactivate()). In VS Code, extensions can be deactivated and reactivated within the same process (e.g. reload window, dev host restart). After deactivate() runs, lastAuthDeadNotifyAt retains its timestamp. On re-activation, the cooldown window from the previous session is applied, meaning the first auth-dead notification after reactivation may be silently suppressed for up to 5 minutes. The deactivate() function resets all other comparable state (lastBurnRate, lastKnownBuckets, lastKnownStats) but omits lastAuthDeadNotifyAt.",
+			"suggestion": "Add `lastAuthDeadNotifyAt = 0;` to the deactivate() function alongside the other state resets at lines 582-584."
+		},
+		{
+			"severity": "MEDIUM",
+			"category": "testing",
+			"file": "src/storage/credentialsWatcher.test.ts",
+			"line": 1,
+			"description": "No test covers the case where JSON parses successfully (rawParsed succeeds) but parseCredentialsFile returns null — i.e. valid JSON that is not an object (e.g. a JSON array or null literal). In the new code path, rawParsed would be assigned and then parseCredentialsFile would return null triggering the 'no usable fields' branch. The test suite only covers the malformed-JSON path for the null-credentials case. This leaves the new early-return path at line 138 untested for its actual triggering condition.",
+			"suggestion": "Add a test case where mockReadFile returns valid JSON that is not a plain object, such as '[\"not\",\"an\",\"object\"]' or 'null', and assert the watcher returns the fallback tier."
+		}
+	],
+	"summary": {
+		"critical": 0,
+		"high": 2,
+		"medium": 1,
+		"passed": false
+	}
+}

@@ -1,0 +1,196 @@
+{
+	"reviewedAt": "2026-03-23T11:08:00.000Z",
+	"target": "src/api/usageApi.ts, src/api/pollingTimer.ts, src/ui/statusBar.ts, src/api/usageCache.ts",
+	"targetType": "code",
+	"lensesApplied": [
+		"code-review",
+		"logic-trace",
+		"error-paths",
+		"concurrency",
+		"regression",
+		"plan-critique",
+		"assumptions",
+		"integration",
+		"api-contracts",
+		"failure-sim",
+		"stress-scale",
+		"config",
+		"deps",
+		"debate",
+		"devils-advocate",
+		"test-generation"
+	],
+	"rootCauseClusters": [
+		{
+			"name": "Auth Death Spiral",
+			"severity": "CRITICAL",
+			"description": "No auth state machine. Dead auth (expired refresh token) is treated as transient failure. PollingTimer retries forever with a known-bad token, producing 401s every 5 minutes indefinitely. No user notification, no circuit breaker, no recovery path. This is the root cause of the 7x recurrence.",
+			"findingIds": [0, 1, 2, 3, 4, 8]
+		},
+		{
+			"name": "Cache Freshness Lies",
+			"severity": "HIGH",
+			"description": "Multiple paths cause stale/missing cache data to report itself as fresh: missing fetchedAt defaults to new Date(), getStaleness(null) returns 'normal', backward clock jump produces negative age that reads as 'fresh'. User sees confident-looking data that may be hours old.",
+			"findingIds": [5, 6, 9, 10]
+		},
+		{
+			"name": "User Blindness",
+			"severity": "HIGH",
+			"description": "User has no way to understand or fix the problem: forceRefresh silently dropped, staleness display has no action hint, 'normal' state is ambiguous (could mean 'recent data' or 'never fetched').",
+			"findingIds": [7, 11]
+		}
+	],
+	"findings": [
+		{
+			"id": 0,
+			"severity": "CRITICAL",
+			"lens": "error-paths",
+			"category": "auth-failure-detection",
+			"file": "src/api/usageApi.ts",
+			"line": 66,
+			"description": "refreshOAuthToken returns null for ALL failure modes (400 bad grant, 401 revoked, network error, timeout). Caller cannot distinguish terminal (dead refresh token) from transient (network blip) failures.",
+			"suggestion": "Return a discriminated union: {ok: token} | {error: 'refresh_token_expired'} | {error: 'network'} | {error: 'server_error'}. Map HTTP 400/401 to terminal, network/timeout to transient."
+		},
+		{
+			"id": 1,
+			"severity": "CRITICAL",
+			"lens": "logic-trace",
+			"category": "auth-fallthrough",
+			"file": "src/api/usageApi.ts",
+			"line": 141,
+			"description": "After refresh fails, code falls through to try the known-expired token. This always produces a 401 from the API, which the extension treats as a transient failure. Entry point to the death spiral.",
+			"suggestion": "When refresh returns a terminal error, return null immediately without trying the expired token. Or propagate the error type so PollingTimer can make an informed decision."
+		},
+		{
+			"id": 2,
+			"severity": "CRITICAL",
+			"lens": "code-review",
+			"category": "misleading-log",
+			"file": "src/api/usageApi.ts",
+			"line": 205,
+			"description": "401 handler logs 'Will retry when Claude Code refreshes it' -- but nothing detects when Claude Code refreshes. The CredentialsWatcher only watches for tier changes, not token changes. This message implies automatic recovery that will never happen.",
+			"suggestion": "Either make CredentialsWatcher signal the PollingTimer on token changes, or change the log message to reflect reality: 'Auth expired. User must re-authenticate in Claude Code.'"
+		},
+		{
+			"id": 3,
+			"severity": "HIGH",
+			"lens": "code-review",
+			"category": "missing-circuit-breaker",
+			"file": "src/api/pollingTimer.ts",
+			"line": 27,
+			"description": "consecutiveFailures increments without bound. No circuit breaker. After N failures (e.g. 5), should transition to 'dead' state, stop polling, and notify user.",
+			"suggestion": "Add AUTH_DEAD_THRESHOLD = 5. When consecutiveFailures >= threshold and last error was auth-related, stop polling and emit an 'authDead' event. Resume when credentials file changes."
+		},
+		{
+			"id": 4,
+			"severity": "HIGH",
+			"lens": "integration",
+			"category": "error-type-erasure",
+			"file": "src/api/pollingTimer.ts",
+			"line": 19,
+			"description": "fetchFn signature is () => Promise<ApiUsageData | null>. The null erases all error information. Timer cannot distinguish auth failure, network error, rate limiting, or server error.",
+			"suggestion": "Change to () => Promise<FetchResult> where FetchResult = {ok: ApiUsageData} | {error: 'auth_dead' | 'network' | 'rate_limited' | 'server_error'}."
+		},
+		{
+			"id": 5,
+			"severity": "HIGH",
+			"lens": "code-review",
+			"category": "cache-freshness-lie",
+			"file": "src/api/usageCache.ts",
+			"line": 45,
+			"description": "Invalid/missing fetchedAt defaults to new Date(), making corrupted or old cache data appear freshly fetched. getStaleness returns 'fresh' for data that could be hours old.",
+			"suggestion": "Return null from readCache when fetchedAt is missing or invalid, rather than defaulting to now. Let the caller decide how to handle missing data."
+		},
+		{
+			"id": 6,
+			"severity": "HIGH",
+			"lens": "api-contracts",
+			"category": "ambiguous-staleness",
+			"file": "src/api/usageCache.ts",
+			"line": 139,
+			"description": "getStaleness(null) returns 'normal'. This means 'API never connected' displays identically to '30-60 minute old data'. User cannot distinguish the two states.",
+			"suggestion": "Add an 'unavailable' staleness level for null fetchedAt. Status bar should show a distinct indicator when API has never been reached."
+		},
+		{
+			"id": 7,
+			"severity": "HIGH",
+			"lens": "code-review",
+			"category": "silent-no-op",
+			"file": "src/api/pollingTimer.ts",
+			"line": 71,
+			"description": "forceRefresh() is a silent no-op when isTickInFlight is true. User's explicit refresh action is dropped with no feedback. Status bar shows 'Refreshing...' spinner but nothing actually happens.",
+			"suggestion": "Queue the force refresh request. When the in-flight tick completes, immediately run another tick instead of scheduling at the normal interval."
+		},
+		{
+			"id": 8,
+			"severity": "HIGH",
+			"lens": "concurrency",
+			"category": "credential-write-race",
+			"file": "src/api/usageApi.ts",
+			"line": 93,
+			"description": "refreshOAuthToken does read-modify-write on .credentials.json without file locking or atomic write (temp+rename). Claude Code writes the same file. Concurrent writes can corrupt tokens.",
+			"suggestion": "Use temp+rename pattern (like usageCache.ts does). Or better: don't write to the credentials file at all -- let Claude Code own it. Just read and use tokens, don't refresh them."
+		},
+		{
+			"id": 9,
+			"severity": "MEDIUM",
+			"lens": "failure-sim",
+			"category": "clock-jump",
+			"file": "src/api/usageCache.ts",
+			"line": 140,
+			"description": "Backward clock jump produces negative ageMs. All threshold checks (ageMs < 30min, etc.) pass because negative < positive. getStaleness returns 'fresh' for potentially hours-old data.",
+			"suggestion": "Add guard: if (ageMs < 0) return 'stale'; at the top of getStaleness."
+		},
+		{
+			"id": 10,
+			"severity": "MEDIUM",
+			"lens": "config",
+			"category": "hardcoded-client-id",
+			"file": "src/api/usageApi.ts",
+			"line": 47,
+			"description": "Hardcoded OAuth client_id. If Anthropic rotates or revokes this ID, the extension silently fails with no recovery path short of an extension update.",
+			"suggestion": "Make configurable via extension settings with the current value as default."
+		},
+		{
+			"id": 11,
+			"severity": "MEDIUM",
+			"lens": "failure-sim",
+			"category": "no-action-hint",
+			"file": "src/ui/statusBar.ts",
+			"line": 256,
+			"description": "Staleness tooltip shows 'API data is Xm old' but provides no action hint. User doesn't know whether to click refresh, restart VS Code, or re-authenticate in Claude Code.",
+			"suggestion": "Add action hint based on auth state: 'Click to refresh' for transient issues, 'Re-authenticate in Claude Code' for auth death."
+		}
+	],
+	"planAttacks": [
+		{
+			"attack": "No auth state machine -- system cannot distinguish terminal from transient failures",
+			"defense": "Extension is passive observer, Claude Code owns auth",
+			"outcome": "Survived"
+		},
+		{
+			"attack": "null does too much work as error signal -- erases all diagnostic information",
+			"defense": "Simplicity, timer doesn't need to know why",
+			"outcome": "Survived"
+		},
+		{
+			"attack": "Cache fetchedAt fallback to new Date() is a time bomb",
+			"defense": "Better to show stale data than no data",
+			"outcome": "Survived"
+		},
+		{
+			"attack": "Staleness thresholds too generous for 2-min polling interval",
+			"defense": "Rate limits change slowly (5h/7d windows)",
+			"outcome": "Deflected"
+		}
+	],
+	"debateVerdict": "STOP",
+	"overallVerdict": "STOP",
+	"summary": {
+		"critical": 3,
+		"high": 6,
+		"medium": 3,
+		"clusters": 3,
+		"passed": false
+	}
+}
