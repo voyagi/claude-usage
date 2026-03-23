@@ -1,6 +1,16 @@
 node_modules/
 dist/
-*.vsix
-.env
 out/
+*.vsix
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
 .vscode/
+
+# OS
+.DS_Store
+Thumbs.db

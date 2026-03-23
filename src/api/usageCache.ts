@@ -9,7 +9,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { ApiUsageData, StalenessLevel, UsageCacheData } from "../types.js";
+import type { StalenessLevel, UsageCacheData } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 
 const CACHE_DIR = path.join(os.homedir(), ".claude", "cache");
