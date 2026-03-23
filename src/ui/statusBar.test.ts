@@ -193,14 +193,14 @@ describe("StatusBarManager: staleness dimming", () => {
 		expect(sonnetItem.color).toBe(CRITICAL_COLOR);
 	});
 
-	it("uses STALE_COLOR for dim staleness", () => {
+	it("uses normal colors for dim staleness (1-2h is not concerning)", () => {
 		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
 
 		manager.update(makeStatusBarData({ staleness: "dim" }));
 
-		expect(sessionItem.color).toBe(STALE_COLOR);
-		expect(weeklyItem.color).toBe(STALE_COLOR);
-		expect(sonnetItem.color).toBe(STALE_COLOR);
+		expect(sessionItem.color).toBe(SESSION_COLOR);
+		expect(weeklyItem.color).toBe(WEEKLY_COLOR);
+		expect(sonnetItem.color).toBe(SONNET_COLOR);
 	});
 
 	it("uses STALE_COLOR for stale staleness", () => {
