@@ -14,24 +14,136 @@ interface OAuthCredentials {
 	claudeAiOauth?: {
 		accessToken: string;
 		refreshToken?: string;
-		expiresAt?: string;
+		expiresAt?: number;
+		scopes?: string[];
+		subscriptionType?: string;
+		rateLimitTier?: string;
 	};
+	[key: string]: unknown;
+}
+
+/**
+ * Refresh the OAuth token using the refresh token.
+ * Writes updated credentials back to disk so Claude Code and other
+ * windows pick up the new token.
+ */
+async function refreshOAuthToken(
+	credPath: string,
+	creds: OAuthCredentials,
+	logger: Logger,
+): Promise<string | null> {
+	const refreshToken = creds.claudeAiOauth?.refreshToken;
+	if (!refreshToken) {
+		logger.info("No refresh token available, cannot refresh");
+		return null;
+	}
+
+	logger.info("OAuth token expired, attempting refresh...");
+
+	return new Promise((resolve) => {
+		const postData = JSON.stringify({
+			grant_type: "refresh_token",
+			refresh_token: refreshToken,
+			client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+		});
+
+		const req = https.request(
+			"https://platform.claude.com/v1/oauth/token",
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"Content-Length": Buffer.byteLength(postData),
+				},
+				timeout: 10000,
+			},
+			(res) => {
+				let data = "";
+				res.on("data", (chunk) => {
+					data += chunk;
+				});
+				res.on("end", async () => {
+					if (res.statusCode !== 200) {
+						logger.warn(
+							`Token refresh failed (${res.statusCode}): ${data.slice(0, 200)}`,
+						);
+						resolve(null);
+						return;
+					}
+					try {
+						const json = JSON.parse(data);
+						const newAccessToken = json.access_token;
+						const expiresIn = json.expires_in ?? 3600;
+						const newRefreshToken = json.refresh_token ?? refreshToken;
+
+						if (!newAccessToken) {
+							logger.warn("Token refresh response missing access_token");
+							resolve(null);
+							return;
+						}
+
+						// Update credentials in memory and on disk
+						creds.claudeAiOauth = {
+							...creds.claudeAiOauth!,
+							accessToken: newAccessToken,
+							refreshToken: newRefreshToken,
+							expiresAt: Date.now() + expiresIn * 1000,
+						};
+
+						await fs.writeFile(credPath, JSON.stringify(creds), "utf8");
+						logger.info(`OAuth token refreshed, expires in ${expiresIn}s`);
+						resolve(newAccessToken);
+					} catch (parseError) {
+						logger.warn(
+							`Failed to parse token refresh response: ${parseError}`,
+						);
+						resolve(null);
+					}
+				});
+			},
+		);
+
+		req.on("error", (error) => {
+			logger.warn(`Token refresh request failed: ${error.message}`);
+			resolve(null);
+		});
+
+		req.on("timeout", () => {
+			req.destroy();
+			logger.warn("Token refresh request timed out");
+			resolve(null);
+		});
+
+		req.write(postData);
+		req.end();
+	});
 }
 
 /**
  * Read OAuth access token from ~/.claude/.credentials.json
+ * If the token is expired, attempts to refresh it automatically.
  */
 async function getAccessToken(logger: Logger): Promise<string | null> {
 	const credPath = path.join(os.homedir(), ".claude", ".credentials.json");
 	try {
 		const raw = await fs.readFile(credPath, "utf8");
 		const creds: OAuthCredentials = JSON.parse(raw);
-		const token = creds.claudeAiOauth?.accessToken;
-		if (!token) {
+		const oauth = creds.claudeAiOauth;
+		if (!oauth?.accessToken) {
 			logger.info("No OAuth access token found in credentials");
 			return null;
 		}
-		return token;
+
+		// Check if token is expired (with 5-minute buffer)
+		if (oauth.expiresAt && Date.now() > oauth.expiresAt - 5 * 60_000) {
+			const refreshed = await refreshOAuthToken(credPath, creds, logger);
+			if (refreshed) return refreshed;
+			// Fall through to try the expired token anyway --
+			// sometimes the API accepts slightly expired tokens
+			logger.info("Refresh failed, trying existing token");
+		}
+
+		return oauth.accessToken;
 	} catch (error) {
 		logger.warn(
 			`Could not read credentials: ${error instanceof Error ? error.message : error}`,

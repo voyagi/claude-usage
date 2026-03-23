@@ -135,7 +135,8 @@ export class UsageCache {
  * Compute staleness level from a fetchedAt timestamp
  */
 export function getStaleness(fetchedAt: Date | null): StalenessLevel {
-	if (!fetchedAt) return "critical";
+	// No API data at all: show normal colors (JSONL data is fine)
+	if (!fetchedAt) return "normal";
 	const ageMs = Date.now() - fetchedAt.getTime();
 	// Rate limits are 5h/7d windows -- data changes slowly.
 	// Only warn when data is truly old enough to be misleading.
