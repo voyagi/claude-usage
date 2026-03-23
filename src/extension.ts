@@ -582,6 +582,7 @@ export function deactivate() {
 	lastBurnRate = 0;
 	lastKnownBuckets = null;
 	lastKnownStats = null;
+	lastAuthDeadNotifyAt = 0;
 	logger.info("Claude Usage Monitor deactivated");
 }
 

@@ -12,8 +12,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+	type CredentialsData,
 	detectTierFromCredentials,
-	parseCredentialsFile,
 } from "../core/tierDetection.js";
 import type { PlanType } from "../types.js";
 import { Logger } from "../utils/logger.js";
@@ -134,13 +134,11 @@ export class CredentialsWatcher {
 				return { tier: fallback, tokenHash: null };
 			}
 
-			const credentials = parseCredentialsFile(content);
-			if (!credentials) {
-				this.logger.warn(
-					"Credentials file has no usable fields, using fallback tier",
-				);
-				return { tier: fallback, tokenHash: null };
-			}
+			const credentials: CredentialsData = {};
+			if (rawParsed.rateLimitTier)
+				credentials.rateLimitTier = rawParsed.rateLimitTier;
+			if (rawParsed.subscriptionType)
+				credentials.subscriptionType = rawParsed.subscriptionType;
 
 			const tier = detectTierFromCredentials(credentials, fallback);
 
