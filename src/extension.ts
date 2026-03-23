@@ -56,6 +56,8 @@ let lastKnownWeeklyTokens = 0;
 let cachedApiUsage: ApiUsageData | null = null;
 let pollingTimer: PollingTimer | null = null;
 let usageCache: UsageCache | null = null;
+const AUTH_DEAD_NOTIFY_COOLDOWN_MS = 5 * 60_000; // 5 minutes
+let lastAuthDeadNotifyAt = 0;
 let lastKnownBuckets: TimeBuckets | null = null;
 let lastKnownStats: { filesProcessed: number; linesSkipped: number } | null =
 	null;
@@ -339,18 +341,22 @@ export async function activate(context: vscode.ExtensionContext) {
 			refreshStatusBar();
 
 			if (authState === "dead") {
-				void vscode.window
-					.showWarningMessage(
-						"Claude Usage: Auth expired. Run `claude login` to restore live data.",
-						"Open Terminal",
-					)
-					.then((action) => {
-						if (action === "Open Terminal") {
-							const terminal = vscode.window.createTerminal("Claude Auth");
-							terminal.show();
-							terminal.sendText("claude login");
-						}
-					});
+				const now = Date.now();
+				if (now - lastAuthDeadNotifyAt > AUTH_DEAD_NOTIFY_COOLDOWN_MS) {
+					lastAuthDeadNotifyAt = now;
+					void vscode.window
+						.showWarningMessage(
+							"Claude Usage: Auth expired. Run `claude login` to restore live data.",
+							"Open Terminal",
+						)
+						.then((action) => {
+							if (action === "Open Terminal") {
+								const terminal = vscode.window.createTerminal("Claude Auth");
+								terminal.show();
+								terminal.sendText("claude login");
+							}
+						});
+				}
 			}
 		},
 		logger,

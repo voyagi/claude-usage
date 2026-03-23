@@ -8,8 +8,8 @@
  * - start() reads initial tier and sets up watcher
  * - dispose() cleans up
  *
- * NOTE: tokenHash detection currently broken (reads from parseCredentialsFile
- * return which strips claudeAiOauth). Tests document actual behavior.
+ * tokenHash detection reads accessToken from raw JSON parse (not from
+ * parseCredentialsFile which strips claudeAiOauth).
  */
 
 const mockReadFile = jest.fn();

@@ -124,20 +124,29 @@ export class CredentialsWatcher {
 				return { tier: fallback, tokenHash: null };
 			}
 
-			const credentials = parseCredentialsFile(content);
-			if (!credentials) {
+			let rawParsed: Record<string, any>;
+			try {
+				rawParsed = JSON.parse(content);
+			} catch {
 				this.logger.warn(
 					"Credentials file is malformed JSON, using fallback tier",
 				);
 				return { tier: fallback, tokenHash: null };
 			}
 
+			const credentials = parseCredentialsFile(content);
+			if (!credentials) {
+				this.logger.warn(
+					"Credentials file has no usable fields, using fallback tier",
+				);
+				return { tier: fallback, tokenHash: null };
+			}
+
 			const tier = detectTierFromCredentials(credentials, fallback);
 
-			// parseCredentialsFile strips claudeAiOauth, so extract from raw parse.
-			// content is already validated JSON above, so this won't throw.
-			const accessToken = (JSON.parse(content) as Record<string, any>)
-				?.claudeAiOauth?.accessToken as string | undefined;
+			const accessToken = rawParsed?.claudeAiOauth?.accessToken as
+				| string
+				| undefined;
 			const tokenHash = accessToken
 				? crypto
 						.createHash("sha256")
