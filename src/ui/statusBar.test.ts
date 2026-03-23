@@ -48,12 +48,7 @@ jest.mock(
 	{ virtual: true },
 );
 
-import type {
-	AuthState,
-	RateLimitInfo,
-	StatusBarData,
-	StalenessLevel,
-} from "../types";
+import type { RateLimitInfo, StalenessLevel, StatusBarData } from "../types";
 import { StatusBarManager } from "./statusBar";
 
 // ── Helpers ──────────────────────────────────────────────────────────

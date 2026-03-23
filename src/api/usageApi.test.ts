@@ -24,8 +24,8 @@ jest.mock("node:fs/promises", () => ({
 }));
 
 import { EventEmitter } from "node:events";
-import { fetchApiUsage } from "./usageApi";
 import type { Logger } from "../utils/logger";
+import { fetchApiUsage } from "./usageApi";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 

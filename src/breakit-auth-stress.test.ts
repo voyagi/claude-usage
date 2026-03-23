@@ -35,8 +35,8 @@ jest.mock("node:fs/promises", () => ({
 }));
 
 import { EventEmitter } from "node:events";
-import { fetchApiUsage } from "./api/usageApi";
 import { PollingTimer } from "./api/pollingTimer";
+import { fetchApiUsage } from "./api/usageApi";
 import type {
 	ApiUsageData,
 	AuthState,
@@ -873,11 +873,11 @@ describe("BREAKIT AUTH CONCURRENCY: Dual-window token refresh", () => {
 	});
 
 	it("resetAuth on one timer does not affect the other", async () => {
-		let fetchCount = 0;
+		let _fetchCount = 0;
 
 		const timer1 = new PollingTimer(
 			() => {
-				fetchCount++;
+				_fetchCount++;
 				return Promise.resolve(failResult("auth_dead"));
 			},
 			jest.fn(),
@@ -888,7 +888,7 @@ describe("BREAKIT AUTH CONCURRENCY: Dual-window token refresh", () => {
 
 		const timer2 = new PollingTimer(
 			() => {
-				fetchCount++;
+				_fetchCount++;
 				return Promise.resolve(failResult("auth_dead"));
 			},
 			jest.fn(),
@@ -918,12 +918,12 @@ describe("BREAKIT AUTH CONCURRENCY: Dual-window token refresh", () => {
 	});
 
 	it("simultaneous forceRefresh on both timers handles correctly", async () => {
-		let fetchCount = 0;
+		let _fetchCount = 0;
 		const fetchStarted = jest.fn();
 		const fetchCompleted = jest.fn();
 
 		const slowFetch = (): Promise<FetchResult> => {
-			fetchCount++;
+			_fetchCount++;
 			fetchStarted();
 			return new Promise((resolve) => {
 				// Simulate slow fetch
