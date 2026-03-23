@@ -6,8 +6,8 @@
  * Focus: auth failure chain, cache freshness lies, polling recovery gaps
  */
 
-import { getStaleness } from "../src/api/usageCache";
 import { PollingTimer } from "../src/api/pollingTimer";
+import { getStaleness } from "../src/api/usageCache";
 
 // ── getStaleness boundary tests ──
 
