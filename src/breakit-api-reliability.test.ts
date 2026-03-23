@@ -57,41 +57,41 @@ function makeApiData(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
 
 describe("BREAKIT: getStaleness", () => {
 	describe("Boundary Assault", () => {
-		it("returns 'critical' for null", () => {
-			expect(getStaleness(null)).toBe("critical");
+		it("returns 'normal' for null (no API data, JSONL still fine)", () => {
+			expect(getStaleness(null)).toBe("normal");
 		});
 
 		it("returns 'fresh' for Date.now()", () => {
 			expect(getStaleness(new Date())).toBe("fresh");
 		});
 
-		it("returns 'fresh' at exactly 4m59s ago", () => {
-			const d = new Date(Date.now() - 4 * 60_000 - 59_000);
+		it("returns 'fresh' at exactly 29m59s ago", () => {
+			const d = new Date(Date.now() - 29 * 60_000 - 59_000);
 			expect(getStaleness(d)).toBe("fresh");
 		});
 
-		it("returns 'normal' at exactly 5m0s ago", () => {
-			const d = new Date(Date.now() - 5 * 60_000);
+		it("returns 'normal' at exactly 30m ago", () => {
+			const d = new Date(Date.now() - 30 * 60_000);
 			expect(getStaleness(d)).toBe("normal");
 		});
 
-		it("returns 'normal' at 9m59s ago", () => {
-			const d = new Date(Date.now() - 9 * 60_000 - 59_000);
+		it("returns 'normal' at 59m59s ago", () => {
+			const d = new Date(Date.now() - 59 * 60_000 - 59_000);
 			expect(getStaleness(d)).toBe("normal");
 		});
 
-		it("returns 'dim' at exactly 10m ago", () => {
-			const d = new Date(Date.now() - 10 * 60_000);
+		it("returns 'dim' at exactly 60m ago", () => {
+			const d = new Date(Date.now() - 60 * 60_000);
 			expect(getStaleness(d)).toBe("dim");
 		});
 
-		it("returns 'stale' at exactly 20m ago", () => {
-			const d = new Date(Date.now() - 20 * 60_000);
+		it("returns 'stale' at exactly 120m ago", () => {
+			const d = new Date(Date.now() - 120 * 60_000);
 			expect(getStaleness(d)).toBe("stale");
 		});
 
-		it("returns 'critical' at exactly 30m ago", () => {
-			const d = new Date(Date.now() - 30 * 60_000);
+		it("returns 'critical' at exactly 240m ago", () => {
+			const d = new Date(Date.now() - 240 * 60_000);
 			expect(getStaleness(d)).toBe("critical");
 		});
 
@@ -104,47 +104,47 @@ describe("BREAKIT: getStaleness", () => {
 		it("handles Invalid Date", () => {
 			const invalid = new Date("not-a-date");
 			// Invalid Date.getTime() returns NaN, Date.now() - NaN = NaN
-			// NaN < 5*60000 is false, NaN < 10*60000 is false, etc.
+			// NaN < 30*60000 is false, NaN < 60*60000 is false, etc.
 			// So all comparisons fail, should fall through to 'critical'
 			expect(getStaleness(invalid)).toBe("critical");
 		});
 
 		it("handles future dates (negative age)", () => {
 			const future = new Date(Date.now() + 60_000);
-			// ageMs is negative, negative < 5*60000 is true -> 'fresh'
+			// ageMs is negative, negative < 30*60000 is true -> 'fresh'
 			expect(getStaleness(future)).toBe("fresh");
 		});
 	});
 
 	describe("Mutation Detectors", () => {
-		// If someone changes < to <= at the 5m boundary
-		it("boundary: 5m minus 1ms is fresh, 5m is normal", () => {
-			const justUnder = new Date(Date.now() - 5 * 60_000 + 1);
-			const atBoundary = new Date(Date.now() - 5 * 60_000);
+		// If someone changes < to <= at the 30m boundary
+		it("boundary: 30m minus 1ms is fresh, 30m is normal", () => {
+			const justUnder = new Date(Date.now() - 30 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 30 * 60_000);
 			expect(getStaleness(justUnder)).toBe("fresh");
 			expect(getStaleness(atBoundary)).toBe("normal");
 		});
 
-		// If someone changes < to <= at the 10m boundary
-		it("boundary: 10m minus 1ms is normal, 10m is dim", () => {
-			const justUnder = new Date(Date.now() - 10 * 60_000 + 1);
-			const atBoundary = new Date(Date.now() - 10 * 60_000);
+		// If someone changes < to <= at the 60m boundary
+		it("boundary: 60m minus 1ms is normal, 60m is dim", () => {
+			const justUnder = new Date(Date.now() - 60 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 60 * 60_000);
 			expect(getStaleness(justUnder)).toBe("normal");
 			expect(getStaleness(atBoundary)).toBe("dim");
 		});
 
-		// If someone changes < to <= at the 20m boundary
-		it("boundary: 20m minus 1ms is dim, 20m is stale", () => {
-			const justUnder = new Date(Date.now() - 20 * 60_000 + 1);
-			const atBoundary = new Date(Date.now() - 20 * 60_000);
+		// If someone changes < to <= at the 120m boundary
+		it("boundary: 120m minus 1ms is dim, 120m is stale", () => {
+			const justUnder = new Date(Date.now() - 120 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 120 * 60_000);
 			expect(getStaleness(justUnder)).toBe("dim");
 			expect(getStaleness(atBoundary)).toBe("stale");
 		});
 
-		// If someone changes < to <= at the 30m boundary
-		it("boundary: 30m minus 1ms is stale, 30m is critical", () => {
-			const justUnder = new Date(Date.now() - 30 * 60_000 + 1);
-			const atBoundary = new Date(Date.now() - 30 * 60_000);
+		// If someone changes < to <= at the 240m boundary
+		it("boundary: 240m minus 1ms is stale, 240m is critical", () => {
+			const justUnder = new Date(Date.now() - 240 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 240 * 60_000);
 			expect(getStaleness(justUnder)).toBe("stale");
 			expect(getStaleness(atBoundary)).toBe("critical");
 		});
@@ -502,8 +502,8 @@ describe("BREAKIT: formatCooldownCompact", () => {
 
 describe("BREAKIT: predictTimeUntilLimit", () => {
 	describe("Boundary Assault", () => {
-		it("0 tokens, 0 limit, non-zero rate returns 0", () => {
-			expect(predictTimeUntilLimit(0, 0, 10)).toBe(0);
+		it("0 tokens, 0 limit, non-zero rate returns null (limit <= 0)", () => {
+			expect(predictTimeUntilLimit(0, 0, 10)).toBeNull();
 		});
 
 		it("negative current tokens", () => {
@@ -512,9 +512,8 @@ describe("BREAKIT: predictTimeUntilLimit", () => {
 			expect(result).toBe(110);
 		});
 
-		it("negative limit tokens", () => {
-			// currentTokens (100) >= limitTokens (-100), returns 0
-			expect(predictTimeUntilLimit(100, -100, 10)).toBe(0);
+		it("negative limit tokens returns null (limit <= 0)", () => {
+			expect(predictTimeUntilLimit(100, -100, 10)).toBeNull();
 		});
 
 		it("very small burn rate produces capped result", () => {
@@ -1179,8 +1178,8 @@ describe("ESCALATION: PollingTimer Concurrency Stress", () => {
 describe("ESCALATION: getStaleness time-edge precision", () => {
 	it("all 5 staleness levels reachable in sequence", () => {
 		const levels = new Set<string>();
-		// Sample every minute from 0 to 35 minutes
-		for (let m = 0; m <= 35; m++) {
+		// Sample every 10 minutes from 0 to 250 minutes (past the 240m critical boundary)
+		for (let m = 0; m <= 250; m += 10) {
 			const d = new Date(Date.now() - m * 60_000);
 			levels.add(getStaleness(d));
 		}
