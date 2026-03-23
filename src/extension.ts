@@ -9,8 +9,8 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { aggregateUsage } from "./aggregation/timeBuckets.js";
 import { PollingTimer } from "./api/pollingTimer.js";
-import { UsageCache } from "./api/usageCache.js";
 import { fetchApiUsage } from "./api/usageApi.js";
+import { UsageCache } from "./api/usageCache.js";
 import { exportUsageData } from "./commands/exportData.js";
 import type { BurnRateTracker } from "./core/burnRate.js";
 import {
@@ -18,6 +18,7 @@ import {
 	createBurnRateTracker,
 } from "./core/burnRate.js";
 import { buildStatusBarData } from "./core/rateLimits.js";
+import { mapTierStringToPlanType } from "./core/tierDetection.js";
 import type { RateLimitEvent } from "./parser/incrementalParser.js";
 import { parseAllSessions } from "./parser/jsonlParser.js";
 import { refineLimitEstimate } from "./parser/rateLimitDetector.js";
@@ -28,7 +29,6 @@ import {
 } from "./pricing/pricingEngine.js";
 import { CredentialsWatcher } from "./storage/credentialsWatcher.js";
 import { UsageStore } from "./storage/usageStore.js";
-import { mapTierStringToPlanType } from "./core/tierDetection.js";
 import type {
 	ApiUsageData,
 	PlanType,

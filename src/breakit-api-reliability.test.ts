@@ -9,6 +9,14 @@
 // Mock vscode module (not available in Node test environment)
 jest.mock("vscode", () => ({}), { virtual: true });
 
+import { PollingTimer } from "./api/pollingTimer";
+import { getStaleness } from "./api/usageCache";
+import { predictTimeUntilLimit } from "./core/burnRate";
+import {
+	mapTierStringToPlanType,
+	parseCredentialsFile,
+} from "./core/tierDetection";
+import type { ApiUsageData } from "./types";
 import {
 	formatBarGraph,
 	formatBurnRate,
@@ -17,16 +25,7 @@ import {
 	formatPaceForecast,
 	formatPercentage,
 	formatTimeUntilLimit,
-	formatTokens,
 } from "./ui/formatting";
-import { getStaleness } from "./api/usageCache";
-import {
-	mapTierStringToPlanType,
-	parseCredentialsFile,
-} from "./core/tierDetection";
-import { predictTimeUntilLimit } from "./core/burnRate";
-import { PollingTimer } from "./api/pollingTimer";
-import type { ApiUsageData } from "./types";
 import type { Logger } from "./utils/logger";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -179,7 +178,7 @@ describe("BREAKIT: mapTierStringToPlanType", () => {
 		});
 
 		it("handles very long strings", () => {
-			const long = "a".repeat(10_000) + "max_20" + "b".repeat(10_000);
+			const long = `${"a".repeat(10_000)}max_20${"b".repeat(10_000)}`;
 			expect(mapTierStringToPlanType(long)).toBe("max20");
 		});
 	});
@@ -866,7 +865,7 @@ describe("BREAKIT: parseCredentialsFile", () => {
 			const depth = 100;
 			const open = '{"a":'.repeat(depth);
 			const close = "}".repeat(depth);
-			const result = parseCredentialsFile(open + "1" + close);
+			const result = parseCredentialsFile(`${open}1${close}`);
 			// Should parse without stack overflow
 			expect(result).not.toBeNull();
 		});
