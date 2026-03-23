@@ -210,11 +210,19 @@ export class PollingTimer {
 	private handleFailure(error: string): void {
 		// 429 is expected behavior on this endpoint (budget of ~5 requests
 		// per access token). Don't count as failure, just poll slower.
+		// Still call onError so the UI knows we're rate-limited.
 		if (error === "rate_limited") {
 			const retryMs = 600_000; // 10 minutes
 			this.logger.info(
 				`API rate-limited (429). This is normal. Retry in ${retryMs / 1000}s`,
 			);
+			try {
+				this.onError(error);
+			} catch (err) {
+				this.logger.error(
+					`Polling onError callback error: ${err instanceof Error ? err.message : err}`,
+				);
+			}
 			this.scheduleNext(retryMs);
 			return; // Don't touch failure counters or auth state
 		}

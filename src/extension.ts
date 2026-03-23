@@ -295,6 +295,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	const existingCache = await usageCache.readCache();
 	if (existingCache) {
 		cachedApiUsage = existingCache.apiUsage;
+		// If cached data is old (>5 min), assume we're rate-limited until
+		// the first poll proves otherwise. Prevents brief grey flash on startup.
+		const cacheAgeMs = Date.now() - new Date(existingCache.writtenAt).getTime();
+		if (cacheAgeMs > 5 * 60_000) {
+			statusBar.setRateLimited(true);
+		}
 		logger.info(
 			`Loaded cached API data (written ${new Date(existingCache.writtenAt).toISOString()})`,
 		);
