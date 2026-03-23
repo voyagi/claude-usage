@@ -128,11 +128,7 @@ export class StatusBarManager {
 			this.sessionItem.color = CRITICAL_COLOR;
 			this.weeklyItem.color = CRITICAL_COLOR;
 			this.sonnetItem.color = CRITICAL_COLOR;
-		} else if (
-			staleness === "dim" ||
-			staleness === "stale" ||
-			staleness === "unavailable"
-		) {
+		} else if (staleness === "stale" || staleness === "unavailable") {
 			this.sessionItem.color = STALE_COLOR;
 			this.weeklyItem.color = STALE_COLOR;
 			this.sonnetItem.color = STALE_COLOR;
