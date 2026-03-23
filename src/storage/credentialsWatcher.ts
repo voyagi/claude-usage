@@ -1,38 +1,44 @@
 /**
  * Credentials Watcher
  *
- * Watches ~/.claude/.credentials.json for tier changes
- * Auto-detects plan tier on startup and notifies when credentials change
+ * Watches ~/.claude/.credentials.json for tier and token changes.
+ * Auto-detects plan tier on startup and notifies when credentials change.
+ * Signals PollingTimer when tokens change so it can recover from dead auth.
  */
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+	type CredentialsData,
 	detectTierFromCredentials,
-	parseCredentialsFile,
 } from "../core/tierDetection.js";
 import type { PlanType } from "../types.js";
 import { Logger } from "../utils/logger.js";
 
 /**
- * Watches credentials file for tier changes
+ * Watches credentials file for tier and token changes
  */
 export class CredentialsWatcher {
 	private readonly context: vscode.ExtensionContext;
 	private readonly onTierChange: (tier: PlanType) => void;
+	private readonly onTokenChange: () => void;
 	private readonly logger: Logger;
 	private readonly credentialsPath: string;
 	private lastKnownTier: PlanType | null = null;
+	private lastKnownTokenHash: string | null = null;
 	private watcher: vscode.FileSystemWatcher | null = null;
 
 	constructor(
 		context: vscode.ExtensionContext,
 		onTierChange: (tier: PlanType) => void,
+		onTokenChange: () => void,
 	) {
 		this.context = context;
 		this.onTierChange = onTierChange;
+		this.onTokenChange = onTokenChange;
 		this.logger = Logger.create("Claude Usage - Credentials Watcher");
 		this.credentialsPath = path.join(
 			os.homedir(),
@@ -49,8 +55,9 @@ export class CredentialsWatcher {
 	 */
 	async start(fallbackTier: PlanType): Promise<PlanType> {
 		// Read credentials once on startup
-		const detectedTier = await this.readAndDetectTier(fallbackTier);
-		this.lastKnownTier = detectedTier;
+		const { tier, tokenHash } = await this.readCredentials(fallbackTier);
+		this.lastKnownTier = tier;
+		this.lastKnownTokenHash = tokenHash;
 
 		// Set up file watcher
 		const credDir = path.dirname(this.credentialsPath);
@@ -74,62 +81,85 @@ export class CredentialsWatcher {
 			// Register watcher for disposal
 			this.context.subscriptions.push(this.watcher);
 
-			this.logger.info(`Credentials watcher started (tier: ${detectedTier})`);
+			this.logger.info(`Credentials watcher started (tier: ${tier})`);
 		} catch (error) {
 			this.logger.warn(`Failed to set up credentials watcher: ${error}`);
 		}
 
-		return detectedTier;
+		return tier;
 	}
 
 	/**
 	 * Handle credentials file change event
 	 */
 	private async handleCredentialsChange(fallbackTier: PlanType): Promise<void> {
-		const newTier = await this.readAndDetectTier(fallbackTier);
+		const { tier, tokenHash } = await this.readCredentials(fallbackTier);
 
-		// Only fire callback if tier actually changed
-		if (newTier !== this.lastKnownTier) {
-			this.logger.info(`Tier changed: ${this.lastKnownTier} → ${newTier}`);
-			this.lastKnownTier = newTier;
-			this.onTierChange(newTier);
+		// Fire tier change callback if tier changed
+		if (tier !== this.lastKnownTier) {
+			this.logger.info(`Tier changed: ${this.lastKnownTier} → ${tier}`);
+			this.lastKnownTier = tier;
+			this.onTierChange(tier);
+		}
+
+		// Fire token change callback if access token changed
+		// This signals the PollingTimer to reset from dead auth state
+		if (tokenHash && tokenHash !== this.lastKnownTokenHash) {
+			this.logger.info("Access token changed, signaling polling timer");
+			this.lastKnownTokenHash = tokenHash;
+			this.onTokenChange();
 		}
 	}
 
 	/**
-	 * Read credentials file and detect tier
-	 *
-	 * @param fallback Tier to use if detection fails
-	 * @returns Detected tier (or fallback)
+	 * Read credentials file and extract tier + token hash
 	 */
-	private async readAndDetectTier(fallback: PlanType): Promise<PlanType> {
+	private async readCredentials(
+		fallback: PlanType,
+	): Promise<{ tier: PlanType; tokenHash: string | null }> {
 		try {
 			const content = await fs.readFile(this.credentialsPath, "utf-8");
 
 			if (!content || content.trim() === "") {
-				// Empty file - use fallback, no warning
-				return fallback;
+				return { tier: fallback, tokenHash: null };
 			}
 
-			const credentials = parseCredentialsFile(content);
-			if (!credentials) {
+			let rawParsed: Record<string, any>;
+			try {
+				rawParsed = JSON.parse(content);
+			} catch {
 				this.logger.warn(
 					"Credentials file is malformed JSON, using fallback tier",
 				);
-				return fallback;
+				return { tier: fallback, tokenHash: null };
 			}
+
+			const credentials: CredentialsData = {};
+			if (rawParsed.rateLimitTier)
+				credentials.rateLimitTier = rawParsed.rateLimitTier;
+			if (rawParsed.subscriptionType)
+				credentials.subscriptionType = rawParsed.subscriptionType;
 
 			const tier = detectTierFromCredentials(credentials, fallback);
-			return tier;
-		} catch (error: any) {
-			// File doesn't exist - normal for fresh installs, no log
-			if (error.code === "ENOENT") {
-				return fallback;
-			}
 
-			// Other errors - log warning
+			const accessToken = rawParsed?.claudeAiOauth?.accessToken as
+				| string
+				| undefined;
+			const tokenHash = accessToken
+				? crypto
+						.createHash("sha256")
+						.update(accessToken)
+						.digest("hex")
+						.slice(0, 16)
+				: null;
+
+			return { tier, tokenHash };
+		} catch (error: any) {
+			if (error.code === "ENOENT") {
+				return { tier: fallback, tokenHash: null };
+			}
 			this.logger.warn(`Failed to read credentials file: ${error.message}`);
-			return fallback;
+			return { tier: fallback, tokenHash: null };
 		}
 	}
 
@@ -137,7 +167,6 @@ export class CredentialsWatcher {
 	 * Dispose of watcher resources
 	 */
 	dispose(): void {
-		// Watcher is auto-disposed via context.subscriptions
 		if (this.watcher) {
 			this.watcher = null;
 		}

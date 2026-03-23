@@ -16,7 +16,7 @@ import {
 	mapTierStringToPlanType,
 	parseCredentialsFile,
 } from "./core/tierDetection";
-import type { ApiUsageData } from "./types";
+import type { ApiUsageData, FetchErrorReason, FetchResult } from "./types";
 import {
 	formatBarGraph,
 	formatBurnRate,
@@ -53,12 +53,20 @@ function makeApiData(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
 	};
 }
 
+function okResult(data?: ApiUsageData): FetchResult {
+	return { ok: true, data: data ?? makeApiData() };
+}
+
+function failResult(error: FetchErrorReason = "network"): FetchResult {
+	return { ok: false, error };
+}
+
 // ── getStaleness ─────────────────────────────────────────────────────
 
 describe("BREAKIT: getStaleness", () => {
 	describe("Boundary Assault", () => {
-		it("returns 'normal' for null (no API data, JSONL still fine)", () => {
-			expect(getStaleness(null)).toBe("normal");
+		it("returns 'unavailable' for null (no API data)", () => {
+			expect(getStaleness(null)).toBe("unavailable");
 		});
 
 		it("returns 'fresh' for Date.now()", () => {
@@ -109,10 +117,10 @@ describe("BREAKIT: getStaleness", () => {
 			expect(getStaleness(invalid)).toBe("critical");
 		});
 
-		it("handles future dates (negative age)", () => {
+		it("handles future dates (negative age) as stale", () => {
 			const future = new Date(Date.now() + 60_000);
-			// ageMs is negative, negative < 30*60000 is true -> 'fresh'
-			expect(getStaleness(future)).toBe("fresh");
+			// Clock guard: negative ageMs -> "stale" (not "fresh")
+			expect(getStaleness(future)).toBe("stale");
 		});
 	});
 
@@ -579,9 +587,10 @@ describe("BREAKIT: PollingTimer", () => {
 
 	describe("Boundary Assault", () => {
 		it("start() is idempotent", () => {
-			const fetchFn = jest.fn().mockResolvedValue(null);
+			const fetchFn = jest.fn().mockResolvedValue(failResult());
 			const timer = new PollingTimer(
 				fetchFn,
+				jest.fn(),
 				jest.fn(),
 				jest.fn(),
 				makeLogger(),
@@ -597,7 +606,8 @@ describe("BREAKIT: PollingTimer", () => {
 
 		it("stop() before start() is safe", () => {
 			const timer = new PollingTimer(
-				jest.fn().mockResolvedValue(null),
+				jest.fn().mockResolvedValue(failResult()),
+				jest.fn(),
 				jest.fn(),
 				jest.fn(),
 				makeLogger(),
@@ -608,9 +618,10 @@ describe("BREAKIT: PollingTimer", () => {
 		});
 
 		it("forceRefresh() when stopped is a no-op", async () => {
-			const fetchFn = jest.fn().mockResolvedValue(makeApiData());
+			const fetchFn = jest.fn().mockResolvedValue(okResult());
 			const timer = new PollingTimer(
 				fetchFn,
+				jest.fn(),
 				jest.fn(),
 				jest.fn(),
 				makeLogger(),
@@ -625,7 +636,13 @@ describe("BREAKIT: PollingTimer", () => {
 		it("fetchFn throwing does not kill the timer", async () => {
 			const fetchFn = jest.fn().mockRejectedValue(new Error("network down"));
 			const onError = jest.fn();
-			const timer = new PollingTimer(fetchFn, jest.fn(), onError, makeLogger());
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				onError,
+				jest.fn(),
+				makeLogger(),
+			);
 
 			timer.start();
 			// First tick at 5s
@@ -643,11 +660,17 @@ describe("BREAKIT: PollingTimer", () => {
 
 		it("onData throwing does not kill the timer", async () => {
 			const data = makeApiData();
-			const fetchFn = jest.fn().mockResolvedValue(data);
+			const fetchFn = jest.fn().mockResolvedValue(okResult(data));
 			const onData = jest.fn().mockImplementation(() => {
 				throw new Error("callback crash");
 			});
-			const timer = new PollingTimer(fetchFn, onData, jest.fn(), makeLogger());
+			const timer = new PollingTimer(
+				fetchFn,
+				onData,
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
 
 			timer.start();
 			jest.advanceTimersByTime(5_000);
@@ -662,11 +685,17 @@ describe("BREAKIT: PollingTimer", () => {
 		});
 
 		it("onError throwing does not kill the timer", async () => {
-			const fetchFn = jest.fn().mockResolvedValue(null); // null = failure
+			const fetchFn = jest.fn().mockResolvedValue(failResult()); // null = failure
 			const onError = jest.fn().mockImplementation(() => {
 				throw new Error("error callback crash");
 			});
-			const timer = new PollingTimer(fetchFn, jest.fn(), onError, makeLogger());
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				onError,
+				jest.fn(),
+				makeLogger(),
+			);
 
 			timer.start();
 			jest.advanceTimersByTime(5_000);
@@ -683,15 +712,21 @@ describe("BREAKIT: PollingTimer", () => {
 
 	describe("State Corruption", () => {
 		it("stop() during in-flight tick prevents scheduling", async () => {
-			let resolvePromise: (v: ApiUsageData | null) => void;
+			let resolvePromise: (v: FetchResult) => void;
 			const fetchFn = jest.fn().mockImplementation(
 				() =>
-					new Promise<ApiUsageData | null>((resolve) => {
+					new Promise<FetchResult>((resolve) => {
 						resolvePromise = resolve;
 					}),
 			);
 			const onData = jest.fn();
-			const timer = new PollingTimer(fetchFn, onData, jest.fn(), makeLogger());
+			const timer = new PollingTimer(
+				fetchFn,
+				onData,
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
 
 			timer.start();
 			jest.advanceTimersByTime(5_000);
@@ -701,23 +736,24 @@ describe("BREAKIT: PollingTimer", () => {
 			timer.stop();
 
 			// Resolve the fetch
-			resolvePromise!(makeApiData());
+			resolvePromise!(okResult());
 			await Promise.resolve();
 
 			// onData should NOT be called because isRunning was set false
 			expect(onData).not.toHaveBeenCalled();
 		});
 
-		it("forceRefresh() skips when tick is in-flight", async () => {
-			let resolvePromise: (v: ApiUsageData | null) => void;
+		it("forceRefresh() queues when tick is in-flight", async () => {
+			let resolvePromise: (v: FetchResult) => void;
 			const fetchFn = jest.fn().mockImplementation(
 				() =>
-					new Promise<ApiUsageData | null>((resolve) => {
+					new Promise<FetchResult>((resolve) => {
 						resolvePromise = resolve;
 					}),
 			);
 			const timer = new PollingTimer(
 				fetchFn,
+				jest.fn(),
 				jest.fn(),
 				jest.fn(),
 				makeLogger(),
@@ -731,15 +767,16 @@ describe("BREAKIT: PollingTimer", () => {
 			await timer.forceRefresh();
 			expect(fetchFn).toHaveBeenCalledTimes(1); // Only the scheduled tick
 
-			resolvePromise!(null);
+			resolvePromise!(failResult());
 			await Promise.resolve();
 			timer.stop();
 		});
 
 		it("rapid start/stop/start works correctly", () => {
-			const fetchFn = jest.fn().mockResolvedValue(null);
+			const fetchFn = jest.fn().mockResolvedValue(failResult());
 			const timer = new PollingTimer(
 				fetchFn,
+				jest.fn(),
 				jest.fn(),
 				jest.fn(),
 				makeLogger(),
@@ -759,13 +796,14 @@ describe("BREAKIT: PollingTimer", () => {
 		it("success resets consecutiveFailures counter", async () => {
 			const fetchFn = jest
 				.fn()
-				.mockResolvedValueOnce(null) // fail
-				.mockResolvedValueOnce(null) // fail
-				.mockResolvedValueOnce(makeApiData()) // success
-				.mockResolvedValueOnce(null); // fail again
+				.mockResolvedValueOnce(failResult()) // fail
+				.mockResolvedValueOnce(failResult()) // fail
+				.mockResolvedValueOnce(okResult()) // success
+				.mockResolvedValueOnce(failResult()); // fail again
 
 			const timer = new PollingTimer(
 				fetchFn,
+				jest.fn(),
 				jest.fn(),
 				jest.fn(),
 				makeLogger(),
@@ -795,9 +833,15 @@ describe("BREAKIT: PollingTimer", () => {
 
 		it("exponential backoff caps at 300s", async () => {
 			// 10 consecutive failures
-			const fetchFn = jest.fn().mockResolvedValue(null);
+			const fetchFn = jest.fn().mockResolvedValue(failResult());
 			const logger = makeLogger();
-			const timer = new PollingTimer(fetchFn, jest.fn(), jest.fn(), logger);
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				logger,
+			);
 
 			timer.start();
 
@@ -822,6 +866,221 @@ describe("BREAKIT: PollingTimer", () => {
 			const lastBackoff = warnCalls[warnCalls.length - 1];
 			expect(lastBackoff).toContain("300s");
 
+			timer.stop();
+		});
+	});
+
+	describe("Auth State Machine", () => {
+		it("enters dead state on auth_dead error", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("auth_dead"));
+			const onAuthStateChange = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				onAuthStateChange,
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+
+			expect(timer.authState).toBe("dead");
+			expect(onAuthStateChange).toHaveBeenCalledWith("dead");
+			timer.stop();
+		});
+
+		it("enters dead state after 3 consecutive auth_expired errors", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("auth_expired"));
+			const onAuthStateChange = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				onAuthStateChange,
+				makeLogger(),
+			);
+
+			timer.start();
+			// 1st failure
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("degraded");
+
+			// 2nd failure
+			jest.advanceTimersByTime(30_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("degraded");
+
+			// 3rd failure -> dead
+			jest.advanceTimersByTime(60_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("dead");
+			timer.stop();
+		});
+
+		it("stops polling in dead state", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("auth_dead"));
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("dead");
+
+			// Should NOT schedule another tick
+			fetchFn.mockClear();
+			jest.advanceTimersByTime(300_000);
+			await Promise.resolve();
+			expect(fetchFn).not.toHaveBeenCalled();
+			timer.stop();
+		});
+
+		it("resetAuth() resumes polling from dead state", async () => {
+			const fetchFn = jest
+				.fn()
+				.mockResolvedValueOnce(failResult("auth_dead"))
+				.mockResolvedValue(okResult());
+			const onData = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				onData,
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			await jest.advanceTimersByTimeAsync(5_000);
+			expect(timer.authState).toBe("dead");
+			expect(fetchFn).toHaveBeenCalledTimes(1);
+
+			// Simulate credential file change -- should reset and schedule
+			timer.resetAuth();
+			expect(timer.authState).toBe("healthy");
+
+			// Advance past initial interval and flush async
+			await jest.advanceTimersByTimeAsync(5_001);
+			// The second fetch should have fired and succeeded
+			expect(fetchFn).toHaveBeenCalledTimes(2);
+			expect(onData).toHaveBeenCalledTimes(1);
+			timer.stop();
+		});
+
+		it("network errors do not trigger auth death", async () => {
+			const fetchFn = jest.fn().mockResolvedValue(failResult("network"));
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			// 5 consecutive network failures
+			for (let i = 0; i < 5; i++) {
+				jest.advanceTimersByTime(i === 0 ? 5_000 : 300_000);
+				await Promise.resolve();
+			}
+
+			// Should still be healthy (network errors don't count as auth failures)
+			expect(timer.authState).toBe("healthy");
+			timer.stop();
+		});
+
+		it("success resets auth state from degraded to healthy", async () => {
+			const fetchFn = jest
+				.fn()
+				.mockResolvedValueOnce(failResult("auth_expired"))
+				.mockResolvedValueOnce(okResult());
+			const onAuthStateChange = jest.fn();
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				onAuthStateChange,
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("degraded");
+
+			jest.advanceTimersByTime(30_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("healthy");
+			timer.stop();
+		});
+
+		it("forceRefresh from dead state resets auth and fetches", async () => {
+			const fetchFn = jest
+				.fn()
+				.mockResolvedValueOnce(failResult("auth_dead"))
+				.mockResolvedValue(okResult());
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			await Promise.resolve();
+			expect(timer.authState).toBe("dead");
+
+			await timer.forceRefresh();
+			await Promise.resolve();
+
+			expect(timer.authState).toBe("healthy");
+			expect(fetchFn).toHaveBeenCalledTimes(2);
+			timer.stop();
+		});
+
+		it("pendingForceRefresh fires after in-flight tick completes", async () => {
+			let resolveFetch: (v: FetchResult) => void;
+			const fetchFn = jest.fn().mockImplementation(
+				() =>
+					new Promise<FetchResult>((resolve) => {
+						resolveFetch = resolve;
+					}),
+			);
+			const timer = new PollingTimer(
+				fetchFn,
+				jest.fn(),
+				jest.fn(),
+				jest.fn(),
+				makeLogger(),
+			);
+
+			timer.start();
+			jest.advanceTimersByTime(5_000);
+			// tick in flight
+
+			// Queue a force refresh
+			const forcePromise = timer.forceRefresh();
+			expect(fetchFn).toHaveBeenCalledTimes(1);
+
+			// Complete the in-flight tick
+			resolveFetch!(okResult());
+			await forcePromise;
+			await Promise.resolve();
+
+			// The queued force refresh should fire via setTimeout(0)
+			jest.advanceTimersByTime(0);
+			await Promise.resolve();
+
+			expect(fetchFn).toHaveBeenCalledTimes(2);
 			timer.stop();
 		});
 	});
@@ -1094,8 +1353,14 @@ describe("ESCALATION: PollingTimer Concurrency Stress", () => {
 	});
 
 	it("multiple forceRefresh() calls don't duplicate fetches", async () => {
-		const fetchFn = jest.fn().mockResolvedValue(makeApiData());
-		const timer = new PollingTimer(fetchFn, jest.fn(), jest.fn(), makeLogger());
+		const fetchFn = jest.fn().mockResolvedValue(okResult());
+		const timer = new PollingTimer(
+			fetchFn,
+			jest.fn(),
+			jest.fn(),
+			jest.fn(),
+			makeLogger(),
+		);
 
 		timer.start();
 		jest.advanceTimersByTime(5_000);
@@ -1115,14 +1380,20 @@ describe("ESCALATION: PollingTimer Concurrency Stress", () => {
 	});
 
 	it("start() after forceRefresh() mid-flight doesn't double-schedule", async () => {
-		let resolvePromise: (v: ApiUsageData | null) => void;
+		let resolvePromise: (v: FetchResult) => void;
 		const fetchFn = jest.fn().mockImplementation(
 			() =>
-				new Promise<ApiUsageData | null>((resolve) => {
+				new Promise<FetchResult>((resolve) => {
 					resolvePromise = resolve;
 				}),
 		);
-		const timer = new PollingTimer(fetchFn, jest.fn(), jest.fn(), makeLogger());
+		const timer = new PollingTimer(
+			fetchFn,
+			jest.fn(),
+			jest.fn(),
+			jest.fn(),
+			makeLogger(),
+		);
 
 		timer.start();
 		jest.advanceTimersByTime(5_000);
@@ -1133,7 +1404,7 @@ describe("ESCALATION: PollingTimer Concurrency Stress", () => {
 		timer.start();
 
 		// resolve the original fetch
-		resolvePromise!(makeApiData());
+		resolvePromise!(okResult());
 		await Promise.resolve();
 
 		// Advance past the new start's initial interval
@@ -1146,15 +1417,21 @@ describe("ESCALATION: PollingTimer Concurrency Stress", () => {
 	});
 
 	it("dispose() during tick prevents all further activity", async () => {
-		let resolvePromise: (v: ApiUsageData | null) => void;
+		let resolvePromise: (v: FetchResult) => void;
 		const fetchFn = jest.fn().mockImplementation(
 			() =>
-				new Promise<ApiUsageData | null>((resolve) => {
+				new Promise<FetchResult>((resolve) => {
 					resolvePromise = resolve;
 				}),
 		);
 		const onData = jest.fn();
-		const timer = new PollingTimer(fetchFn, onData, jest.fn(), makeLogger());
+		const timer = new PollingTimer(
+			fetchFn,
+			onData,
+			jest.fn(),
+			jest.fn(),
+			makeLogger(),
+		);
 
 		timer.start();
 		jest.advanceTimersByTime(5_000);
@@ -1163,7 +1440,7 @@ describe("ESCALATION: PollingTimer Concurrency Stress", () => {
 		timer.dispose();
 
 		// resolve the pending fetch
-		resolvePromise!(makeApiData());
+		resolvePromise!(okResult());
 		await Promise.resolve();
 
 		// Advance a long time - nothing should fire

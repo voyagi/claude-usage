@@ -155,8 +155,31 @@ export interface ApiUsageData {
 	fetchedAt: Date;
 }
 
+/** Why an API fetch failed */
+export type FetchErrorReason =
+	| "auth_dead" // refresh token expired/revoked, only user re-auth can fix
+	| "auth_expired" // access token expired, API returned 401
+	| "network" // network error or timeout
+	| "rate_limited" // API returned 429
+	| "server_error" // API returned 5xx
+	| "no_credentials"; // no OAuth credentials found
+
+/** Typed result from fetchApiUsage -- replaces null returns */
+export type FetchResult =
+	| { ok: true; data: ApiUsageData }
+	| { ok: false; error: FetchErrorReason };
+
+/** Auth health state for the polling timer */
+export type AuthState = "healthy" | "degraded" | "dead";
+
 /** Staleness level of API data */
-export type StalenessLevel = "fresh" | "normal" | "dim" | "stale" | "critical";
+export type StalenessLevel =
+	| "fresh"
+	| "normal"
+	| "dim"
+	| "stale"
+	| "critical"
+	| "unavailable";
 
 /** Shared cache file format for multi-window consistency */
 export interface UsageCacheData {
