@@ -208,7 +208,7 @@
 		"package": "vsce package"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.4.8",
+		"@biomejs/biome": "2.4.12",
 		"@types/jest": "^30.0.0",
 		"@types/node": "^22.10.0",
 		"@types/react": "^19.2.13",
