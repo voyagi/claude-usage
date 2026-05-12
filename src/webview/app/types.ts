@@ -13,6 +13,20 @@ export interface TrendDataPoint {
 	cacheCreationTokens: number;
 	cacheReadTokens: number;
 	totalCost: number;
+	messageCount: number;
+}
+
+/**
+ * Single message detail for per-command drill-down view
+ */
+export interface MessageDetail {
+	timestamp: string; // ISO 8601
+	model: string;
+	inputTokens: number;
+	outputTokens: number;
+	cacheCreationTokens: number;
+	cacheReadTokens: number;
+	cost: number;
 }
 
 /**
@@ -83,11 +97,20 @@ export interface DashboardData {
 export type WebviewMessage =
 	| { type: "requestData" }
 	| { type: "changePeriod"; period: "daily" | "weekly" | "monthly" }
-	| { type: "dismissWelcome" };
+	| { type: "dismissWelcome" }
+	| {
+			type: "requestMessageDetail";
+			period: string;
+			periodType: "daily" | "weekly" | "monthly";
+	  };
 
 /**
  * Messages sent FROM extension TO webview
  */
 export type ExtensionMessage =
 	| { type: "usageData"; payload: DashboardData }
-	| { type: "periodData"; payload: { period: string; data: TrendDataPoint[] } };
+	| { type: "periodData"; payload: { period: string; data: TrendDataPoint[] } }
+	| {
+			type: "messageDetailData";
+			payload: { period: string; messages: MessageDetail[] };
+	  };

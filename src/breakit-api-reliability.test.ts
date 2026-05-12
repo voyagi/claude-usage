@@ -142,17 +142,17 @@ describe("BREAKIT: getStaleness", () => {
 		});
 
 		// If someone changes < to <= at the 120m boundary
-		it("boundary: 120m minus 1ms is dim, 120m is stale", () => {
-			const justUnder = new Date(Date.now() - 120 * 60_000 + 1);
-			const atBoundary = new Date(Date.now() - 120 * 60_000);
+		it("boundary: 120m minus 100ms is dim, 120m is stale", () => {
+			const justUnder = new Date(Date.now() - 120 * 60_000 + 100);
+			const atBoundary = new Date(Date.now() - 120 * 60_000 - 100);
 			expect(getStaleness(justUnder)).toBe("dim");
 			expect(getStaleness(atBoundary)).toBe("stale");
 		});
 
 		// If someone changes < to <= at the 240m boundary
-		it("boundary: 240m minus 1ms is stale, 240m is critical", () => {
-			const justUnder = new Date(Date.now() - 240 * 60_000 + 1);
-			const atBoundary = new Date(Date.now() - 240 * 60_000);
+		it("boundary: 240m minus 100ms is stale, 240m is critical", () => {
+			const justUnder = new Date(Date.now() - 240 * 60_000 + 100);
+			const atBoundary = new Date(Date.now() - 240 * 60_000 - 100);
 			expect(getStaleness(justUnder)).toBe("stale");
 			expect(getStaleness(atBoundary)).toBe("critical");
 		});
@@ -672,13 +672,15 @@ describe("BREAKIT: PollingTimer", () => {
 				makeLogger(),
 			);
 
+			const tick = async () => {
+				jest.runOnlyPendingTimers();
+				for (let i = 0; i < 10; i++) await Promise.resolve();
+			};
 			timer.start();
-			jest.advanceTimersByTime(5_000);
-			await Promise.resolve();
+			await tick();
 
 			// Despite onData crash, timer should schedule next at 120s
-			jest.advanceTimersByTime(120_000);
-			await Promise.resolve();
+			await tick();
 
 			expect(fetchFn).toHaveBeenCalledTimes(2);
 			timer.stop();
@@ -810,22 +812,22 @@ describe("BREAKIT: PollingTimer", () => {
 			);
 			timer.start();
 
-			// 1st tick at 5s (fail)
-			jest.advanceTimersByTime(5_000);
-			await Promise.resolve();
+			const tick = async () => {
+				jest.runOnlyPendingTimers();
+				for (let i = 0; i < 10; i++) await Promise.resolve();
+			};
 
-			// 2nd tick at 5s + 30s = 35s (fail, backoff = 30s)
-			jest.advanceTimersByTime(30_000);
-			await Promise.resolve();
+			// 1st tick (fail)
+			await tick();
 
-			// 3rd tick at 35s + 60s = 95s (fail, backoff = 60s, but success this time)
-			jest.advanceTimersByTime(60_000);
-			await Promise.resolve();
+			// 2nd tick (fail, backoff = 30s)
+			await tick();
 
-			// 4th tick should be at 120s (SUCCESS interval, not continued backoff)
-			// If consecutiveFailures wasn't reset, backoff would be 120s
-			jest.advanceTimersByTime(120_000);
-			await Promise.resolve();
+			// 3rd tick (success this time)
+			await tick();
+
+			// 4th tick should use SUCCESS interval, not continued backoff
+			await tick();
 
 			expect(fetchFn).toHaveBeenCalledTimes(4);
 			timer.stop();

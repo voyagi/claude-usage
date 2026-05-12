@@ -4,13 +4,26 @@
  */
 
 import * as crypto from "node:crypto";
-import { format, subHours } from "date-fns";
+import {
+	format,
+	getISOWeek,
+	getISOWeekYear,
+	parseISO,
+	startOfISOWeek,
+	subHours,
+} from "date-fns";
 import * as vscode from "vscode";
-import type { RateLimitInfo, StatusBarData, TimeBuckets } from "../types.js";
+import type {
+	RateLimitInfo,
+	StatusBarData,
+	TimeBuckets,
+	TokenUsage,
+} from "../types.js";
 import { getClaudeProjectsDir } from "../utils/paths.js";
 import type {
 	DashboardData,
 	ExtensionMessage,
+	MessageDetail,
 	RateLimitData,
 	TrendDataPoint,
 	WebviewMessage,
@@ -23,6 +36,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	private _currentData?: DashboardData;
 	private _buckets?: TimeBuckets;
 	private _statusBarData?: StatusBarData;
+	private _records: TokenUsage[] = [];
 	private _planType: string = "pro";
 	private _activePeriod: "daily" | "weekly" | "monthly" = "daily";
 	private _isFirstRun: boolean = false;
@@ -136,6 +150,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				cacheCreationTokens: agg.cacheCreationTokens,
 				cacheReadTokens: agg.cacheReadTokens,
 				totalCost: agg.totalCost,
+				messageCount: agg.messageCount,
 			}));
 
 		// 7. Session comparison - CRITICAL for Session tab
@@ -259,6 +274,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 						this.updateData(data);
 					}
 					break;
+
+				case "requestMessageDetail":
+					this._handleMessageDetailRequest(message.period, message.periodType);
+					break;
 			}
 		});
 
@@ -310,6 +329,53 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		if (this._view?.visible) {
 			this._postMessage({ type: "usageData", payload: data });
 		}
+	}
+
+	/**
+	 * Replace stored records for on-demand message detail drill-down.
+	 */
+	public setRecords(records: TokenUsage[]): void {
+		this._records = records;
+	}
+
+	/**
+	 * Filter stored records by period and send to webview.
+	 */
+	private _handleMessageDetailRequest(
+		period: string,
+		periodType: "daily" | "weekly" | "monthly",
+	): void {
+		const filtered = this._records.filter((r) => {
+			switch (periodType) {
+				case "daily":
+					return format(r.timestamp, "yyyy-MM-dd") === period;
+				case "weekly": {
+					const wy = getISOWeekYear(r.timestamp);
+					const wn = getISOWeek(r.timestamp);
+					const key = `${wy}-W${String(wn).padStart(2, "0")}`;
+					return key === period;
+				}
+				case "monthly":
+					return format(r.timestamp, "yyyy-MM") === period;
+			}
+		});
+
+		const messages: MessageDetail[] = filtered
+			.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+			.map((r) => ({
+				timestamp: r.timestamp.toISOString(),
+				model: r.model,
+				inputTokens: r.inputTokens,
+				outputTokens: r.outputTokens,
+				cacheCreationTokens: r.cacheCreationTokens,
+				cacheReadTokens: r.cacheReadTokens,
+				cost: r.cost,
+			}));
+
+		this._postMessage({
+			type: "messageDetailData",
+			payload: { period, messages },
+		});
 	}
 
 	/**

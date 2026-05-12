@@ -2,9 +2,9 @@
  * TrendsTab component for displaying token usage trends over time.
  * Shows stacked bar chart, period selector, cost summary, and expandable data table.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { vscode } from "../index";
-import type { DashboardData, TrendDataPoint } from "../types";
+import type { DashboardData, MessageDetail, TrendDataPoint } from "../types";
 import { SegmentedControl } from "./SegmentedControl";
 import { UsageChart } from "./UsageChart";
 
@@ -29,6 +29,10 @@ function formatCurrency(value: number): string {
 export function TrendsTab({ data }: TrendsTabProps) {
 	const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
 	const [showDetails, setShowDetails] = useState(false);
+	const [drilldownPeriod, setDrilldownPeriod] = useState<string | null>(null);
+	const [drilldownMessages, setDrilldownMessages] = useState<MessageDetail[]>(
+		[],
+	);
 
 	// Restore persisted period selection from VS Code state
 	useEffect(() => {
@@ -37,6 +41,30 @@ export function TrendsTab({ data }: TrendsTabProps) {
 			setPeriod(state.trendsPeriod as "daily" | "weekly" | "monthly");
 		}
 	}, []);
+
+	// Listen for message detail responses from extension
+	useEffect(() => {
+		const handler = (event: MessageEvent) => {
+			const message = event.data;
+			if (message.type === "messageDetailData") {
+				setDrilldownMessages(message.payload.messages);
+				setDrilldownPeriod(message.payload.period);
+			}
+		};
+		window.addEventListener("message", handler);
+		return () => window.removeEventListener("message", handler);
+	}, []);
+
+	const handleDrilldown = useCallback(
+		(targetPeriod: string) => {
+			vscode.postMessage({
+				type: "requestMessageDetail",
+				period: targetPeriod,
+				periodType: period,
+			});
+		},
+		[period],
+	);
 
 	if (!data) {
 		return null;
@@ -216,7 +244,7 @@ export function TrendsTab({ data }: TrendsTabProps) {
 					</span>
 				</button>
 
-				{showDetails && (
+				{showDetails && !drilldownPeriod && (
 					<div style={{ padding: "0 16px 16px" }}>
 						<table
 							style={{
@@ -247,6 +275,15 @@ export function TrendsTab({ data }: TrendsTabProps) {
 											fontWeight: 600,
 										}}
 									>
+										Msgs
+									</th>
+									<th
+										style={{
+											padding: "8px",
+											textAlign: "right",
+											fontWeight: 600,
+										}}
+									>
 										Input
 									</th>
 									<th
@@ -257,24 +294,6 @@ export function TrendsTab({ data }: TrendsTabProps) {
 										}}
 									>
 										Output
-									</th>
-									<th
-										style={{
-											padding: "8px",
-											textAlign: "right",
-											fontWeight: 600,
-										}}
-									>
-										Cache Write
-									</th>
-									<th
-										style={{
-											padding: "8px",
-											textAlign: "right",
-											fontWeight: 600,
-										}}
-									>
-										Cache Read
 									</th>
 									<th
 										style={{
@@ -294,12 +313,22 @@ export function TrendsTab({ data }: TrendsTabProps) {
 									>
 										Cost
 									</th>
+									<th
+										style={{
+											padding: "8px",
+											textAlign: "right",
+											fontWeight: 600,
+										}}
+									>
+										Avg/Msg
+									</th>
 								</tr>
 							</thead>
 							<tbody>
 								{data.trendData.map((point, index) => (
 									<tr
 										key={point.period}
+										onClick={() => handleDrilldown(point.period)}
 										style={{
 											background:
 												index % 2 === 0
@@ -309,20 +338,19 @@ export function TrendsTab({ data }: TrendsTabProps) {
 												index < data.trendData.length - 1
 													? "1px solid var(--vscode-panel-border)"
 													: "none",
+											cursor: "pointer",
 										}}
+										title={`Click to see ${point.messageCount} individual messages`}
 									>
 										<td style={{ padding: "8px" }}>{point.period}</td>
+										<td style={{ padding: "8px", textAlign: "right" }}>
+											{point.messageCount}
+										</td>
 										<td style={{ padding: "8px", textAlign: "right" }}>
 											{formatNumber(point.inputTokens)}
 										</td>
 										<td style={{ padding: "8px", textAlign: "right" }}>
 											{formatNumber(point.outputTokens)}
-										</td>
-										<td style={{ padding: "8px", textAlign: "right" }}>
-											{formatNumber(point.cacheCreationTokens)}
-										</td>
-										<td style={{ padding: "8px", textAlign: "right" }}>
-											{formatNumber(point.cacheReadTokens)}
 										</td>
 										<td
 											style={{
@@ -342,6 +370,17 @@ export function TrendsTab({ data }: TrendsTabProps) {
 										>
 											{formatCurrency(point.totalCost)}
 										</td>
+										<td
+											style={{
+												padding: "8px",
+												textAlign: "right",
+												color: "var(--vscode-descriptionForeground)",
+											}}
+										>
+											{point.messageCount > 0
+												? formatCurrency(point.totalCost / point.messageCount)
+												: "-"}
+										</td>
 									</tr>
 								))}
 								<tr
@@ -351,6 +390,9 @@ export function TrendsTab({ data }: TrendsTabProps) {
 									}}
 								>
 									<td style={{ padding: "8px" }}>Total</td>
+									<td style={{ padding: "8px", textAlign: "right" }}>
+										{data.trendData.reduce((sum, p) => sum + p.messageCount, 0)}
+									</td>
 									<td style={{ padding: "8px", textAlign: "right" }}>
 										{formatNumber(
 											data.trendData.reduce((sum, p) => sum + p.inputTokens, 0),
@@ -365,28 +407,173 @@ export function TrendsTab({ data }: TrendsTabProps) {
 										)}
 									</td>
 									<td style={{ padding: "8px", textAlign: "right" }}>
-										{formatNumber(
-											data.trendData.reduce(
-												(sum, p) => sum + p.cacheCreationTokens,
-												0,
-											),
-										)}
-									</td>
-									<td style={{ padding: "8px", textAlign: "right" }}>
-										{formatNumber(
-											data.trendData.reduce(
-												(sum, p) => sum + p.cacheReadTokens,
-												0,
-											),
-										)}
-									</td>
-									<td style={{ padding: "8px", textAlign: "right" }}>
 										{formatNumber(grandTotalTokens)}
 									</td>
 									<td style={{ padding: "8px", textAlign: "right" }}>
 										{formatCurrency(totalCost)}
 									</td>
+									<td style={{ padding: "8px", textAlign: "right" }}>
+										{data.trendData.reduce((s, p) => s + p.messageCount, 0) > 0
+											? formatCurrency(
+													totalCost /
+														data.trendData.reduce(
+															(s, p) => s + p.messageCount,
+															0,
+														),
+												)
+											: "-"}
+									</td>
 								</tr>
+							</tbody>
+						</table>
+					</div>
+				)}
+
+				{/* Message detail drill-down panel */}
+				{showDetails && drilldownPeriod && (
+					<div style={{ padding: "0 16px 16px" }}>
+						<div
+							style={{
+								display: "flex",
+								alignItems: "center",
+								gap: "8px",
+								marginBottom: "12px",
+							}}
+						>
+							<button
+								onClick={() => {
+									setDrilldownPeriod(null);
+									setDrilldownMessages([]);
+								}}
+								style={{
+									padding: "4px 10px",
+									border: "1px solid var(--vscode-panel-border)",
+									borderRadius: "4px",
+									background: "var(--vscode-button-secondaryBackground)",
+									color: "var(--vscode-button-secondaryForeground)",
+									fontFamily: "var(--vscode-font-family)",
+									fontSize: "calc(var(--vscode-font-size) * 0.9)",
+									cursor: "pointer",
+								}}
+							>
+								Back
+							</button>
+							<span style={{ fontWeight: 600 }}>
+								{drilldownPeriod} ({drilldownMessages.length} messages)
+							</span>
+						</div>
+						<table
+							style={{
+								width: "100%",
+								borderCollapse: "collapse",
+								fontSize: "calc(var(--vscode-font-size) * 0.85)",
+							}}
+						>
+							<thead>
+								<tr
+									style={{
+										borderBottom: "1px solid var(--vscode-panel-border)",
+									}}
+								>
+									<th
+										style={{
+											padding: "6px 8px",
+											textAlign: "left",
+											fontWeight: 600,
+										}}
+									>
+										Time
+									</th>
+									<th
+										style={{
+											padding: "6px 8px",
+											textAlign: "left",
+											fontWeight: 600,
+										}}
+									>
+										Model
+									</th>
+									<th
+										style={{
+											padding: "6px 8px",
+											textAlign: "right",
+											fontWeight: 600,
+										}}
+									>
+										In
+									</th>
+									<th
+										style={{
+											padding: "6px 8px",
+											textAlign: "right",
+											fontWeight: 600,
+										}}
+									>
+										Out
+									</th>
+									<th
+										style={{
+											padding: "6px 8px",
+											textAlign: "right",
+											fontWeight: 600,
+										}}
+									>
+										Cost
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								{drilldownMessages.map((msg, index) => {
+									const time = new Date(msg.timestamp);
+									const timeStr = time.toLocaleTimeString([], {
+										hour: "2-digit",
+										minute: "2-digit",
+										second: "2-digit",
+									});
+									const modelShort = msg.model
+										.replace("claude-", "")
+										.replace(/-\d{8}$/, "");
+									return (
+										<tr
+											key={`${msg.timestamp}-${index}`}
+											style={{
+												background:
+													index % 2 === 0
+														? "transparent"
+														: "var(--vscode-list-hoverBackground)",
+												borderBottom:
+													index < drilldownMessages.length - 1
+														? "1px solid var(--vscode-panel-border)"
+														: "none",
+											}}
+										>
+											<td style={{ padding: "6px 8px" }}>{timeStr}</td>
+											<td
+												style={{
+													padding: "6px 8px",
+													color: "var(--vscode-descriptionForeground)",
+												}}
+											>
+												{modelShort}
+											</td>
+											<td style={{ padding: "6px 8px", textAlign: "right" }}>
+												{formatNumber(msg.inputTokens)}
+											</td>
+											<td style={{ padding: "6px 8px", textAlign: "right" }}>
+												{formatNumber(msg.outputTokens)}
+											</td>
+											<td
+												style={{
+													padding: "6px 8px",
+													textAlign: "right",
+													fontWeight: 600,
+												}}
+											>
+												{formatCurrency(msg.cost)}
+											</td>
+										</tr>
+									);
+								})}
 							</tbody>
 						</table>
 					</div>

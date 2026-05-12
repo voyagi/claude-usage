@@ -62,6 +62,7 @@ let lastKnownBuckets: TimeBuckets | null = null;
 let lastKnownStats: { filesProcessed: number; linesSkipped: number } | null =
 	null;
 let lastBurnRate = 0;
+let allRecords: import("./types.js").TokenUsage[] = [];
 
 /**
  * Read current plan selection with auto-detection fallback
@@ -668,6 +669,12 @@ async function performInitialParse(
 	// Apply cost calculation to each record
 	for (const record of parseResult.records) {
 		record.cost = calculateCost(record, pricing);
+	}
+
+	// Store records for on-demand drill-down in dashboard
+	allRecords = parseResult.records;
+	if (dashboardProvider) {
+		dashboardProvider.setRecords(allRecords);
 	}
 
 	// Aggregate into time buckets
