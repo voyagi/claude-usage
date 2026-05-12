@@ -4,14 +4,7 @@
  */
 
 import * as crypto from "node:crypto";
-import {
-	format,
-	getISOWeek,
-	getISOWeekYear,
-	parseISO,
-	startOfISOWeek,
-	subHours,
-} from "date-fns";
+import { format, getISOWeek, getISOWeekYear, subHours } from "date-fns";
 import * as vscode from "vscode";
 import type {
 	RateLimitInfo,
@@ -357,6 +350,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				}
 				case "monthly":
 					return format(r.timestamp, "yyyy-MM") === period;
+				default:
+					return false;
 			}
 		});
 
