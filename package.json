@@ -202,7 +202,7 @@
 		"build": "node esbuild.config.mjs",
 		"watch": "node esbuild.config.mjs --watch",
 		"compile": "tsc --noEmit",
-		"lint": "eslint src --ext ts",
+		"lint": "biome check src",
 		"test": "jest",
 		"test:watch": "jest --watch",
 		"package": "vsce package"
