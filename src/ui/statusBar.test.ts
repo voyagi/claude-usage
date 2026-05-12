@@ -138,8 +138,8 @@ describe("StatusBarManager: auth-dead display", () => {
 		manager.setAuthState("dead");
 		manager.update(makeStatusBarData());
 
-		expect(weeklyItem.text).toBe("W:25%");
-		expect(sonnetItem.text).toBe("So:15%");
+		expect(weeklyItem.text).toBe("W:25% ?");
+		expect(sonnetItem.text).toBe("So:15% ?");
 	});
 
 	it("shows normal text when auth state is healthy", () => {
