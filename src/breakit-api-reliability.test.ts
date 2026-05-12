@@ -993,8 +993,8 @@ describe("BREAKIT: PollingTimer", () => {
 				await Promise.resolve();
 			}
 
-			// Should still be healthy (network errors don't count as auth failures)
-			expect(timer.authState).toBe("healthy");
+			// After 5 consecutive failures, transitions to degraded (circuit breaker)
+			expect(timer.authState).toBe("degraded");
 			timer.stop();
 		});
 

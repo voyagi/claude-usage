@@ -18,6 +18,7 @@ const SUCCESS_INTERVAL_MS = 300_000;
 const FAILURE_INTERVAL_MS = 30_000;
 const MAX_FAILURE_INTERVAL_MS = 300_000;
 const AUTH_DEAD_THRESHOLD = 3;
+const GENERAL_DEGRADED_THRESHOLD = 5;
 
 export class PollingTimer {
 	private readonly fetchFn: () => Promise<FetchResult>;
@@ -270,6 +271,12 @@ export class PollingTimer {
 
 		// Transient failure: backoff and retry
 		if (isAuthError && this._authState === "healthy") {
+			this.setAuthState("degraded");
+		} else if (
+			!isAuthError &&
+			this._authState === "healthy" &&
+			this.consecutiveFailures >= GENERAL_DEGRADED_THRESHOLD
+		) {
 			this.setAuthState("degraded");
 		}
 
