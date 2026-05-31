@@ -309,17 +309,24 @@ describe("BREAKIT: formatBarGraph", () => {
 	describe("Type Confusion", () => {
 		it("handles NaN as 0%", () => {
 			const result = formatBarGraph(NaN);
-			// Math.max(0, Math.min(100, NaN)) => Math.max(0, NaN) => NaN
-			// Math.round(NaN/100 * 20) => NaN
-			// "━".repeat(NaN) => "" and "─".repeat(NaN - NaN) => ""
-			// But the % label will show NaN
-			expect(result).toContain("NaN");
+			// NaN is coerced to 0% by the guard, so the bar renders an empty
+			// track with a "0%" label and never leaks "NaN" into the UI.
+			expect(result).not.toContain("NaN");
+			expect(result).toContain("0%");
 		});
 
 		it("handles Infinity", () => {
 			const result = formatBarGraph(Infinity);
 			// clamped to 100
 			expect(result).toMatch(/100%$/);
+		});
+
+		it("handles non-finite width by falling back to default", () => {
+			const result = formatBarGraph(50, NaN);
+			// NaN width falls back to the default 12-wide bar, not an empty one.
+			const barContent = result.match(/\[(.*?)\]/)?.[1] ?? "";
+			expect(barContent.length).toBe(12);
+			expect(result).not.toContain("NaN");
 		});
 
 		it("handles -Infinity", () => {
@@ -402,10 +409,11 @@ describe("BREAKIT: formatPaceForecast", () => {
 	});
 
 	describe("Type Confusion", () => {
-		it("negative minutes treated as <1m", () => {
+		it("negative minutes treated as limit-hit", () => {
 			const result = formatPaceForecast(-5, "Session");
-			// -5 < 1 is true, so "<1m"
-			expect(result).toContain("<1m");
+			// Negative time-until-limit means the limit was already hit; the
+			// guard returns LIMIT HIT instead of a bogus "<1m" forecast.
+			expect(result).toBe("Session: LIMIT HIT");
 		});
 
 		it("very large number shows hours", () => {
@@ -531,11 +539,10 @@ describe("BREAKIT: predictTimeUntilLimit", () => {
 		});
 
 		it("negative burn rate", () => {
-			// Negative rate: (1000-100) / -10 = -90
-			// Math.min(-90, 999999) = -90
-			// No capping below zero! This could be a bug.
+			// A negative burn rate is unpredictable; the guard returns null
+			// rather than a nonsensical negative time-until-limit.
 			const result = predictTimeUntilLimit(100, 1000, -10);
-			expect(result).toBeLessThan(0);
+			expect(result).toBeNull();
 		});
 	});
 
@@ -1177,7 +1184,8 @@ describe("BREAKIT: formatPercentage", () => {
 	});
 
 	it("handles NaN", () => {
-		expect(formatPercentage(NaN)).toBe("NaN%");
+		// Guarded: NaN falls back to "0%" rather than leaking "NaN%".
+		expect(formatPercentage(NaN)).toBe("0%");
 	});
 
 	it("handles negative", () => {
@@ -1299,12 +1307,10 @@ describe("ESCALATION: Combined Boundary + Type Confusion", () => {
 		});
 
 		it("NaN burn rate returns null", () => {
-			// NaN === 0 is false, so it doesn't return null
-			// Then NaN >= limitTokens... NaN >= X is false
-			// Then (X - Y) / NaN = NaN, Math.min(NaN, 999999) = NaN
+			// A NaN burn rate is unusable; the guard returns null instead of
+			// propagating NaN into the forecast.
 			const result = predictTimeUntilLimit(100, 1000, NaN);
-			// BUG? This should arguably return null but returns NaN
-			expect(result).toBeNaN();
+			expect(result).toBeNull();
 		});
 
 		it("Infinity burn rate returns 0 (not null)", () => {
@@ -1313,34 +1319,38 @@ describe("ESCALATION: Combined Boundary + Type Confusion", () => {
 			expect(result).toBe(0);
 		});
 
-		it("negative burn rate returns negative (no floor guard)", () => {
-			// This is a potential bug: negative burn rate should probably
-			// return null (can't predict with negative consumption)
+		it("double Infinity limit and burn rate stays finite", () => {
+			// Infinity / Infinity = NaN internally; the final guard clamps it to
+			// the 999999 cap so the number | null contract is never violated.
+			const result = predictTimeUntilLimit(100, Infinity, Infinity);
+			expect(result).toBe(999999);
+		});
+
+		it("negative burn rate returns null (cannot predict)", () => {
+			// A negative burn rate means consumption is decreasing, so there is
+			// no meaningful time-until-limit; the guard returns null.
 			const result = predictTimeUntilLimit(100, 1000, -10);
-			// (1000-100) / -10 = -90
-			expect(result).toBe(-90);
+			expect(result).toBeNull();
 		});
 	});
 
 	describe("formatPaceForecast + predictTimeUntilLimit chain", () => {
-		it("NaN minutes produces NaN in output", () => {
+		it("NaN minutes yields no forecast", () => {
 			const result = formatPaceForecast(NaN, "Test");
-			// NaN === null false, NaN === 0 false, NaN < 1 false, NaN < 60 false
-			// Falls to hours path: Math.floor(NaN/60) = NaN, Math.round(NaN%60) = NaN
-			expect(result).toContain("NaN");
+			// Non-finite minutes can't be forecast; the guard returns "".
+			expect(result).toBe("");
 		});
 
-		it("Infinity minutes produces Infinity in output", () => {
+		it("Infinity minutes yields no forecast", () => {
 			const result = formatPaceForecast(Infinity, "Test");
-			// Infinity < 1 false, Infinity < 60 false
-			// Math.floor(Infinity/60) = Infinity
-			expect(result).toContain("Infinity");
+			// Non-finite minutes can't be forecast; the guard returns "".
+			expect(result).toBe("");
 		});
 
-		it("negative Infinity minutes shows <1m", () => {
+		it("negative Infinity minutes yields no forecast", () => {
 			const result = formatPaceForecast(-Infinity, "Test");
-			// -Infinity < 1 is true
-			expect(result).toContain("<1m");
+			// Non-finite minutes can't be forecast; the guard returns "".
+			expect(result).toBe("");
 		});
 	});
 });
@@ -1472,35 +1482,31 @@ describe("ESCALATION: getStaleness time-edge precision", () => {
 });
 
 describe("ESCALATION: formatBarGraph NaN propagation", () => {
-	it("NaN produces empty bar (no filled, no empty blocks)", () => {
+	it("NaN renders a full-width empty track at 0%", () => {
 		const result = formatBarGraph(NaN, 20);
-		// "━".repeat(NaN) = "" and "─".repeat(NaN) = ""
-		// So bar is "[]" with no blocks - total bar length is 0, not 20
+		// NaN is coerced to 0%, preserving the invariant that the bar is
+		// exactly `width` characters wide (all empty blocks, no NaN).
 		const barContent = result.match(/\[(.*?)\]/)?.[1] ?? "";
-		// This BREAKS the property that bar length === width
-		// NaN propagation means bar has 0 characters instead of 20
-		expect(barContent.length).not.toBe(20);
+		expect(barContent.length).toBe(20);
+		expect(result).not.toContain("NaN");
 	});
 });
 
 describe("ESCALATION: predictTimeUntilLimit NaN propagation chain", () => {
-	it("NaN currentTokens propagates to NaN result", () => {
-		// NaN >= 1000 is false, so doesn't return 0
-		// (1000 - NaN) / 10 = NaN
+	it("NaN currentTokens returns null (no NaN propagation)", () => {
+		// The NaN guard short-circuits before any arithmetic.
 		const result = predictTimeUntilLimit(NaN, 1000, 10);
-		expect(result).toBeNaN();
+		expect(result).toBeNull();
 	});
 
-	it("NaN limitTokens propagates to NaN result", () => {
-		// 100 >= NaN is false
-		// (NaN - 100) / 10 = NaN
+	it("NaN limitTokens returns null (no NaN propagation)", () => {
+		// The NaN guard short-circuits before any arithmetic.
 		const result = predictTimeUntilLimit(100, NaN, 10);
-		expect(result).toBeNaN();
+		expect(result).toBeNull();
 	});
 
-	it("both NaN still returns NaN (not null or 0)", () => {
+	it("both NaN returns null (not NaN)", () => {
 		const result = predictTimeUntilLimit(NaN, NaN, 10);
-		// NaN >= NaN is false, (NaN - NaN) / 10 = NaN
-		expect(result).toBeNaN();
+		expect(result).toBeNull();
 	});
 });
