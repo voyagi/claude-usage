@@ -6,7 +6,7 @@
 	"displayName": "Claude Usage Monitor",
 	"engines": {
 		"vscode": "^1.96.0",
-		"npm": ">=10.0.0 <11"
+		"npm": ">=10.0.0"
 	},
 	"license": "MIT",
 	"repository": {

@@ -5,48 +5,48 @@
  */
 
 import {
-	formatTokens,
-	formatTokensExact,
-	formatCooldown,
-	formatCooldownCompact,
-	formatResetTime24h,
-	formatCost,
-	formatPercentage,
-	formatBurnRate,
-	formatBarGraph,
-	formatPaceForecast,
-	formatTimeUntilLimit,
-} from "./ui/formatting";
-import { parseAssistantMessage } from "./parser/schemas";
+	aggregateUsage,
+	deserializeTimeBuckets,
+	getTimeBucketSummary,
+	mergeTimeBuckets,
+	serializeTimeBuckets,
+} from "./aggregation/timeBuckets";
 import {
-	extractTokenUsage,
-	getBillableTokenCount,
-	getTotalTokens,
-	createEmptyAggregatedUsage,
-	addToAggregation,
-} from "./parser/tokenCounter";
-import {
-	parseCredentialsFile,
-	mapTierStringToPlanType,
-	detectTierFromCredentials,
-} from "./core/tierDetection";
-import {
-	createBurnRateTracker,
 	calculateBurnRateEMA,
+	createBurnRateTracker,
 	predictTimeUntilLimit,
 } from "./core/burnRate";
+import {
+	detectTierFromCredentials,
+	mapTierStringToPlanType,
+	parseCredentialsFile,
+} from "./core/tierDetection";
 import {
 	parseRateLimitEvent,
 	refineLimitEstimate,
 } from "./parser/rateLimitDetector";
+import { parseAssistantMessage } from "./parser/schemas";
 import {
-	aggregateUsage,
-	mergeTimeBuckets,
-	serializeTimeBuckets,
-	deserializeTimeBuckets,
-	getTimeBucketSummary,
-} from "./aggregation/timeBuckets";
-import type { TokenUsage, AggregatedUsage, TimeBuckets } from "./types";
+	addToAggregation,
+	createEmptyAggregatedUsage,
+	extractTokenUsage,
+	getBillableTokenCount,
+	getTotalTokens,
+} from "./parser/tokenCounter";
+import type { AggregatedUsage, TimeBuckets, TokenUsage } from "./types";
+import {
+	formatBarGraph,
+	formatBurnRate,
+	formatCooldown,
+	formatCooldownCompact,
+	formatCost,
+	formatPaceForecast,
+	formatPercentage,
+	formatResetTime24h,
+	formatTimeUntilLimit,
+	formatTokens,
+	formatTokensExact,
+} from "./ui/formatting";
 
 afterEach(() => {
 	jest.restoreAllMocks();
