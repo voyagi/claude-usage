@@ -135,6 +135,9 @@ export function formatCost(cost: number): string {
  * E.g. "73%"
  */
 export function formatPercentage(percent: number): string {
+	if (!Number.isFinite(percent)) {
+		return "0%";
+	}
 	return `${Math.round(percent)}%`;
 }
 
@@ -163,9 +166,18 @@ export function formatBurnRate(tokensPerMin: number): string {
  * @param width Number of bar segments (default 20)
  */
 export function formatBarGraph(percentage: number, width = 12): string {
-	const clamped = Math.max(0, Math.min(100, percentage));
-	const filled = Math.round((clamped / 100) * width);
-	const bar = "\u2501".repeat(filled) + "\u2500".repeat(width - filled);
+	// NaN can't be clamped (Math.min/max propagate it); ±Infinity clamps fine.
+	const safePct = Number.isNaN(percentage) ? 0 : percentage;
+	// Non-finite width falls back to the default so we still render a bar.
+	const safeWidth = Number.isFinite(width)
+		? Math.max(0, Math.floor(width))
+		: 12;
+	const clamped = Math.max(0, Math.min(100, safePct));
+	const filled = Math.max(
+		0,
+		Math.min(safeWidth, Math.round((clamped / 100) * safeWidth)),
+	);
+	const bar = "\u2501".repeat(filled) + "\u2500".repeat(safeWidth - filled);
 	return `[${bar}] ${Math.round(clamped)}%`;
 }
 
@@ -177,8 +189,10 @@ export function formatPaceForecast(
 	minutesUntilLimit: number | null,
 	limitName: string,
 ): string {
-	if (minutesUntilLimit === null) return "";
-	if (minutesUntilLimit === 0) return `${limitName}: LIMIT HIT`;
+	if (minutesUntilLimit === null || !Number.isFinite(minutesUntilLimit)) {
+		return "";
+	}
+	if (minutesUntilLimit <= 0) return `${limitName}: LIMIT HIT`;
 	if (minutesUntilLimit < 1) return `${limitName}: <1m at current pace`;
 	if (minutesUntilLimit < 60) {
 		return `${limitName}: ~${Math.round(minutesUntilLimit)}m at current pace`;
@@ -197,11 +211,11 @@ export function formatPaceForecast(
  * >= 60 min: 'Xh Ym at current pace' (e.g. '2h 15m at current pace')
  */
 export function formatTimeUntilLimit(minutes: number | null): string {
-	if (minutes === null) {
+	if (minutes === null || !Number.isFinite(minutes)) {
 		return "";
 	}
 
-	if (minutes === 0) {
+	if (minutes <= 0) {
 		return "LIMIT HIT";
 	}
 

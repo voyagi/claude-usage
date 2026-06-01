@@ -111,15 +111,25 @@ export function calculateBurnRateEMA(
  * @param currentTokens Tokens consumed so far
  * @param limitTokens Estimated limit
  * @param burnRatePerMin Current burn rate (tokens/min)
- * @returns Minutes remaining, 0 if at/over limit, null if burn rate is 0
+ * @returns Minutes remaining, 0 if at/over limit, null if burn rate <= 0 or any input is NaN
  */
 export function predictTimeUntilLimit(
 	currentTokens: number,
 	limitTokens: number,
 	burnRatePerMin: number,
 ): number | null {
-	// Can't predict if no burn rate or unknown limit
-	if (burnRatePerMin === 0 || limitTokens <= 0) {
+	// Can't predict from NaN inputs (they propagate to a NaN result).
+	// Infinity is allowed through: it resolves to 0 or the 999999 cap below.
+	if (
+		Number.isNaN(currentTokens) ||
+		Number.isNaN(limitTokens) ||
+		Number.isNaN(burnRatePerMin)
+	) {
+		return null;
+	}
+
+	// Can't predict without a positive burn rate or a known limit
+	if (burnRatePerMin <= 0 || limitTokens <= 0) {
 		return null;
 	}
 
@@ -132,6 +142,11 @@ export function predictTimeUntilLimit(
 	const tokensRemaining = limitTokens - currentTokens;
 	const minutesRemaining = tokensRemaining / burnRatePerMin;
 
-	// Cap at reasonable max to avoid displaying Infinity
+	// Cap at reasonable max to avoid displaying Infinity. Infinity inputs can
+	// make minutesRemaining Infinity or NaN (e.g. Infinity / Infinity); clamp
+	// those to the cap so the `number | null` contract is always honored.
+	if (!Number.isFinite(minutesRemaining)) {
+		return 999999;
+	}
 	return Math.min(minutesRemaining, 999999);
 }
