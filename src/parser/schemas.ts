@@ -58,6 +58,7 @@ export const AssistantMessageSchema = z
 		sessionId: z.string(),
 		message: z
 			.object({
+				id: z.string().optional(),
 				model: z.string(),
 				usage: UsageSchema,
 			})
@@ -94,6 +95,7 @@ export function parseAssistantMessage(json: unknown): TokenUsage | null {
 			timestamp: new Date(data.timestamp),
 			model: data.message.model,
 			sessionId: data.sessionId,
+			messageId: data.message.id ?? "",
 			inputTokens: usage.input_tokens,
 			outputTokens: usage.output_tokens,
 			cacheCreationTokens: usage.cache_creation_input_tokens,

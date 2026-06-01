@@ -11,11 +11,12 @@ import {
 } from "../aggregation/timeBuckets.js";
 import type { RateLimitEvent } from "../parser/incrementalParser.js";
 import { parseIncremental } from "../parser/incrementalParser.js";
+import { dedupeByMessageId } from "../parser/tokenCounter.js";
 import {
 	calculateCost,
 	loadPricingFromConfig,
 } from "../pricing/pricingEngine.js";
-import type { ModelPricing, TimeBuckets } from "../types.js";
+import type { ModelPricing, TimeBuckets, TokenUsage } from "../types.js";
 import { Logger } from "../utils/logger.js";
 import { getClaudeProjectsDir } from "../utils/paths.js";
 import { OffsetTracker } from "./offsetTracker.js";
@@ -49,6 +50,13 @@ export class SessionWatcher {
 	private readonly processedFiles = new Set<string>();
 	private totalLinesSkipped = 0;
 	private pricing: Record<string, ModelPricing> = {};
+	/**
+	 * Message ids already counted this run (seeded from the full parse, then
+	 * extended by each incremental read). Makes token counting idempotent per
+	 * message id: Claude Code re-logs the same assistant message many times, and
+	 * the incremental reader can re-read bytes the full parse already counted.
+	 */
+	private readonly seenMessageIds = new Set<string>();
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -174,18 +182,24 @@ export class SessionWatcher {
 				return;
 			}
 
-			// Apply pricing to new records
-			for (const record of result.records) {
-				record.cost = calculateCost(record, this.pricing);
+			// Dedupe re-logged duplicates and drop ids already counted this run,
+			// so each response is counted exactly once even when the incremental
+			// reader re-reads bytes or a write-burst straddles two reads.
+			const freshRecords = this.filterFreshRecords(result.records);
+
+			if (freshRecords.length > 0) {
+				// Apply pricing to the fresh records
+				for (const record of freshRecords) {
+					record.cost = calculateCost(record, this.pricing);
+				}
+
+				// Aggregate and merge into current buckets
+				const newBuckets = aggregateUsage(freshRecords);
+				this.currentBuckets = mergeTimeBuckets(this.currentBuckets, newBuckets);
 			}
 
-			// Aggregate new records into time buckets
-			const newBuckets = aggregateUsage(result.records);
-
-			// Merge into current buckets
-			this.currentBuckets = mergeTimeBuckets(this.currentBuckets, newBuckets);
-
-			// Update offset tracker
+			// Advance the offset even if every record was a duplicate, so those
+			// bytes are not re-read next time
 			await this.offsetTracker.setOffset(filePath, result.newOffset);
 
 			// Update stats
@@ -199,8 +213,8 @@ export class SessionWatcher {
 			});
 
 			logger.info(
-				`Parsed ${result.records.length} new records from ${path.basename(filePath)} ` +
-					`(offset ${offset} -> ${result.newOffset})`,
+				`Parsed ${result.records.length} records (${freshRecords.length} counted after dedupe) ` +
+					`from ${path.basename(filePath)} (offset ${offset} -> ${result.newOffset})`,
 			);
 		} catch (error) {
 			// Never throw from event handler - log and continue
@@ -213,6 +227,28 @@ export class SessionWatcher {
 	}
 
 	/**
+	 * Dedupe a batch by message id and drop ids already counted this run.
+	 * Records without a message id are always kept (they cannot be deduped).
+	 * Newly seen ids are recorded so later reads do not double-count them.
+	 */
+	private filterFreshRecords(records: TokenUsage[]): TokenUsage[] {
+		const deduped = dedupeByMessageId(records);
+		const fresh: TokenUsage[] = [];
+		for (const record of deduped) {
+			if (!record.messageId) {
+				fresh.push(record); // no id -> cannot dedupe, always count
+				continue;
+			}
+			if (this.seenMessageIds.has(record.messageId)) {
+				continue; // already counted this run
+			}
+			this.seenMessageIds.add(record.messageId);
+			fresh.push(record);
+		}
+		return fresh;
+	}
+
+	/**
 	 * Set initial buckets and stats after full parse completes
 	 * Called by extension.ts to seed the watcher with baseline data
 	 * Serialized via processingChain to prevent races with incremental parses
@@ -220,12 +256,21 @@ export class SessionWatcher {
 	setInitialBuckets(
 		buckets: TimeBuckets,
 		stats: { filesProcessed: number; linesSkipped: number },
+		seenMessageIds: Iterable<string> = [],
 	): void {
 		this.processingChain = this.processingChain.then(() => {
 			this.currentBuckets = buckets;
 			this.totalLinesSkipped = stats.linesSkipped;
+			// Re-seed the dedupe guard so incremental reads do not re-count the
+			// message ids already aggregated into these baseline buckets.
+			this.seenMessageIds.clear();
+			for (const id of seenMessageIds) {
+				if (id) {
+					this.seenMessageIds.add(id);
+				}
+			}
 			logger.info(
-				`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped`,
+				`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped, ${this.seenMessageIds.size} message ids seeded`,
 			);
 		});
 	}
@@ -247,6 +292,7 @@ export class SessionWatcher {
 
 		this.processedFiles.clear();
 		this.totalLinesSkipped = 0;
+		this.seenMessageIds.clear();
 
 		logger.info("SessionWatcher state reset");
 	}

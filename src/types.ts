@@ -9,6 +9,12 @@ export interface TokenUsage {
 	timestamp: Date;
 	model: string;
 	sessionId: string;
+	/**
+	 * Anthropic message id (e.g. "msg_..."). Claude Code re-logs the same
+	 * assistant message (same id, same usage) across many JSONL lines, so this
+	 * is used to dedupe and count each response exactly once. Empty when absent.
+	 */
+	messageId?: string;
 	inputTokens: number;
 	outputTokens: number;
 	cacheCreationTokens: number;

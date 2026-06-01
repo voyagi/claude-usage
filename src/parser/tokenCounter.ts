@@ -123,3 +123,30 @@ export function addToAggregation(
 		target.lastMessage = source.timestamp;
 	}
 }
+
+/**
+ * Collapse re-logged duplicate records to one per message id.
+ *
+ * Claude Code writes the same assistant message (identical id and usage) across
+ * many JSONL lines, so naively summing every line multiplies a single response's
+ * tokens. This keeps the LAST record for each non-empty messageId (the last write
+ * carries the final usage) and passes through records with no id unchanged — they
+ * cannot be deduped and must each be counted.
+ *
+ * @param records Parsed token usage records
+ * @returns Deduplicated records (order not preserved; aggregation is order-independent)
+ */
+export function dedupeByMessageId(records: TokenUsage[]): TokenUsage[] {
+	const byId = new Map<string, TokenUsage>();
+	const noId: TokenUsage[] = [];
+
+	for (const record of records) {
+		if (record.messageId) {
+			byId.set(record.messageId, record); // keep last write per id
+		} else {
+			noId.push(record);
+		}
+	}
+
+	return [...byId.values(), ...noId];
+}
