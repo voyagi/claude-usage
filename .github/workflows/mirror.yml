@@ -6,6 +6,6 @@ on:
 
 jobs:
   mirror:
-    uses: voyagi/.github-workflows/.github/workflows/mirror-codeberg.yml@main
+    uses: voyagi/.github-workflows/.github/workflows/mirror-codeberg.yml@a79dfb7c9a8147039f884d6478243d435b81d2b7 # main
     secrets:
       CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}

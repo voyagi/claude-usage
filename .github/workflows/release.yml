@@ -6,4 +6,4 @@ permissions:
   contents: write
 jobs:
   release:
-    uses: voyagi/.github-workflows/.github/workflows/release.yml@main
+    uses: voyagi/.github-workflows/.github/workflows/release.yml@a79dfb7c9a8147039f884d6478243d435b81d2b7 # main
