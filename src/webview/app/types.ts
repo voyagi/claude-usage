@@ -42,8 +42,21 @@ export interface RateLimitData {
 }
 
 /**
+ * Per-project usage totals (serialization-safe).
+ */
+export interface ProjectUsage {
+	project: string; // friendly project name (basename of cwd), or "unknown"
+	inputTokens: number;
+	outputTokens: number;
+	cacheCreationTokens: number;
+	cacheReadTokens: number;
+	totalCost: number;
+	messageCount: number;
+}
+
+/**
  * Complete dashboard data payload sent from extension to webview.
- * Contains all information needed by Overview, Trends, and Session tabs.
+ * Contains all information needed by Overview, Trends, Session, and Projects tabs.
  */
 export interface DashboardData {
 	// Token breakdown (current window/day/period)
@@ -73,6 +86,9 @@ export interface DashboardData {
 
 	// Time series data for charts
 	trendData: TrendDataPoint[];
+
+	// Per-project usage breakdown (sorted by cost, desc)
+	projects: ProjectUsage[];
 
 	// Session comparison
 	currentSessionTokens: number;

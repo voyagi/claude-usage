@@ -7,6 +7,7 @@ import * as crypto from "node:crypto";
 import { format, getISOWeek, getISOWeekYear, subHours } from "date-fns";
 import * as vscode from "vscode";
 import type {
+	AggregatedUsage,
 	RateLimitInfo,
 	StatusBarData,
 	TimeBuckets,
@@ -17,6 +18,7 @@ import type {
 	DashboardData,
 	ExtensionMessage,
 	MessageDetail,
+	ProjectUsage,
 	RateLimitData,
 	TrendDataPoint,
 	WebviewMessage,
@@ -172,6 +174,21 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		const filesProcessed = statusBarData.filesProcessed;
 		const linesSkipped = statusBarData.linesSkipped;
 
+		// 9. Per-project breakdown, sorted by cost (desc)
+		const projects: ProjectUsage[] = Array.from(
+			(buckets.project ?? new Map<string, AggregatedUsage>()).entries(),
+		)
+			.map(([project, agg]) => ({
+				project,
+				inputTokens: agg.inputTokens,
+				outputTokens: agg.outputTokens,
+				cacheCreationTokens: agg.cacheCreationTokens,
+				cacheReadTokens: agg.cacheReadTokens,
+				totalCost: agg.totalCost,
+				messageCount: agg.messageCount,
+			}))
+			.sort((a, b) => b.totalCost - a.totalCost);
+
 		return {
 			inputTokens: statusBarData.totalInputTokens,
 			outputTokens: statusBarData.totalOutputTokens,
@@ -189,6 +206,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			tokensPerMinute,
 			minutesUntilLimit,
 			trendData,
+			projects,
 			currentSessionTokens,
 			averageSessionTokens,
 			sessionCount,
