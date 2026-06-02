@@ -150,3 +150,18 @@ export function dedupeByMessageId(records: TokenUsage[]): TokenUsage[] {
 
 	return [...byId.values(), ...noId];
 }
+
+/**
+ * Derive a friendly project name from a JSONL `cwd` path: its final path
+ * segment (basename), handling both POSIX and Windows separators.
+ *
+ * @param cwd Working directory recorded in the transcript, if any
+ * @returns Basename of cwd, or "" when cwd is missing/empty
+ */
+export function projectNameFromCwd(cwd: string | undefined): string {
+	if (!cwd) {
+		return "";
+	}
+	const parts = cwd.split(/[/\\]+/).filter(Boolean);
+	return parts.length > 0 ? parts[parts.length - 1] : "";
+}

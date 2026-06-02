@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import type { TokenUsage } from "../types.js";
+import { projectNameFromCwd } from "./tokenCounter.js";
 
 /**
  * Schema for cache_creation object with ephemeral token breakdowns
@@ -56,6 +57,7 @@ export const AssistantMessageSchema = z
 		type: z.literal("assistant"),
 		timestamp: z.string().datetime(),
 		sessionId: z.string(),
+		cwd: z.string().optional(),
 		message: z
 			.object({
 				id: z.string().optional(),
@@ -96,6 +98,7 @@ export function parseAssistantMessage(json: unknown): TokenUsage | null {
 			model: data.message.model,
 			sessionId: data.sessionId,
 			messageId: data.message.id ?? "",
+			projectName: projectNameFromCwd(data.cwd),
 			inputTokens: usage.input_tokens,
 			outputTokens: usage.output_tokens,
 			cacheCreationTokens: usage.cache_creation_input_tokens,

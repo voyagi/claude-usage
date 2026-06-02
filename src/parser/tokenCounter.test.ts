@@ -1,6 +1,6 @@
 import type { TokenUsage } from "../types";
 import { parseAssistantMessage } from "./schemas";
-import { dedupeByMessageId } from "./tokenCounter";
+import { dedupeByMessageId, projectNameFromCwd } from "./tokenCounter";
 
 function rec(
 	messageId: string | undefined,
@@ -101,5 +101,55 @@ describe("parseAssistantMessage — message id extraction", () => {
 		};
 		const out = parseAssistantMessage(noId);
 		expect(out?.messageId).toBe("");
+	});
+
+	it("derives projectName from the top-level cwd", () => {
+		const out = parseAssistantMessage({
+			type: "assistant",
+			timestamp: "2026-06-01T12:00:00.000Z",
+			sessionId: "s1",
+			cwd: "/home/u/projects/widget",
+			message: {
+				id: "msg_1",
+				model: "claude-opus-4-8",
+				usage: { input_tokens: 1, output_tokens: 2 },
+			},
+		});
+		expect(out?.projectName).toBe("widget");
+	});
+
+	it("leaves projectName empty when cwd is absent", () => {
+		const out = parseAssistantMessage({
+			type: "assistant",
+			timestamp: "2026-06-01T12:00:00.000Z",
+			sessionId: "s1",
+			message: {
+				id: "msg_1",
+				model: "claude-opus-4-8",
+				usage: { input_tokens: 1, output_tokens: 2 },
+			},
+		});
+		expect(out?.projectName).toBe("");
+	});
+});
+
+describe("projectNameFromCwd", () => {
+	it("returns the basename of a Windows path", () => {
+		expect(projectNameFromCwd("C:\\Users\\Eagi\\projects\\claude-usage")).toBe(
+			"claude-usage",
+		);
+	});
+
+	it("returns the basename of a POSIX path", () => {
+		expect(projectNameFromCwd("/home/u/projects/my-app")).toBe("my-app");
+	});
+
+	it("ignores trailing separators", () => {
+		expect(projectNameFromCwd("/home/u/projects/my-app/")).toBe("my-app");
+	});
+
+	it("returns empty string for undefined or empty cwd", () => {
+		expect(projectNameFromCwd(undefined)).toBe("");
+		expect(projectNameFromCwd("")).toBe("");
 	});
 });
