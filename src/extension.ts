@@ -717,13 +717,10 @@ async function performInitialParse(
 		dashboardProvider.updateBuckets(buckets, data, getSelectedPlan());
 	}
 
-	// Seed watcher with baseline data + the message ids already counted in this
-	// full parse, so incremental reads don't re-count re-logged or re-read records.
-	watcher.setInitialBuckets(
-		buckets,
-		stats,
-		parseResult.records.map((r) => r.messageId ?? ""),
-	);
+	// Seed watcher with baseline data + the records already counted in this full
+	// parse, so incremental reads don't re-count re-logged or re-read records (and
+	// can top up if a later read carries larger usage for the same message id).
+	watcher.setInitialBuckets(buckets, stats, parseResult.records);
 
 	// Log summary to output channel
 	let totalTokens = 0;

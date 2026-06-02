@@ -1,6 +1,10 @@
 import type { TokenUsage } from "../types";
 import { parseAssistantMessage } from "./schemas";
-import { dedupeByMessageId, projectNameFromCwd } from "./tokenCounter";
+import {
+	dedupeByMessageId,
+	projectNameFromCwd,
+	reconcileSeenUsage,
+} from "./tokenCounter";
 
 function rec(
 	messageId: string | undefined,
@@ -151,5 +155,56 @@ describe("projectNameFromCwd", () => {
 	it("returns empty string for undefined or empty cwd", () => {
 		expect(projectNameFromCwd(undefined)).toBe("");
 		expect(projectNameFromCwd("")).toBe("");
+	});
+});
+
+describe("reconcileSeenUsage", () => {
+	it("counts a new message id in full and remembers it", () => {
+		const seen = new Map<string, TokenUsage>();
+		const r = rec("msg_a", { outputTokens: 100 });
+		expect(reconcileSeenUsage(r, seen)).toBe(r);
+		expect(seen.get("msg_a")).toBe(r);
+	});
+
+	it("drops a repeat with equal usage", () => {
+		const seen = new Map<string, TokenUsage>();
+		reconcileSeenUsage(rec("msg_a", { outputTokens: 100 }), seen);
+		expect(
+			reconcileSeenUsage(rec("msg_a", { outputTokens: 100 }), seen),
+		).toBeNull();
+	});
+
+	it("drops a repeat with smaller usage", () => {
+		const seen = new Map<string, TokenUsage>();
+		reconcileSeenUsage(rec("msg_a", { outputTokens: 100 }), seen);
+		expect(
+			reconcileSeenUsage(rec("msg_a", { outputTokens: 50 }), seen),
+		).toBeNull();
+	});
+
+	it("tops up with the positive delta when a later read carries larger usage", () => {
+		const seen = new Map<string, TokenUsage>();
+		reconcileSeenUsage(
+			rec("msg_a", { inputTokens: 10, outputTokens: 100 }),
+			seen,
+		);
+		const delta = reconcileSeenUsage(
+			rec("msg_a", { inputTokens: 15, outputTokens: 250 }),
+			seen,
+		);
+		expect(delta).not.toBeNull();
+		expect(delta?.inputTokens).toBe(5);
+		expect(delta?.outputTokens).toBe(150);
+		// stored usage advances to the larger record for subsequent comparisons
+		expect(seen.get("msg_a")?.outputTokens).toBe(250);
+	});
+
+	it("always counts records with no message id", () => {
+		const seen = new Map<string, TokenUsage>();
+		const r1 = rec(undefined);
+		const r2 = rec("");
+		expect(reconcileSeenUsage(r1, seen)).toBe(r1);
+		expect(reconcileSeenUsage(r2, seen)).toBe(r2);
+		expect(seen.size).toBe(0);
 	});
 });
