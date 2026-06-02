@@ -24,6 +24,19 @@ function formatTokens(tokens: number): string {
 }
 
 /**
+ * Format a day count for the weekly-cap forecast
+ */
+function formatDays(days: number): string {
+	if (days >= 999) return "999+ days";
+	if (days < 1) {
+		const hours = Math.max(1, Math.round(days * 24));
+		return `${hours}h`;
+	}
+	const rounded = Math.round(days * 10) / 10;
+	return `${rounded} day${rounded === 1 ? "" : "s"}`;
+}
+
+/**
  * Format time duration
  */
 function formatDuration(minutes: number | null): string {
@@ -176,6 +189,22 @@ export function OverviewTab({ data }: OverviewTabProps) {
 					resetTime={data.weekly.resetTime}
 					isHit={data.weekly.isHit}
 				/>
+				{data.weeklyForecast && (
+					<div
+						style={{
+							fontSize: "calc(var(--vscode-font-size) * 0.85)",
+							marginTop: "-2px",
+							marginBottom: "10px",
+							color: data.weeklyForecast.willExceedBeforeReset
+								? "var(--vscode-errorForeground)"
+								: "var(--vscode-descriptionForeground)",
+						}}
+					>
+						{data.weeklyForecast.willExceedBeforeReset
+							? `⚠ At ~${formatTokens(data.weeklyForecast.avgDailyTokens)} tokens/day you'll reach the weekly cap in ~${formatDays(data.weeklyForecast.daysUntilCap)} — before it resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`
+							: `On track: ~${formatDays(data.weeklyForecast.daysUntilCap)} to the weekly cap at your recent pace; resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`}
+					</div>
+				)}
 				<ProgressBar
 					label="Weekly Sonnet"
 					current={data.weeklySonnet.currentTokens}

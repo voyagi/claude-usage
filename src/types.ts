@@ -9,6 +9,17 @@ export interface TokenUsage {
 	timestamp: Date;
 	model: string;
 	sessionId: string;
+	/**
+	 * Anthropic message id (e.g. "msg_..."). Claude Code re-logs the same
+	 * assistant message (same id, same usage) across many JSONL lines, so this
+	 * is used to dedupe and count each response exactly once. Empty when absent.
+	 */
+	messageId?: string;
+	/**
+	 * Friendly project name derived from the JSONL `cwd` (its basename), used for
+	 * the per-project usage breakdown. Empty/undefined when `cwd` is absent.
+	 */
+	projectName?: string;
 	inputTokens: number;
 	outputTokens: number;
 	cacheCreationTokens: number;
@@ -44,6 +55,12 @@ export interface TimeBuckets {
 	modelWeekly: Map<string, AggregatedUsage>;
 	/** Hourly buckets for sliding window calculations. Key format: "YYYY-MM-DDTHH" */
 	hourly: Map<string, AggregatedUsage>;
+	/**
+	 * Per-project aggregation. Key = friendly project name (basename of cwd).
+	 * Optional so existing empty-bucket constructions and persisted data without
+	 * it remain valid; aggregateUsage always populates it.
+	 */
+	project?: Map<string, AggregatedUsage>;
 }
 
 /**
@@ -96,6 +113,7 @@ export interface SerializedTimeBuckets {
 	monthly: [string, AggregatedUsage][];
 	modelWeekly?: [string, AggregatedUsage][]; // Optional for backward compat with existing persisted data
 	hourly?: [string, AggregatedUsage][]; // Optional for backward compat
+	project?: [string, AggregatedUsage][]; // Optional for backward compat
 }
 
 /**

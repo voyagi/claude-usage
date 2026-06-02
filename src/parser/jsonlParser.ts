@@ -9,6 +9,7 @@ import type { FileParseResult, TokenUsage } from "../types.js";
 import type { Logger } from "../utils/logger.js";
 import { findAllSessionFiles, getClaudeProjectsDir } from "../utils/paths.js";
 import { parseAssistantMessage } from "./schemas.js";
+import { dedupeByMessageId } from "./tokenCounter.js";
 
 /**
  * Parse a single JSONL session file with error recovery
@@ -136,16 +137,21 @@ export async function parseAllSessions(logger: Logger): Promise<{
 		}
 	}
 
-	// Sort all records by timestamp ascending (oldest first)
-	allRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+	// Collapse re-logged duplicates (Claude Code writes the same assistant
+	// message across many JSONL lines) so each response is counted exactly once.
+	const dedupedRecords = dedupeByMessageId(allRecords);
+
+	// Sort by timestamp ascending (oldest first)
+	dedupedRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
 	logger.info(
 		`Parsing complete: ${filesProcessed}/${sessionFiles.length} files processed, ` +
-			`${allRecords.length} records extracted, ${totalLinesSkipped} lines skipped`,
+			`${allRecords.length} records extracted, ${dedupedRecords.length} after dedup, ` +
+			`${totalLinesSkipped} lines skipped`,
 	);
 
 	return {
-		records: allRecords,
+		records: dedupedRecords,
 		filesProcessed,
 		linesSkipped: totalLinesSkipped,
 		errors: allErrors,

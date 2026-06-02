@@ -12,10 +12,14 @@ import {
 import type { RateLimitEvent } from "../parser/incrementalParser.js";
 import { parseIncremental } from "../parser/incrementalParser.js";
 import {
+	dedupeByMessageId,
+	reconcileSeenUsage,
+} from "../parser/tokenCounter.js";
+import {
 	calculateCost,
 	loadPricingFromConfig,
 } from "../pricing/pricingEngine.js";
-import type { ModelPricing, TimeBuckets } from "../types.js";
+import type { ModelPricing, TimeBuckets, TokenUsage } from "../types.js";
 import { Logger } from "../utils/logger.js";
 import { getClaudeProjectsDir } from "../utils/paths.js";
 import { OffsetTracker } from "./offsetTracker.js";
@@ -49,6 +53,14 @@ export class SessionWatcher {
 	private readonly processedFiles = new Set<string>();
 	private totalLinesSkipped = 0;
 	private pricing: Record<string, ModelPricing> = {};
+	/**
+	 * Usage already counted per message id this run (seeded from the full parse,
+	 * then extended by each incremental read). Makes token counting idempotent per
+	 * message id while keeping the largest usage seen: Claude Code re-logs the same
+	 * assistant message many times and the reader can re-read bytes the full parse
+	 * already counted.
+	 */
+	private readonly countedById = new Map<string, TokenUsage>();
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -174,18 +186,24 @@ export class SessionWatcher {
 				return;
 			}
 
-			// Apply pricing to new records
-			for (const record of result.records) {
-				record.cost = calculateCost(record, this.pricing);
+			// Dedupe re-logged duplicates and drop ids already counted this run,
+			// so each response is counted exactly once even when the incremental
+			// reader re-reads bytes or a write-burst straddles two reads.
+			const freshRecords = this.filterFreshRecords(result.records);
+
+			if (freshRecords.length > 0) {
+				// Apply pricing to the fresh records
+				for (const record of freshRecords) {
+					record.cost = calculateCost(record, this.pricing);
+				}
+
+				// Aggregate and merge into current buckets
+				const newBuckets = aggregateUsage(freshRecords);
+				this.currentBuckets = mergeTimeBuckets(this.currentBuckets, newBuckets);
 			}
 
-			// Aggregate new records into time buckets
-			const newBuckets = aggregateUsage(result.records);
-
-			// Merge into current buckets
-			this.currentBuckets = mergeTimeBuckets(this.currentBuckets, newBuckets);
-
-			// Update offset tracker
+			// Advance the offset even if every record was a duplicate, so those
+			// bytes are not re-read next time
 			await this.offsetTracker.setOffset(filePath, result.newOffset);
 
 			// Update stats
@@ -199,8 +217,8 @@ export class SessionWatcher {
 			});
 
 			logger.info(
-				`Parsed ${result.records.length} new records from ${path.basename(filePath)} ` +
-					`(offset ${offset} -> ${result.newOffset})`,
+				`Parsed ${result.records.length} records (${freshRecords.length} counted after dedupe) ` +
+					`from ${path.basename(filePath)} (offset ${offset} -> ${result.newOffset})`,
 			);
 		} catch (error) {
 			// Never throw from event handler - log and continue
@@ -213,6 +231,25 @@ export class SessionWatcher {
 	}
 
 	/**
+	 * Dedupe a batch by message id, then reconcile against usage already counted
+	 * this run: new ids count in full, smaller/equal repeats are dropped, and a
+	 * later read carrying larger usage contributes only the positive token delta
+	 * (so a final write landing in a later read tops up rather than being lost).
+	 * Records without a message id are always kept (they cannot be deduped).
+	 */
+	private filterFreshRecords(records: TokenUsage[]): TokenUsage[] {
+		const deduped = dedupeByMessageId(records);
+		const fresh: TokenUsage[] = [];
+		for (const record of deduped) {
+			const counted = reconcileSeenUsage(record, this.countedById);
+			if (counted !== null) {
+				fresh.push(counted);
+			}
+		}
+		return fresh;
+	}
+
+	/**
 	 * Set initial buckets and stats after full parse completes
 	 * Called by extension.ts to seed the watcher with baseline data
 	 * Serialized via processingChain to prevent races with incremental parses
@@ -220,12 +257,22 @@ export class SessionWatcher {
 	setInitialBuckets(
 		buckets: TimeBuckets,
 		stats: { filesProcessed: number; linesSkipped: number },
+		seenRecords: Iterable<TokenUsage> = [],
 	): void {
 		this.processingChain = this.processingChain.then(() => {
 			this.currentBuckets = buckets;
 			this.totalLinesSkipped = stats.linesSkipped;
+			// Re-seed the dedupe guard with the usage already counted in the full
+			// parse, so incremental reads don't re-count it (and can top up if a
+			// later read carries larger usage for the same message id).
+			this.countedById.clear();
+			for (const record of seenRecords) {
+				if (record.messageId) {
+					this.countedById.set(record.messageId, record);
+				}
+			}
 			logger.info(
-				`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped`,
+				`Initial buckets set: ${stats.filesProcessed} files, ${stats.linesSkipped} lines skipped, ${this.countedById.size} message ids seeded`,
 			);
 		});
 	}
@@ -247,6 +294,7 @@ export class SessionWatcher {
 
 		this.processedFiles.clear();
 		this.totalLinesSkipped = 0;
+		this.countedById.clear();
 
 		logger.info("SessionWatcher state reset");
 	}

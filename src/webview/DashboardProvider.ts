@@ -4,9 +4,17 @@
  */
 
 import * as crypto from "node:crypto";
-import { format, getISOWeek, getISOWeekYear, subHours } from "date-fns";
+import {
+	format,
+	getISOWeek,
+	getISOWeekYear,
+	subDays,
+	subHours,
+} from "date-fns";
 import * as vscode from "vscode";
+import { forecastWeeklyCap } from "../core/burnRate.js";
 import type {
+	AggregatedUsage,
 	RateLimitInfo,
 	StatusBarData,
 	TimeBuckets,
@@ -17,6 +25,7 @@ import type {
 	DashboardData,
 	ExtensionMessage,
 	MessageDetail,
+	ProjectUsage,
 	RateLimitData,
 	TrendDataPoint,
 	WebviewMessage,
@@ -172,6 +181,44 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		const filesProcessed = statusBarData.filesProcessed;
 		const linesSkipped = statusBarData.linesSkipped;
 
+		// 9. Per-project breakdown, sorted by cost (desc)
+		const projects: ProjectUsage[] = Array.from(
+			(buckets.project ?? new Map<string, AggregatedUsage>()).entries(),
+		)
+			.map(([project, agg]) => ({
+				project,
+				inputTokens: agg.inputTokens,
+				outputTokens: agg.outputTokens,
+				cacheCreationTokens: agg.cacheCreationTokens,
+				cacheReadTokens: agg.cacheReadTokens,
+				totalCost: agg.totalCost,
+				messageCount: agg.messageCount,
+			}))
+			.sort((a, b) => b.totalCost - a.totalCost);
+
+		// 10. Weekly-cap forecast from recent daily output (trailing 7-day average).
+		// Uses daily consumption, not the short-window burn rate, so it isn't a
+		// misleading 24/7 extrapolation.
+		let last7DaysOutput = 0;
+		for (let i = 0; i < 7; i++) {
+			const day = format(subDays(now, i), "yyyy-MM-dd");
+			last7DaysOutput += buckets.daily.get(day)?.outputTokens ?? 0;
+		}
+		const avgDailyOutput = last7DaysOutput / 7;
+		const weeklyResetMs = weekly.resetTime
+			? new Date(weekly.resetTime).getTime() - now.getTime()
+			: 0;
+		const daysUntilWeeklyReset = Math.max(
+			0,
+			weeklyResetMs / (24 * 60 * 60 * 1000),
+		);
+		const weeklyForecast = forecastWeeklyCap(
+			weekly.currentTokens,
+			weekly.estimatedLimit,
+			avgDailyOutput,
+			daysUntilWeeklyReset,
+		);
+
 		return {
 			inputTokens: statusBarData.totalInputTokens,
 			outputTokens: statusBarData.totalOutputTokens,
@@ -189,6 +236,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			tokensPerMinute,
 			minutesUntilLimit,
 			trendData,
+			projects,
+			weeklyForecast,
 			currentSessionTokens,
 			averageSessionTokens,
 			sessionCount,

@@ -10,30 +10,50 @@ import { Logger } from "../utils/logger";
 const logger = Logger.create("PricingEngine");
 
 /**
- * Default pricing as of Feb 2026 (from Claude.ai documentation)
+ * Standard Anthropic prompt-cache multipliers, identical across all current
+ * Claude models: 5-minute cache write 1.25x base input, 1-hour cache write 2x,
+ * cache read 0.1x. Verified against platform.claude.com/docs/en/about-claude/pricing
+ * (June 2026).
+ */
+const STD_CACHE = {
+	cache5mWriteMultiplier: 1.25,
+	cache1hWriteMultiplier: 2.0,
+	cacheReadMultiplier: 0.1,
+} as const;
+
+/** Build a ModelPricing row from base input/output rates + the standard cache multipliers. */
+function priced(
+	inputPerMillion: number,
+	outputPerMillion: number,
+): ModelPricing {
+	return { inputPerMillion, outputPerMillion, ...STD_CACHE };
+}
+
+/**
+ * Default per-million-token USD pricing, verified against Anthropic's official
+ * pricing page (June 2026). Opus 4.5-4.8 share $5/$25; Sonnet 4.5/4.6 $3/$15;
+ * Haiku 4.5 $1/$5; Haiku 3.5 (retired) $0.80/$4. Unknown/newer model strings are
+ * resolved by family in resolveModelPricing().
  */
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
-	"claude-opus-4-6": {
-		inputPerMillion: 5.0,
-		outputPerMillion: 25.0,
-		cache5mWriteMultiplier: 1.25,
-		cache1hWriteMultiplier: 2.0,
-		cacheReadMultiplier: 0.1,
-	},
-	"claude-sonnet-4-5": {
-		inputPerMillion: 3.0,
-		outputPerMillion: 15.0,
-		cache5mWriteMultiplier: 1.25,
-		cache1hWriteMultiplier: 2.0,
-		cacheReadMultiplier: 0.1,
-	},
-	"claude-haiku-3-5": {
-		inputPerMillion: 0.8,
-		outputPerMillion: 4.0,
-		cache5mWriteMultiplier: 1.25,
-		cache1hWriteMultiplier: 2.0,
-		cacheReadMultiplier: 0.1,
-	},
+	"claude-opus-4-8": priced(5.0, 25.0),
+	"claude-opus-4-7": priced(5.0, 25.0),
+	"claude-opus-4-6": priced(5.0, 25.0),
+	"claude-opus-4-5": priced(5.0, 25.0),
+	"claude-sonnet-4-6": priced(3.0, 15.0),
+	"claude-sonnet-4-5": priced(3.0, 15.0),
+	"claude-haiku-4-5": priced(1.0, 5.0),
+	"claude-haiku-3-5": priced(0.8, 4.0),
+};
+
+/**
+ * Newest known model per family — used to price unknown/newer model strings
+ * (e.g. a future opus version) at the correct family rate instead of mis-pricing.
+ */
+const FAMILY_FALLBACK: Record<"opus" | "sonnet" | "haiku", string> = {
+	opus: "claude-opus-4-8",
+	sonnet: "claude-sonnet-4-6",
+	haiku: "claude-haiku-4-5",
 };
 
 /**
@@ -88,20 +108,61 @@ export function loadPricingFromConfig(): Record<string, ModelPricing> {
 }
 
 /**
+ * Resolve the pricing row for a model string.
+ *
+ * Resolution order: exact match -> billability gate -> prefix match (handles
+ * dated ids like "claude-opus-4-8-20260514") -> newest-in-family fallback.
+ * Returns null for NON-BILLABLE models (e.g. "<synthetic>", title generation,
+ * embeddings) so they contribute 0 cost instead of being mis-priced as a real
+ * model — the old blanket Sonnet fallback inflated totals with such noise.
+ */
+export function resolveModelPricing(
+	model: string,
+	pricing: Record<string, ModelPricing>,
+): ModelPricing | null {
+	// 1. Exact match (the common case once the model is in the table)
+	const exact = pricing[model];
+	if (exact) {
+		return exact;
+	}
+
+	// 2. Billability gate: only Claude opus/sonnet/haiku models have a token cost
+	const lower = model.toLowerCase();
+	const family = lower.includes("opus")
+		? "opus"
+		: lower.includes("sonnet")
+			? "sonnet"
+			: lower.includes("haiku")
+				? "haiku"
+				: null;
+	if (family === null) {
+		return null;
+	}
+
+	// 3. Prefix match in either direction (dated / suffixed model ids)
+	for (const [key, value] of Object.entries(pricing)) {
+		if (model.startsWith(key) || key.startsWith(model)) {
+			return value;
+		}
+	}
+
+	// 4. Family fallback: price an unknown/newer version as the newest known
+	//    model in the same family (e.g. a future opus -> claude-opus-4-8)
+	return pricing[FAMILY_FALLBACK[family]] ?? null;
+}
+
+/**
  * Calculate cost for a single TokenUsage record
  */
 export function calculateCost(
 	usage: TokenUsage,
 	pricing: Record<string, ModelPricing>,
 ): number {
-	let modelPricing = pricing[usage.model];
+	const modelPricing = resolveModelPricing(usage.model, pricing);
 
-	// Fallback to claude-sonnet-4-5 if model not found (most common in Claude Code)
+	// Non-billable model (e.g. "<synthetic>") -> no cost
 	if (!modelPricing) {
-		logger.warn(
-			`Model ${usage.model} not found in pricing table, using claude-sonnet-4-5 as fallback`,
-		);
-		modelPricing = pricing["claude-sonnet-4-5"];
+		return 0;
 	}
 
 	// Input tokens cost

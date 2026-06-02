@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { OverviewTab } from "./components/OverviewTab";
+import { ProjectsTab } from "./components/ProjectsTab";
 import { SessionTab } from "./components/SessionTab";
 import { TrendsTab } from "./components/TrendsTab";
 import { TrustIndicator } from "./components/TrustIndicator";
@@ -11,7 +12,7 @@ import { WelcomeCard } from "./components/WelcomeCard";
 import { vscode } from "./index";
 import type { DashboardData, ExtensionMessage, WebviewMessage } from "./types";
 
-type Tab = "overview" | "trends" | "session";
+type Tab = "overview" | "trends" | "projects" | "session";
 
 interface AppState {
 	activeTab: Tab;
@@ -83,6 +84,14 @@ export function App() {
 				</button>
 				<button
 					className={
+						activeTab === "projects" ? "tab tab-active" : "tab tab-inactive"
+					}
+					onClick={() => handleTabChange("projects")}
+				>
+					Projects
+				</button>
+				<button
+					className={
 						activeTab === "session" ? "tab tab-active" : "tab tab-inactive"
 					}
 					onClick={() => handleTabChange("session")}
@@ -113,6 +122,7 @@ export function App() {
 					<>
 						{activeTab === "overview" && <OverviewTab data={data} />}
 						{activeTab === "trends" && <TrendsTab data={data} />}
+						{activeTab === "projects" && <ProjectsTab data={data} />}
 						{activeTab === "session" && <SessionTab data={data} />}
 					</>
 				)}

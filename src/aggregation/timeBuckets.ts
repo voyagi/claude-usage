@@ -30,6 +30,7 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		monthly: new Map(),
 		modelWeekly: new Map(),
 		hourly: new Map(),
+		project: new Map(),
 	};
 
 	for (const record of records) {
@@ -77,6 +78,13 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 			buckets.hourly.set(hourKey, createEmptyAggregatedUsage());
 		}
 		addToAggregation(buckets.hourly.get(hourKey)!, record);
+
+		// Per-project bucket: key = friendly project name (basename of cwd)
+		const projectKey = record.projectName || "unknown";
+		if (!buckets.project!.has(projectKey)) {
+			buckets.project!.set(projectKey, createEmptyAggregatedUsage());
+		}
+		addToAggregation(buckets.project!.get(projectKey)!, record);
 	}
 
 	return buckets;
@@ -104,6 +112,7 @@ export function mergeTimeBuckets(a: TimeBuckets, b: TimeBuckets): TimeBuckets {
 		monthly: deepCopyMap(a.monthly),
 		modelWeekly: deepCopyMap(a.modelWeekly),
 		hourly: deepCopyMap(a.hourly),
+		project: deepCopyMap(a.project ?? new Map<string, AggregatedUsage>()),
 	};
 
 	// Helper to merge a bucket level
@@ -152,6 +161,12 @@ export function mergeTimeBuckets(a: TimeBuckets, b: TimeBuckets): TimeBuckets {
 	mergeBucket(merged.monthly, b.monthly);
 	mergeBucket(merged.modelWeekly, b.modelWeekly);
 	mergeBucket(merged.hourly, b.hourly);
+	if (merged.project) {
+		mergeBucket(
+			merged.project,
+			b.project ?? new Map<string, AggregatedUsage>(),
+		);
+	}
 
 	return merged;
 }
@@ -201,6 +216,9 @@ export function serializeTimeBuckets(
 		monthly: Array.from(buckets.monthly.entries()),
 		modelWeekly: Array.from(buckets.modelWeekly.entries()),
 		hourly: Array.from(buckets.hourly.entries()),
+		project: Array.from(
+			(buckets.project ?? new Map<string, AggregatedUsage>()).entries(),
+		),
 	};
 }
 
@@ -242,6 +260,12 @@ export function deserializeTimeBuckets(
 		),
 		hourly: new Map(
 			(serialized.hourly ?? []).map(([key, agg]) => [key, deserializeAgg(agg)]),
+		),
+		project: new Map(
+			(serialized.project ?? []).map(([key, agg]) => [
+				key,
+				deserializeAgg(agg),
+			]),
 		),
 	};
 }

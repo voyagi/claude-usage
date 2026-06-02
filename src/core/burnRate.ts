@@ -150,3 +150,57 @@ export function predictTimeUntilLimit(
 	}
 	return Math.min(minutesRemaining, 999999);
 }
+
+/**
+ * Forecast for the weekly cap. Uses recent DAILY consumption rather than the
+ * short-window burn rate — extrapolating a 15-minute tokens/min rate across a
+ * 7-day window would be wildly misleading (nobody codes 24/7). Answers the
+ * under-served question "will I hit my weekly cap before it resets?".
+ */
+export interface WeeklyCapForecast {
+	avgDailyTokens: number; // recent average daily output tokens
+	daysUntilCap: number; // days to exhaust the remaining weekly budget at that pace
+	daysUntilReset: number; // days until the weekly window resets
+	willExceedBeforeReset: boolean; // daysUntilCap < daysUntilReset
+}
+
+/**
+ * Compute the weekly-cap forecast from already-derived inputs.
+ *
+ * @param currentWeeklyTokens Output tokens used in the current weekly window
+ * @param weeklyLimitTokens Estimated weekly output-token cap
+ * @param avgDailyTokens Recent average daily output tokens (e.g. last 7 days / 7)
+ * @param daysUntilReset Days until the weekly window resets
+ * @returns Forecast, or null when it can't be computed (no limit / no recent pace / NaN)
+ */
+export function forecastWeeklyCap(
+	currentWeeklyTokens: number,
+	weeklyLimitTokens: number,
+	avgDailyTokens: number,
+	daysUntilReset: number,
+): WeeklyCapForecast | null {
+	if (
+		Number.isNaN(currentWeeklyTokens) ||
+		Number.isNaN(weeklyLimitTokens) ||
+		Number.isNaN(avgDailyTokens) ||
+		Number.isNaN(daysUntilReset)
+	) {
+		return null;
+	}
+
+	// Need a known cap and a positive recent pace to project anything
+	if (weeklyLimitTokens <= 0 || avgDailyTokens <= 0) {
+		return null;
+	}
+
+	const remaining = Math.max(0, weeklyLimitTokens - currentWeeklyTokens);
+	// Cap the projection so an essentially-idle pace doesn't render as Infinity
+	const daysUntilCap = Math.min(remaining / avgDailyTokens, 999);
+
+	return {
+		avgDailyTokens,
+		daysUntilCap,
+		daysUntilReset,
+		willExceedBeforeReset: daysUntilCap < daysUntilReset,
+	};
+}
