@@ -139,7 +139,7 @@ describe("parseAssistantMessage — message id extraction", () => {
 
 describe("projectNameFromCwd", () => {
 	it("returns the basename of a Windows path", () => {
-		expect(projectNameFromCwd("C:\\Users\\Eagi\\projects\\claude-usage")).toBe(
+		expect(projectNameFromCwd("C:\\Users\\dev\\projects\\claude-usage")).toBe(
 			"claude-usage",
 		);
 	});
