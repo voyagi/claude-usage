@@ -15,3 +15,10 @@ jest.config.*
 build.ps1
 compile.ps1
 CLAUDE.md
+dev/
+coverage/
+.mcp.json
+PUBLISHING.md
+renovate.json
+biome.json
+.github/
