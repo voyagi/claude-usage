@@ -55,6 +55,16 @@ export interface ProjectUsage {
 }
 
 /**
+ * Predictive weekly-cap forecast (serialization-safe; plain numbers/bool).
+ */
+export interface WeeklyCapForecast {
+	avgDailyTokens: number;
+	daysUntilCap: number;
+	daysUntilReset: number;
+	willExceedBeforeReset: boolean;
+}
+
+/**
  * Complete dashboard data payload sent from extension to webview.
  * Contains all information needed by Overview, Trends, Session, and Projects tabs.
  */
@@ -74,6 +84,9 @@ export interface DashboardData {
 	session5h: RateLimitData;
 	weekly: RateLimitData;
 	weeklySonnet: RateLimitData;
+
+	// Predictive weekly-cap forecast (null when not computable)
+	weeklyForecast: WeeklyCapForecast | null;
 
 	// Session timing
 	windowStart: string | null; // ISO 8601 string
