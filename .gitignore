@@ -24,3 +24,4 @@ dev/
 
 # AI review/planning artifacts (internal — not for the public repo)
 .claude/reviews/
+.planning/
