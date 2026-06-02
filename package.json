@@ -218,7 +218,7 @@
 		"esbuild": "^0.27.0",
 		"jest": "^30.2.0",
 		"ts-jest": "^29.4.6",
-		"typescript": "^5.7.0"
+		"typescript": "^6.0.0"
 	},
 	"dependencies": {
 		"date-fns": "^4.1.0",
