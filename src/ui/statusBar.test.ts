@@ -375,6 +375,10 @@ describe("StatusBarManager: display states", () => {
 		expect(sessionItem.tooltip).toBe("Something went wrong");
 		expect(weeklyItem.hide).toHaveBeenCalled();
 		expect(sonnetItem.hide).toHaveBeenCalled();
+
+		// showError arms a 5s errorTimer; dispose clears it so the timer doesn't
+		// leak into other tests (Jest "worker failed to exit" / flaky runs).
+		manager.dispose();
 	});
 
 	it("showNoData shows cloud icon and hides secondary items", () => {
