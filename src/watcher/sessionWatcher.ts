@@ -11,11 +11,7 @@ import {
 } from "../aggregation/timeBuckets.js";
 import type { RateLimitEvent } from "../parser/incrementalParser.js";
 import { parseIncremental } from "../parser/incrementalParser.js";
-import {
-	dedupeByMessageId,
-	pruneSeenUsage,
-	reconcileSeenUsage,
-} from "../parser/tokenCounter.js";
+import { pruneSeenUsage, reconcileBatch } from "../parser/tokenCounter.js";
 import {
 	calculateCost,
 	loadPricingFromConfig,
@@ -264,29 +260,17 @@ export class SessionWatcher {
 	}
 
 	/**
-	 * Dedupe a batch by message id, then reconcile against usage already counted
-	 * this run: new ids count in full, smaller/equal repeats are dropped, and a
-	 * later read carrying larger usage contributes only the positive token delta
-	 * (so a final write landing in a later read tops up rather than being lost).
-	 * Records without a message id are always kept (they cannot be deduped).
+	 * Reconcile a freshly-read batch against the watcher's live guard maps. Thin
+	 * wrapper over reconcileBatch, which holds the dedupe + last-seen stamp +
+	 * top-up logic (unit-tested in tokenCounter.test.ts).
 	 */
 	private filterFreshRecords(records: TokenUsage[]): TokenUsage[] {
-		const deduped = dedupeByMessageId(records);
-		const now = Date.now();
-		const fresh: TokenUsage[] = [];
-		for (const record of deduped) {
-			// Mark every id that appeared in this read as recently seen — even an
-			// equal/smaller re-log that reconcile drops — so age-out pruning keeps
-			// ids Claude Code is still re-logging.
-			if (record.messageId) {
-				this.lastSeenById.set(record.messageId, now);
-			}
-			const counted = reconcileSeenUsage(record, this.countedById);
-			if (counted !== null) {
-				fresh.push(counted);
-			}
-		}
-		return fresh;
+		return reconcileBatch(
+			records,
+			this.countedById,
+			this.lastSeenById,
+			Date.now(),
+		);
 	}
 
 	/**

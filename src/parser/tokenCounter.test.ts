@@ -6,6 +6,7 @@ import {
 	dedupeByMessageId,
 	projectNameFromCwd,
 	pruneSeenUsage,
+	reconcileBatch,
 	reconcileSeenUsage,
 } from "./tokenCounter";
 
@@ -316,5 +317,71 @@ describe("pruneSeenUsage", () => {
 		const { counted, lastSeen } = guard([["edge", now - ttl]]);
 		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
 		expect(counted.has("edge")).toBe(true);
+	});
+});
+
+describe("reconcileBatch", () => {
+	it("dedupes a batch, counts each new id once, and stamps last-seen", () => {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		const fresh = reconcileBatch(
+			[rec("msg_a"), rec("msg_a", { outputTokens: 999 }), rec("msg_b")],
+			counted,
+			lastSeen,
+			1000,
+		);
+		// msg_a collapses to its largest; msg_b counts -> 2 fresh records
+		expect(fresh).toHaveLength(2);
+		expect(lastSeen.get("msg_a")).toBe(1000);
+		expect(lastSeen.get("msg_b")).toBe(1000);
+	});
+
+	it("stamps last-seen for a dropped equal re-log (keeps an active id prune-safe)", () => {
+		// THE invariant behind the Codex fix: an id still being re-logged must
+		// refresh last-seen even when reconcile drops the re-log as equal. If the
+		// stamp moved inside the `counted !== null` branch, this test fails.
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		reconcileBatch(
+			[rec("msg_a", { outputTokens: 100 })],
+			counted,
+			lastSeen,
+			1000,
+		);
+		expect(lastSeen.get("msg_a")).toBe(1000);
+		const fresh = reconcileBatch(
+			[rec("msg_a", { outputTokens: 100 })], // equal re-log -> dropped
+			counted,
+			lastSeen,
+			5000,
+		);
+		expect(fresh).toHaveLength(0); // nothing new to aggregate
+		expect(lastSeen.get("msg_a")).toBe(5000); // but last-seen advanced
+	});
+
+	it("keeps countedById and lastSeenById key sets in sync", () => {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		reconcileBatch(
+			[rec("msg_a"), rec("msg_b"), rec("msg_a", { outputTokens: 999 })],
+			counted,
+			lastSeen,
+			1000,
+		);
+		expect([...counted.keys()].sort()).toEqual([...lastSeen.keys()].sort());
+	});
+
+	it("never tracks id-less records in either guard map", () => {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		const fresh = reconcileBatch(
+			[rec(undefined), rec("")],
+			counted,
+			lastSeen,
+			1000,
+		);
+		expect(fresh).toHaveLength(2); // id-less records are always counted
+		expect(counted.size).toBe(0);
+		expect(lastSeen.size).toBe(0);
 	});
 });

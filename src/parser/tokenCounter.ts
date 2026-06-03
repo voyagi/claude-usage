@@ -242,6 +242,40 @@ export function reconcileSeenUsage(
 }
 
 /**
+ * Reconcile a freshly-read incremental batch against the live dedupe guard.
+ *
+ * Dedupes the batch by message id, then for each record stamps `lastSeenById`
+ * and reconciles against `countedById` (emitting a full record, a token top-up
+ * delta, or nothing). The stamp fires BEFORE reconcile and for EVERY id — even
+ * one whose re-log reconcile drops as equal/smaller — because that stamp-on-drop
+ * is the invariant that keeps an id Claude Code is still re-logging prune-safe.
+ * Moving the stamp inside the `counted !== null` branch would silently reopen the
+ * re-counted-as-new inflation. Mutates both maps; id-less records are emitted but
+ * tracked in neither map (they cannot be deduped).
+ *
+ * @returns the records to aggregate (full records and/or top-up deltas)
+ */
+export function reconcileBatch(
+	records: TokenUsage[],
+	countedById: Map<string, TokenUsage>,
+	lastSeenById: Map<string, number>,
+	nowMs: number,
+): TokenUsage[] {
+	const deduped = dedupeByMessageId(records);
+	const fresh: TokenUsage[] = [];
+	for (const record of deduped) {
+		if (record.messageId) {
+			lastSeenById.set(record.messageId, nowMs);
+		}
+		const counted = reconcileSeenUsage(record, countedById);
+		if (counted !== null) {
+			fresh.push(counted);
+		}
+	}
+	return fresh;
+}
+
+/**
  * Bound the live dedupe guard's memory by dropping message ids that have not
  * appeared in the incremental stream for `ttlMs`.
  *
