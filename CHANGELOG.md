@@ -2,6 +2,29 @@
 
 All notable changes to Claude Usage Monitor will be documented in this file.
 
+## [1.1.0](https://github.com/voyagi/claude-usage/compare/v1.0.0...v1.1.0) (2026-06-03)
+
+
+### Features
+
+* **dashboard:** add per-message usage impact drill-down in Trends tab ([22bcc4f](https://github.com/voyagi/claude-usage/commit/22bcc4faf5e02d828033df5341ac1eb3f7d9483d))
+* **dashboard:** per-message usage impact drill-down ([7cec85d](https://github.com/voyagi/claude-usage/commit/7cec85d06a20c55993c44fe0d5b4de35c95acd07))
+* drift-canary — surface transcript schema-failures as a confidence signal ([#37](https://github.com/voyagi/claude-usage/issues/37)) ([7361775](https://github.com/voyagi/claude-usage/commit/73617755281a5900ed9754243709cd29c8bab747))
+
+
+### Bug Fixes
+
+* **api:** handle 429 rate limiting as expected behavior ([#19](https://github.com/voyagi/claude-usage/issues/19)) ([cbbaa35](https://github.com/voyagi/claude-usage/commit/cbbaa35ca959c973b177a5a3fd736439027b08ec))
+* **api:** notify UI on 429 so rate-limited flag stays set ([7a2037c](https://github.com/voyagi/claude-usage/commit/7a2037c97e1793043285d0510fc68afba77634c7))
+* correct usage counting (pricing table + message.id dedup) ([#28](https://github.com/voyagi/claude-usage/issues/28)) ([24dfdfc](https://github.com/voyagi/claude-usage/commit/24dfdfcd8b1f310a9bbc0069ee827e5c63d77f19))
+* **deps:** patch tmp high advisory (GHSA-ph9p-34f9-6g65) ([#27](https://github.com/voyagi/claude-usage/issues/27)) ([f269558](https://github.com/voyagi/claude-usage/commit/f26955845723fa9186cddace16cb57151de257bf))
+* harden incremental dedupe guard (memory, messageCount, keep-largest) ([#38](https://github.com/voyagi/claude-usage/issues/38)) ([d5ced74](https://github.com/voyagi/claude-usage/commit/d5ced740b87034d53eb497ac88d7f4989f41bc56))
+* **parser:** dedupe by largest usage per message id, not last ([#36](https://github.com/voyagi/claude-usage/issues/36)) ([c063813](https://github.com/voyagi/claude-usage/commit/c063813cc27aae3649613b92f266626dc96ccee7))
+* remove unused import and update biome schema version [skip-review] ([255bd17](https://github.com/voyagi/claude-usage/commit/255bd17567de25ac468479f8a311685663479e6d))
+* resolve repo health issues (security, lint, circuit breaker) [skip-review] ([#24](https://github.com/voyagi/claude-usage/issues/24)) ([e29d2e6](https://github.com/voyagi/claude-usage/commit/e29d2e69250530c183bea5fdfdebf1c6b4c0b376))
+* **security:** patch dependency advisories + guard token-forecast math ([#26](https://github.com/voyagi/claude-usage/issues/26)) ([4cc4400](https://github.com/voyagi/claude-usage/commit/4cc440086241430ea6dde0dfbf319328fdc81632))
+* **test:** fix pre-existing flaky tests ([50bd9ee](https://github.com/voyagi/claude-usage/commit/50bd9eed2c1bfd0ebb8d183895fb7b07ae04d1d0))
+
 ## 1.0.0 (2026-03-23)
 
 
