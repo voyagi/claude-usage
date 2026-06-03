@@ -130,6 +130,8 @@ export function App() {
 
 			{data && data.unparsedUsageRecords > 0 && (
 				<div
+					role="status"
+					aria-live="polite"
 					style={{
 						margin: "8px 0",
 						padding: "8px 10px",
@@ -137,7 +139,8 @@ export function App() {
 						background: "var(--vscode-inputValidation-warningBackground)",
 						border:
 							"1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border))",
-						color: "var(--vscode-foreground)",
+						color:
+							"var(--vscode-inputValidation-warningForeground, var(--vscode-foreground))",
 						fontSize: "11px",
 					}}
 				>

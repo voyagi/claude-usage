@@ -63,6 +63,9 @@ let lastKnownStats: { filesProcessed: number; linesSkipped: number } | null =
 	null;
 let lastBurnRate = 0;
 let allRecords: import("./types.js").TokenUsage[] = [];
+// Latch so a total-format-break toast warns once, not on every refresh. Reset
+// when a parse recovers usable records.
+let driftWarningShown = false;
 
 /**
  * Read current plan selection with auto-detection fallback
@@ -655,17 +658,30 @@ async function performInitialParse(
 	// Parse all JSONL files
 	const parseResult = await parseAllSessions(logger);
 
-	// Surface parse health (transcript-format-drift signal) even if 0 records
-	// survived — a total format break shows up as many schema failures.
+	// Surface parse health (transcript-format-drift signal) to the dashboard even
+	// if 0 records survived — a total format break shows up as many schema failures.
 	dashboardProvider?.setParseHealth(parseResult.schemaFailures);
 
 	if (parseResult.records.length === 0) {
 		logger.info("No usage records found in session files");
+		// Total format break: usage lines exist but none survived the schema, so
+		// there is no dashboard payload to carry the inline drift banner. Warn via
+		// an independent channel (toast) so the signal isn't silently swallowed.
+		// Latched so a refresh loop doesn't spam it.
+		if (parseResult.schemaFailures > 0 && !driftWarningShown) {
+			driftWarningShown = true;
+			vscode.window.showWarningMessage(
+				`Claude Usage: ${parseResult.schemaFailures.toLocaleString()} usage record(s) couldn't be read and no usage could be parsed — this build may be out of date with Claude Code's log format.`,
+			);
+		}
 		if (!cached) {
 			statusBar.showNoData();
 		}
 		return;
 	}
+
+	// Usable records parsed — clear the total-break latch so a future break warns again.
+	driftWarningShown = false;
 
 	// Load pricing configuration
 	const pricing = loadPricingFromConfig();
