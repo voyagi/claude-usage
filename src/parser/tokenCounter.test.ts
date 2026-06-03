@@ -1,8 +1,11 @@
 import type { TokenUsage } from "../types";
 import { parseAssistantMessage } from "./schemas";
 import {
+	addToAggregation,
+	createEmptyAggregatedUsage,
 	dedupeByMessageId,
 	projectNameFromCwd,
+	pruneSeenUsage,
 	reconcileSeenUsage,
 } from "./tokenCounter";
 
@@ -60,6 +63,21 @@ describe("dedupeByMessageId", () => {
 			rec("msg_a", { outputTokens: 5 }),
 		];
 		expect(dedupeByMessageId(records)[0].outputTokens).toBe(999);
+	});
+
+	it("deliberately keeps the larger usage even if a later line reports less (inverse-risk tradeoff)", () => {
+		// Pins the keep-largest heuristic: on the ~0.02% of ids where a later
+		// re-log carries SMALLER usage, we treat it as an out-of-order/stale write
+		// and keep the larger total. This can theoretically over-count a genuine
+		// downward correction, but matches the streaming-growth model that holds
+		// for 99.98% of ids; flipping to keep-last would reintroduce undercounts.
+		const records = [
+			rec("msg_a", { inputTokens: 100, outputTokens: 900 }),
+			rec("msg_a", { inputTokens: 100, outputTokens: 100 }),
+		];
+		const out = dedupeByMessageId(records);
+		expect(out).toHaveLength(1);
+		expect(out[0].outputTokens).toBe(900);
 	});
 
 	it("passes through records with no message id (each must be counted)", () => {
@@ -203,6 +221,8 @@ describe("reconcileSeenUsage", () => {
 		expect(delta).not.toBeNull();
 		expect(delta?.inputTokens).toBe(5);
 		expect(delta?.outputTokens).toBe(150);
+		// the delta is flagged so aggregation won't re-count it as a new message
+		expect(delta?.isTopUp).toBe(true);
 		// stored usage advances to the larger record for subsequent comparisons
 		expect(seen.get("msg_a")?.outputTokens).toBe(250);
 	});
@@ -214,5 +234,64 @@ describe("reconcileSeenUsage", () => {
 		expect(reconcileSeenUsage(r1, seen)).toBe(r1);
 		expect(reconcileSeenUsage(r2, seen)).toBe(r2);
 		expect(seen.size).toBe(0);
+	});
+});
+
+describe("addToAggregation — messageCount and top-up deltas", () => {
+	it("counts a normal record as one message", () => {
+		const agg = createEmptyAggregatedUsage();
+		addToAggregation(agg, rec("msg_a", { inputTokens: 10, outputTokens: 20 }));
+		expect(agg.messageCount).toBe(1);
+		expect(agg.inputTokens).toBe(10);
+		expect(agg.outputTokens).toBe(20);
+	});
+
+	it("adds a top-up delta's tokens without counting it as a new message", () => {
+		const agg = createEmptyAggregatedUsage();
+		addToAggregation(agg, rec("msg_a", { inputTokens: 10, outputTokens: 20 }));
+		// straddle top-up for the SAME message: extra tokens, not a new message
+		addToAggregation(
+			agg,
+			rec("msg_a", { inputTokens: 5, outputTokens: 30, isTopUp: true }),
+		);
+		expect(agg.messageCount).toBe(1); // still one message
+		expect(agg.inputTokens).toBe(15); // tokens topped up
+		expect(agg.outputTokens).toBe(50);
+	});
+});
+
+describe("pruneSeenUsage", () => {
+	const ttl = 6 * 60 * 60 * 1000; // 6h
+	const now = new Date("2026-06-01T12:00:00.000Z").getTime();
+
+	it("drops entries older than the ttl and keeps fresh ones", () => {
+		const seen = new Map<string, TokenUsage>();
+		seen.set(
+			"old",
+			rec("old", { timestamp: new Date(now - 7 * 60 * 60 * 1000) }),
+		);
+		seen.set(
+			"fresh",
+			rec("fresh", { timestamp: new Date(now - 1 * 60 * 60 * 1000) }),
+		);
+		const pruned = pruneSeenUsage(seen, now, ttl);
+		expect(pruned).toBe(1);
+		expect(seen.has("old")).toBe(false);
+		expect(seen.has("fresh")).toBe(true);
+	});
+
+	it("returns 0 and keeps everything when all entries are fresh", () => {
+		const seen = new Map<string, TokenUsage>();
+		seen.set("a", rec("a", { timestamp: new Date(now - 60_000) }));
+		seen.set("b", rec("b", { timestamp: new Date(now) }));
+		expect(pruneSeenUsage(seen, now, ttl)).toBe(0);
+		expect(seen.size).toBe(2);
+	});
+
+	it("does not prune an entry exactly at the ttl boundary (strict >)", () => {
+		const seen = new Map<string, TokenUsage>();
+		seen.set("edge", rec("edge", { timestamp: new Date(now - ttl) }));
+		expect(pruneSeenUsage(seen, now, ttl)).toBe(0);
+		expect(seen.has("edge")).toBe(true);
 	});
 });

@@ -13,6 +13,7 @@ import type { RateLimitEvent } from "../parser/incrementalParser.js";
 import { parseIncremental } from "../parser/incrementalParser.js";
 import {
 	dedupeByMessageId,
+	pruneSeenUsage,
 	reconcileSeenUsage,
 } from "../parser/tokenCounter.js";
 import {
@@ -25,6 +26,16 @@ import { getClaudeProjectsDir } from "../utils/paths.js";
 import { OffsetTracker } from "./offsetTracker.js";
 
 const logger = Logger.create("SessionWatcher");
+
+// Drop dedupe-guard entries older than this. Far beyond any streaming/top-up
+// window (seconds) and beyond the 5h session window, so pruning can never lose a
+// live top-up; it only bounds memory on long-lived sessions between full
+// reparses. An id this old sits behind the persisted read offset, so it won't be
+// re-read and re-counted either.
+const COUNTED_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Skip the prune scan until the guard is non-trivially large (memory is a
+// non-issue below this; avoids scanning on every debounced change).
+const COUNTED_ID_PRUNE_FLOOR = 512;
 
 /**
  * SessionWatcher watches JSONL files in ~/.claude/projects for file changes
@@ -205,6 +216,20 @@ export class SessionWatcher {
 			// Advance the offset even if every record was a duplicate, so those
 			// bytes are not re-read next time
 			await this.offsetTracker.setOffset(filePath, result.newOffset);
+
+			// Bound the dedupe guard's memory on long-lived sessions: forget ids
+			// too old to still receive a top-up (their bytes are already past the
+			// read offset, so they won't be re-read). Token/cost totals unaffected.
+			if (this.countedById.size > COUNTED_ID_PRUNE_FLOOR) {
+				const pruned = pruneSeenUsage(
+					this.countedById,
+					Date.now(),
+					COUNTED_ID_TTL_MS,
+				);
+				if (pruned > 0) {
+					logger.info(`Pruned ${pruned} stale dedupe-guard ids`);
+				}
+			}
 
 			// Update stats
 			this.processedFiles.add(filePath);

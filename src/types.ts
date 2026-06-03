@@ -28,6 +28,14 @@ export interface TokenUsage {
 	cacheCreation5m: number;
 	cacheCreation1h: number;
 	cost: number;
+	/**
+	 * Set only on the delta record returned by reconcileSeenUsage when a
+	 * straddled message's later read tops up its tokens. The delta carries ONLY
+	 * the extra tokens/cost for an already-counted message, so aggregation adds
+	 * its tokens/cost but must NOT count it as a new message. Absent on every
+	 * normal record.
+	 */
+	isTopUp?: boolean;
 }
 
 /**
