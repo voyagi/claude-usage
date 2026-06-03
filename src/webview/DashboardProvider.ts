@@ -67,7 +67,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		activePeriod: "daily" | "weekly" | "monthly" = "daily",
 		isFirstRun: boolean = false,
 		hasCustomPricing: boolean = false,
-	): DashboardData {
+	): Omit<DashboardData, "unparsedUsageRecords"> {
 		const now = new Date();
 		const today = format(now, "yyyy-MM-dd");
 
@@ -250,8 +250,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			dataSourcePath: getClaudeProjectsDir(),
 			isFirstRun,
 			hasCustomPricing,
-			// Injected by updateData() from the latest full-parse health.
-			unparsedUsageRecords: 0,
+			// unparsedUsageRecords is intentionally omitted here — updateData() is
+			// the sole stamping point, enforced by this method's Omit<> return type.
 		};
 	}
 
@@ -368,16 +368,20 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 * Public method for extension.ts to push data updates to the webview.
 	 * Data is cached so it can be sent when webview becomes visible.
 	 */
-	public updateData(data: DashboardData): void {
-		// Surface the latest parse-health signal on every push (all rebuild paths
+	public updateData(data: Omit<DashboardData, "unparsedUsageRecords">): void {
+		// Stamp the latest parse-health signal on every push (all rebuild paths
 		// funnel through here), so the format-drift warning persists across
-		// incremental updates and period changes.
-		data.unparsedUsageRecords = this._schemaFailures;
-		this._currentData = data;
+		// incremental updates and period changes. Typing the input as Omit<>
+		// makes it a compile error to cache or post data that skipped this stamp.
+		const stamped: DashboardData = {
+			...data,
+			unparsedUsageRecords: this._schemaFailures,
+		};
+		this._currentData = stamped;
 
 		// Post to webview if visible
 		if (this._view?.visible) {
-			this._postMessage({ type: "usageData", payload: data });
+			this._postMessage({ type: "usageData", payload: stamped });
 		}
 	}
 
@@ -385,6 +389,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 * Record parse health from the latest full parse (called by extension.ts). A
 	 * non-zero count means Claude Code logged assistant usage this build couldn't
 	 * read — a transcript-format-drift signal surfaced to the user.
+	 *
+	 * Only ever pass a real count from a completed full parse. Never call this
+	 * with 0 from a cached-data load path — that would reset a genuine drift
+	 * count before the user has seen the warning.
 	 */
 	public setParseHealth(schemaFailures: number): void {
 		this._schemaFailures = schemaFailures;

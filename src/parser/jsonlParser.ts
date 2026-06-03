@@ -59,8 +59,13 @@ export async function parseSessionFile(
 					// schema is the signal that Claude Code's transcript format
 					// drifted — count it so the UI can warn that totals may be
 					// undercounted. Assistant lines with no usage (e.g. tool-only
-					// turns) are normal and not counted.
-					if (parsed.message?.usage != null) {
+					// turns) are normal and not counted. Check undefined and null
+					// explicitly so a future `!=`→`!==` cleanup can't silently widen
+					// this to count every no-usage assistant turn as drift.
+					if (
+						parsed.message?.usage !== undefined &&
+						parsed.message.usage !== null
+					) {
 						schemaFailures++;
 					}
 					continue;
