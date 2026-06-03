@@ -655,6 +655,10 @@ async function performInitialParse(
 	// Parse all JSONL files
 	const parseResult = await parseAllSessions(logger);
 
+	// Surface parse health (transcript-format-drift signal) even if 0 records
+	// survived — a total format break shows up as many schema failures.
+	dashboardProvider?.setParseHealth(parseResult.schemaFailures);
+
 	if (parseResult.records.length === 0) {
 		logger.info("No usage records found in session files");
 		if (!cached) {

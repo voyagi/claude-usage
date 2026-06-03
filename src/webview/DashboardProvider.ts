@@ -42,6 +42,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	private _planType: string = "pro";
 	private _activePeriod: "daily" | "weekly" | "monthly" = "daily";
 	private _isFirstRun: boolean = false;
+	/** Assistant usage records that failed the schema in the last full parse (format-drift signal). */
+	private _schemaFailures = 0;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -248,6 +250,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			dataSourcePath: getClaudeProjectsDir(),
 			isFirstRun,
 			hasCustomPricing,
+			// Injected by updateData() from the latest full-parse health.
+			unparsedUsageRecords: 0,
 		};
 	}
 
@@ -365,11 +369,27 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 * Data is cached so it can be sent when webview becomes visible.
 	 */
 	public updateData(data: DashboardData): void {
+		// Surface the latest parse-health signal on every push (all rebuild paths
+		// funnel through here), so the format-drift warning persists across
+		// incremental updates and period changes.
+		data.unparsedUsageRecords = this._schemaFailures;
 		this._currentData = data;
 
 		// Post to webview if visible
 		if (this._view?.visible) {
 			this._postMessage({ type: "usageData", payload: data });
+		}
+	}
+
+	/**
+	 * Record parse health from the latest full parse (called by extension.ts). A
+	 * non-zero count means Claude Code logged assistant usage this build couldn't
+	 * read — a transcript-format-drift signal surfaced to the user.
+	 */
+	public setParseHealth(schemaFailures: number): void {
+		this._schemaFailures = schemaFailures;
+		if (this._currentData) {
+			this.updateData(this._currentData);
 		}
 	}
 
