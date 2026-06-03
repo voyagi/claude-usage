@@ -1,6 +1,6 @@
 {
 	"name": "claude-usage-monitor",
-	"version": "1.0.0",
+	"version": "1.1.0",
 	"description": "Local-only Claude Code usage monitoring — zero network calls",
 	"publisher": "voyagi",
 	"displayName": "Claude Usage Monitor",
