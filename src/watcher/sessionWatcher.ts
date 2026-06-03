@@ -27,12 +27,13 @@ import { OffsetTracker } from "./offsetTracker.js";
 
 const logger = Logger.create("SessionWatcher");
 
-// Drop dedupe-guard entries older than this. Far beyond any streaming/top-up
-// window (seconds) and beyond the 5h session window, so pruning can never lose a
-// live top-up; it only bounds memory on long-lived sessions between full
-// reparses. An id this old sits behind the persisted read offset, so it won't be
-// re-read and re-counted either.
-const COUNTED_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Forget a message id after this much time with no re-logs in the incremental
+// stream (idle time, NOT age-since-creation — Claude Code can append further
+// re-logs for an id as a session progresses, so an actively re-logged id must
+// never be dropped). 6h is far beyond the streaming/top-up window; this only
+// bounds memory on long-lived sessions between full reparses (which re-seed the
+// guard anyway).
+const COUNTED_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours idle
 // Skip the prune scan until the guard is non-trivially large (memory is a
 // non-issue below this; avoids scanning on every debounced change).
 const COUNTED_ID_PRUNE_FLOOR = 512;
@@ -72,6 +73,12 @@ export class SessionWatcher {
 	 * already counted.
 	 */
 	private readonly countedById = new Map<string, TokenUsage>();
+	/**
+	 * id -> last time (epoch ms) the id appeared in the incremental stream.
+	 * Drives age-out pruning of countedById by RECENCY, not message creation
+	 * time, so an id Claude Code is still re-logging is never dropped.
+	 */
+	private readonly lastSeenById = new Map<string, number>();
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -223,11 +230,12 @@ export class SessionWatcher {
 			if (this.countedById.size > COUNTED_ID_PRUNE_FLOOR) {
 				const pruned = pruneSeenUsage(
 					this.countedById,
+					this.lastSeenById,
 					Date.now(),
 					COUNTED_ID_TTL_MS,
 				);
 				if (pruned > 0) {
-					logger.info(`Pruned ${pruned} stale dedupe-guard ids`);
+					logger.info(`Pruned ${pruned} idle dedupe-guard ids`);
 				}
 			}
 
@@ -264,8 +272,15 @@ export class SessionWatcher {
 	 */
 	private filterFreshRecords(records: TokenUsage[]): TokenUsage[] {
 		const deduped = dedupeByMessageId(records);
+		const now = Date.now();
 		const fresh: TokenUsage[] = [];
 		for (const record of deduped) {
+			// Mark every id that appeared in this read as recently seen — even an
+			// equal/smaller re-log that reconcile drops — so age-out pruning keeps
+			// ids Claude Code is still re-logging.
+			if (record.messageId) {
+				this.lastSeenById.set(record.messageId, now);
+			}
 			const counted = reconcileSeenUsage(record, this.countedById);
 			if (counted !== null) {
 				fresh.push(counted);
@@ -291,9 +306,12 @@ export class SessionWatcher {
 			// parse, so incremental reads don't re-count it (and can top up if a
 			// later read carries larger usage for the same message id).
 			this.countedById.clear();
+			this.lastSeenById.clear();
+			const seededAt = Date.now();
 			for (const record of seenRecords) {
 				if (record.messageId) {
 					this.countedById.set(record.messageId, record);
+					this.lastSeenById.set(record.messageId, seededAt);
 				}
 			}
 			logger.info(
@@ -320,6 +338,7 @@ export class SessionWatcher {
 		this.processedFiles.clear();
 		this.totalLinesSkipped = 0;
 		this.countedById.clear();
+		this.lastSeenById.clear();
 
 		logger.info("SessionWatcher state reset");
 	}

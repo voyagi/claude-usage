@@ -242,30 +242,36 @@ export function reconcileSeenUsage(
 }
 
 /**
- * Bound the live dedupe guard's memory by dropping message ids older than `ttlMs`.
+ * Bound the live dedupe guard's memory by dropping message ids that have not
+ * appeared in the incremental stream for `ttlMs`.
  *
  * reconcileSeenUsage keeps one entry per message id seen since the last full
- * parse; over a long-lived session that map grows without bound. A message only
- * receives top-ups while it is actively streaming (seconds), and an id this old
- * has already had its bytes consumed past the persisted read offset — so it can
- * neither stream more nor be re-read on a normal incremental pass, making it safe
- * to forget. Never affects token/cost correctness: a full reparse re-seeds the
- * guard from scratch regardless.
+ * parse; over a long-lived session that map grows without bound. Pruning is
+ * keyed on LAST-SEEN time (when the id last appeared in a read), NOT the
+ * message's creation timestamp: Claude Code can append further re-log lines for
+ * an existing message.id as a session progresses, so an id that is still being
+ * re-logged must stay in the guard — otherwise its next re-log is miscounted as
+ * a brand-new message (inflating live totals until the next full reparse). An id
+ * idle for `ttlMs` is genuinely finished, so it is safe to forget. Never affects
+ * token/cost correctness: a full reparse re-seeds the guard from scratch anyway.
  *
  * @param countedById the guard map (mutated in place)
+ * @param lastSeenById id -> last-seen epoch ms; pruned in lockstep (mutated)
  * @param nowMs current wall-clock time in ms (Date.now())
- * @param ttlMs max age in ms before an id is dropped
+ * @param ttlMs max idle time in ms before an unseen id is dropped
  * @returns number of ids pruned
  */
 export function pruneSeenUsage(
 	countedById: Map<string, TokenUsage>,
+	lastSeenById: Map<string, number>,
 	nowMs: number,
 	ttlMs: number,
 ): number {
 	let pruned = 0;
-	for (const [id, record] of countedById) {
-		if (nowMs - record.timestamp.getTime() > ttlMs) {
+	for (const [id, lastSeen] of lastSeenById) {
+		if (nowMs - lastSeen > ttlMs) {
 			countedById.delete(id);
+			lastSeenById.delete(id);
 			pruned++;
 		}
 	}

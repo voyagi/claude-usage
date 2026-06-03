@@ -261,37 +261,60 @@ describe("addToAggregation — messageCount and top-up deltas", () => {
 });
 
 describe("pruneSeenUsage", () => {
-	const ttl = 6 * 60 * 60 * 1000; // 6h
+	const ttl = 6 * 60 * 60 * 1000; // 6h idle
 	const now = new Date("2026-06-01T12:00:00.000Z").getTime();
 
-	it("drops entries older than the ttl and keeps fresh ones", () => {
-		const seen = new Map<string, TokenUsage>();
-		seen.set(
-			"old",
-			rec("old", { timestamp: new Date(now - 7 * 60 * 60 * 1000) }),
-		);
-		seen.set(
-			"fresh",
-			rec("fresh", { timestamp: new Date(now - 1 * 60 * 60 * 1000) }),
-		);
-		const pruned = pruneSeenUsage(seen, now, ttl);
+	function guard(ids: Array<[string, number]>) {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		for (const [id, seenAt] of ids) {
+			counted.set(id, rec(id));
+			lastSeen.set(id, seenAt);
+		}
+		return { counted, lastSeen };
+	}
+
+	it("drops ids idle past the ttl and keeps recently-seen ones", () => {
+		const { counted, lastSeen } = guard([
+			["idle", now - 7 * 60 * 60 * 1000],
+			["recent", now - 1 * 60 * 60 * 1000],
+		]);
+		const pruned = pruneSeenUsage(counted, lastSeen, now, ttl);
 		expect(pruned).toBe(1);
-		expect(seen.has("old")).toBe(false);
-		expect(seen.has("fresh")).toBe(true);
+		expect(counted.has("idle")).toBe(false);
+		expect(lastSeen.has("idle")).toBe(false);
+		expect(counted.has("recent")).toBe(true);
 	});
 
-	it("returns 0 and keeps everything when all entries are fresh", () => {
-		const seen = new Map<string, TokenUsage>();
-		seen.set("a", rec("a", { timestamp: new Date(now - 60_000) }));
-		seen.set("b", rec("b", { timestamp: new Date(now) }));
-		expect(pruneSeenUsage(seen, now, ttl)).toBe(0);
-		expect(seen.size).toBe(2);
+	it("keeps an old-message id that is still being re-logged (last-seen is recent)", () => {
+		// Message created long ago but re-logged moments ago: last-seen is fresh,
+		// so it must NOT be pruned — else the next re-log would be miscounted as a
+		// brand-new message. Guards the prune-by-recency invariant.
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		counted.set(
+			"old-but-active",
+			rec("old-but-active", {
+				timestamp: new Date(now - 24 * 60 * 60 * 1000), // created 24h ago
+			}),
+		);
+		lastSeen.set("old-but-active", now - 60_000); // re-logged 1 min ago
+		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
+		expect(counted.has("old-but-active")).toBe(true);
 	});
 
-	it("does not prune an entry exactly at the ttl boundary (strict >)", () => {
-		const seen = new Map<string, TokenUsage>();
-		seen.set("edge", rec("edge", { timestamp: new Date(now - ttl) }));
-		expect(pruneSeenUsage(seen, now, ttl)).toBe(0);
-		expect(seen.has("edge")).toBe(true);
+	it("returns 0 and keeps everything when all ids are recently seen", () => {
+		const { counted, lastSeen } = guard([
+			["a", now - 60_000],
+			["b", now],
+		]);
+		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
+		expect(counted.size).toBe(2);
+	});
+
+	it("does not prune an id exactly at the ttl boundary (strict >)", () => {
+		const { counted, lastSeen } = guard([["edge", now - ttl]]);
+		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
+		expect(counted.has("edge")).toBe(true);
 	});
 });
