@@ -128,16 +128,17 @@ export function addToAggregation(
  * Collapse re-logged duplicate records to one per message id.
  *
  * Why duplicates exist: Claude Code re-logs the same assistant message (same
- * `message.id`) across many JSONL lines as a session progresses — a single API
- * response can appear dozens of times (measured up to 39x, ~2x total token
- * inflation across real transcripts). Summing every line would multiply one
- * response's tokens, so this keeps only the LAST record per non-empty id (the
- * last write carries the final/largest usage) and passes through id-less records
- * unchanged — they cannot be deduped and must each be counted.
+ * `message.id`) across many JSONL lines as the response streams and the session
+ * progresses — a single response can appear dozens of times (measured up to 39x,
+ * ~2x total token inflation across real transcripts). The usage is NOT identical
+ * across those copies: the output-token count grows as the response streams. So
+ * this keeps the record with the LARGEST usage per id (the final, complete total)
+ * rather than blindly the last one. On real transcripts the last occurrence IS
+ * the largest in 99.98% of varying-usage ids; keeping the max also covers the
+ * rare out-of-order stragglers and matches reconcileSeenUsage (the live path).
+ * Id-less records can't be deduped and are each kept.
  *
- * A worked 39x example lives in the dedupeByMessageId tests. For the live/
- * incremental path (where a re-logged burst can straddle two reads), the same
- * keep-the-final-usage invariant is enforced by reconcileSeenUsage.
+ * A worked example lives in the dedupeByMessageId tests.
  *
  * @param records Parsed token usage records
  * @returns Deduplicated records (order not preserved; aggregation is order-independent)
@@ -147,10 +148,15 @@ export function dedupeByMessageId(records: TokenUsage[]): TokenUsage[] {
 	const noId: TokenUsage[] = [];
 
 	for (const record of records) {
-		if (record.messageId) {
-			byId.set(record.messageId, record); // keep last write per id
-		} else {
-			noId.push(record);
+		if (!record.messageId) {
+			noId.push(record); // no id -> cannot dedupe, always count
+			continue;
+		}
+		const prev = byId.get(record.messageId);
+		// Keep the largest usage per id: re-logs grow as the response streams, so
+		// the biggest total is the final, complete one.
+		if (!prev || getTotalTokens(record) >= getTotalTokens(prev)) {
+			byId.set(record.messageId, record);
 		}
 	}
 
@@ -187,8 +193,8 @@ export function projectNameFromCwd(cwd: string | undefined): string {
  *
  * @returns the record to aggregate (full record, or a token delta), or null to skip.
  *   NOTE: a delta top-up still increments messageCount by 1 when aggregated. That
- *   straddle-with-growing-usage case is rare (Claude Code re-logs identical final
- *   usage in practice); token/cost accuracy is the priority here.
+ *   straddle case (a message's streamed re-logs split across two incremental
+ *   reads) is rare; token/cost accuracy is the priority here.
  */
 export function reconcileSeenUsage(
 	record: TokenUsage,

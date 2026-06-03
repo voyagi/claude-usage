@@ -44,7 +44,7 @@ describe("dedupeByMessageId", () => {
 		expect(dedupeByMessageId(records)).toHaveLength(3);
 	});
 
-	it("keeps the LAST record for a repeated id (final write carries final usage)", () => {
+	it("keeps the largest-usage record per id (streamed output grows to the final total)", () => {
 		const records = [
 			rec("msg_a", { outputTokens: 1 }),
 			rec("msg_a", { outputTokens: 999 }),
@@ -52,6 +52,14 @@ describe("dedupeByMessageId", () => {
 		const out = dedupeByMessageId(records);
 		expect(out).toHaveLength(1);
 		expect(out[0].outputTokens).toBe(999);
+	});
+
+	it("keeps the largest even when it is not the last occurrence", () => {
+		const records = [
+			rec("msg_a", { outputTokens: 999 }),
+			rec("msg_a", { outputTokens: 5 }),
+		];
+		expect(dedupeByMessageId(records)[0].outputTokens).toBe(999);
 	});
 
 	it("passes through records with no message id (each must be counted)", () => {

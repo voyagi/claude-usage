@@ -11,8 +11,9 @@ export interface TokenUsage {
 	sessionId: string;
 	/**
 	 * Anthropic message id (e.g. "msg_..."). Claude Code re-logs the same
-	 * assistant message (same id, same usage) across many JSONL lines, so this
-	 * is used to dedupe and count each response exactly once. Empty when absent.
+	 * assistant message across many JSONL lines as it streams (the output-token
+	 * count grows across the copies), so this is used to dedupe and count each
+	 * response once, keeping the largest/final usage. Empty when absent.
 	 */
 	messageId?: string;
 	/**
