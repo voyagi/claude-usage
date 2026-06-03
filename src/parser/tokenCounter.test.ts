@@ -1,8 +1,12 @@
 import type { TokenUsage } from "../types";
 import { parseAssistantMessage } from "./schemas";
 import {
+	addToAggregation,
+	createEmptyAggregatedUsage,
 	dedupeByMessageId,
 	projectNameFromCwd,
+	pruneSeenUsage,
+	reconcileBatch,
 	reconcileSeenUsage,
 } from "./tokenCounter";
 
@@ -60,6 +64,21 @@ describe("dedupeByMessageId", () => {
 			rec("msg_a", { outputTokens: 5 }),
 		];
 		expect(dedupeByMessageId(records)[0].outputTokens).toBe(999);
+	});
+
+	it("deliberately keeps the larger usage even if a later line reports less (inverse-risk tradeoff)", () => {
+		// Pins the keep-largest heuristic: on the ~0.02% of ids where a later
+		// re-log carries SMALLER usage, we treat it as an out-of-order/stale write
+		// and keep the larger total. This can theoretically over-count a genuine
+		// downward correction, but matches the streaming-growth model that holds
+		// for 99.98% of ids; flipping to keep-last would reintroduce undercounts.
+		const records = [
+			rec("msg_a", { inputTokens: 100, outputTokens: 900 }),
+			rec("msg_a", { inputTokens: 100, outputTokens: 100 }),
+		];
+		const out = dedupeByMessageId(records);
+		expect(out).toHaveLength(1);
+		expect(out[0].outputTokens).toBe(900);
 	});
 
 	it("passes through records with no message id (each must be counted)", () => {
@@ -203,6 +222,8 @@ describe("reconcileSeenUsage", () => {
 		expect(delta).not.toBeNull();
 		expect(delta?.inputTokens).toBe(5);
 		expect(delta?.outputTokens).toBe(150);
+		// the delta is flagged so aggregation won't re-count it as a new message
+		expect(delta?.isTopUp).toBe(true);
 		// stored usage advances to the larger record for subsequent comparisons
 		expect(seen.get("msg_a")?.outputTokens).toBe(250);
 	});
@@ -214,5 +235,153 @@ describe("reconcileSeenUsage", () => {
 		expect(reconcileSeenUsage(r1, seen)).toBe(r1);
 		expect(reconcileSeenUsage(r2, seen)).toBe(r2);
 		expect(seen.size).toBe(0);
+	});
+});
+
+describe("addToAggregation — messageCount and top-up deltas", () => {
+	it("counts a normal record as one message", () => {
+		const agg = createEmptyAggregatedUsage();
+		addToAggregation(agg, rec("msg_a", { inputTokens: 10, outputTokens: 20 }));
+		expect(agg.messageCount).toBe(1);
+		expect(agg.inputTokens).toBe(10);
+		expect(agg.outputTokens).toBe(20);
+	});
+
+	it("adds a top-up delta's tokens without counting it as a new message", () => {
+		const agg = createEmptyAggregatedUsage();
+		addToAggregation(agg, rec("msg_a", { inputTokens: 10, outputTokens: 20 }));
+		// straddle top-up for the SAME message: extra tokens, not a new message
+		addToAggregation(
+			agg,
+			rec("msg_a", { inputTokens: 5, outputTokens: 30, isTopUp: true }),
+		);
+		expect(agg.messageCount).toBe(1); // still one message
+		expect(agg.inputTokens).toBe(15); // tokens topped up
+		expect(agg.outputTokens).toBe(50);
+	});
+});
+
+describe("pruneSeenUsage", () => {
+	const ttl = 6 * 60 * 60 * 1000; // 6h idle
+	const now = new Date("2026-06-01T12:00:00.000Z").getTime();
+
+	function guard(ids: Array<[string, number]>) {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		for (const [id, seenAt] of ids) {
+			counted.set(id, rec(id));
+			lastSeen.set(id, seenAt);
+		}
+		return { counted, lastSeen };
+	}
+
+	it("drops ids idle past the ttl and keeps recently-seen ones", () => {
+		const { counted, lastSeen } = guard([
+			["idle", now - 7 * 60 * 60 * 1000],
+			["recent", now - 1 * 60 * 60 * 1000],
+		]);
+		const pruned = pruneSeenUsage(counted, lastSeen, now, ttl);
+		expect(pruned).toBe(1);
+		expect(counted.has("idle")).toBe(false);
+		expect(lastSeen.has("idle")).toBe(false);
+		expect(counted.has("recent")).toBe(true);
+	});
+
+	it("keeps an old-message id that is still being re-logged (last-seen is recent)", () => {
+		// Message created long ago but re-logged moments ago: last-seen is fresh,
+		// so it must NOT be pruned — else the next re-log would be miscounted as a
+		// brand-new message. Guards the prune-by-recency invariant.
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		counted.set(
+			"old-but-active",
+			rec("old-but-active", {
+				timestamp: new Date(now - 24 * 60 * 60 * 1000), // created 24h ago
+			}),
+		);
+		lastSeen.set("old-but-active", now - 60_000); // re-logged 1 min ago
+		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
+		expect(counted.has("old-but-active")).toBe(true);
+	});
+
+	it("returns 0 and keeps everything when all ids are recently seen", () => {
+		const { counted, lastSeen } = guard([
+			["a", now - 60_000],
+			["b", now],
+		]);
+		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
+		expect(counted.size).toBe(2);
+	});
+
+	it("does not prune an id exactly at the ttl boundary (strict >)", () => {
+		const { counted, lastSeen } = guard([["edge", now - ttl]]);
+		expect(pruneSeenUsage(counted, lastSeen, now, ttl)).toBe(0);
+		expect(counted.has("edge")).toBe(true);
+	});
+});
+
+describe("reconcileBatch", () => {
+	it("dedupes a batch, counts each new id once, and stamps last-seen", () => {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		const fresh = reconcileBatch(
+			[rec("msg_a"), rec("msg_a", { outputTokens: 999 }), rec("msg_b")],
+			counted,
+			lastSeen,
+			1000,
+		);
+		// msg_a collapses to its largest; msg_b counts -> 2 fresh records
+		expect(fresh).toHaveLength(2);
+		expect(lastSeen.get("msg_a")).toBe(1000);
+		expect(lastSeen.get("msg_b")).toBe(1000);
+	});
+
+	it("stamps last-seen for a dropped equal re-log (keeps an active id prune-safe)", () => {
+		// THE invariant behind the Codex fix: an id still being re-logged must
+		// refresh last-seen even when reconcile drops the re-log as equal. If the
+		// stamp moved inside the `counted !== null` branch, this test fails.
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		reconcileBatch(
+			[rec("msg_a", { outputTokens: 100 })],
+			counted,
+			lastSeen,
+			1000,
+		);
+		expect(lastSeen.get("msg_a")).toBe(1000);
+		const fresh = reconcileBatch(
+			[rec("msg_a", { outputTokens: 100 })], // equal re-log -> dropped
+			counted,
+			lastSeen,
+			5000,
+		);
+		expect(fresh).toHaveLength(0); // nothing new to aggregate
+		expect(lastSeen.get("msg_a")).toBe(5000); // but last-seen advanced
+	});
+
+	it("keeps countedById and lastSeenById key sets in sync", () => {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		reconcileBatch(
+			[rec("msg_a"), rec("msg_b"), rec("msg_a", { outputTokens: 999 })],
+			counted,
+			lastSeen,
+			1000,
+		);
+		expect([...counted.keys()].sort()).toEqual([...lastSeen.keys()].sort());
+	});
+
+	it("never tracks id-less records in either guard map", () => {
+		const counted = new Map<string, TokenUsage>();
+		const lastSeen = new Map<string, number>();
+		const fresh = reconcileBatch(
+			[rec(undefined), rec("")],
+			counted,
+			lastSeen,
+			1000,
+		);
+		expect(fresh).toHaveLength(2); // id-less records are always counted
+		expect(counted.size).toBe(0);
+		expect(lastSeen.size).toBe(0);
 	});
 });

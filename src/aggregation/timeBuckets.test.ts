@@ -62,3 +62,30 @@ describe("serialize/deserialize round-trip — project bucket", () => {
 		expect(round.project?.size).toBe(0);
 	});
 });
+
+describe("aggregateUsage — top-up deltas don't inflate messageCount", () => {
+	it("counts a message once across every bucket dimension even with a top-up delta", () => {
+		// A normal record (first sight of a message) plus a straddle top-up delta
+		// for the SAME message. The delta must add tokens but never be counted as
+		// a second message in any bucket. End-to-end guard so a future change to
+		// aggregateUsage that dropped isTopUp would fail loudly, not silently
+		// reintroduce the double-count.
+		const buckets = aggregateUsage([
+			rec("alpha", { inputTokens: 100, outputTokens: 50 }),
+			rec("alpha", { inputTokens: 5, outputTokens: 30, isTopUp: true }),
+		]);
+		// Read by value (not date-keyed) so the assertion is timezone-independent.
+		const dims = [
+			buckets.session.get("s1"),
+			[...buckets.daily.values()][0],
+			[...buckets.weekly.values()][0],
+			[...buckets.monthly.values()][0],
+			buckets.project?.get("alpha"),
+		];
+		for (const dim of dims) {
+			expect(dim?.messageCount).toBe(1); // one message, not two
+			expect(dim?.inputTokens).toBe(105); // tokens topped up
+			expect(dim?.outputTokens).toBe(80);
+		}
+	});
+});

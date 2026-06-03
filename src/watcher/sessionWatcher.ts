@@ -11,10 +11,7 @@ import {
 } from "../aggregation/timeBuckets.js";
 import type { RateLimitEvent } from "../parser/incrementalParser.js";
 import { parseIncremental } from "../parser/incrementalParser.js";
-import {
-	dedupeByMessageId,
-	reconcileSeenUsage,
-} from "../parser/tokenCounter.js";
+import { pruneSeenUsage, reconcileBatch } from "../parser/tokenCounter.js";
 import {
 	calculateCost,
 	loadPricingFromConfig,
@@ -25,6 +22,17 @@ import { getClaudeProjectsDir } from "../utils/paths.js";
 import { OffsetTracker } from "./offsetTracker.js";
 
 const logger = Logger.create("SessionWatcher");
+
+// Forget a message id after this much time with no re-logs in the incremental
+// stream (idle time, NOT age-since-creation — Claude Code can append further
+// re-logs for an id as a session progresses, so an actively re-logged id must
+// never be dropped). 6h is far beyond the streaming/top-up window; this only
+// bounds memory on long-lived sessions between full reparses (which re-seed the
+// guard anyway).
+const COUNTED_ID_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours idle
+// Skip the prune scan until the guard is non-trivially large (memory is a
+// non-issue below this; avoids scanning on every debounced change).
+const COUNTED_ID_PRUNE_FLOOR = 512;
 
 /**
  * SessionWatcher watches JSONL files in ~/.claude/projects for file changes
@@ -61,6 +69,12 @@ export class SessionWatcher {
 	 * already counted.
 	 */
 	private readonly countedById = new Map<string, TokenUsage>();
+	/**
+	 * id -> last time (epoch ms) the id appeared in the incremental stream.
+	 * Drives age-out pruning of countedById by RECENCY, not message creation
+	 * time, so an id Claude Code is still re-logging is never dropped.
+	 */
+	private readonly lastSeenById = new Map<string, number>();
 
 	constructor(
 		context: vscode.ExtensionContext,
@@ -206,6 +220,21 @@ export class SessionWatcher {
 			// bytes are not re-read next time
 			await this.offsetTracker.setOffset(filePath, result.newOffset);
 
+			// Bound the dedupe guard's memory on long-lived sessions: forget ids
+			// too old to still receive a top-up (their bytes are already past the
+			// read offset, so they won't be re-read). Token/cost totals unaffected.
+			if (this.countedById.size > COUNTED_ID_PRUNE_FLOOR) {
+				const pruned = pruneSeenUsage(
+					this.countedById,
+					this.lastSeenById,
+					Date.now(),
+					COUNTED_ID_TTL_MS,
+				);
+				if (pruned > 0) {
+					logger.info(`Pruned ${pruned} idle dedupe-guard ids`);
+				}
+			}
+
 			// Update stats
 			this.processedFiles.add(filePath);
 			this.totalLinesSkipped += result.linesSkipped;
@@ -231,22 +260,17 @@ export class SessionWatcher {
 	}
 
 	/**
-	 * Dedupe a batch by message id, then reconcile against usage already counted
-	 * this run: new ids count in full, smaller/equal repeats are dropped, and a
-	 * later read carrying larger usage contributes only the positive token delta
-	 * (so a final write landing in a later read tops up rather than being lost).
-	 * Records without a message id are always kept (they cannot be deduped).
+	 * Reconcile a freshly-read batch against the watcher's live guard maps. Thin
+	 * wrapper over reconcileBatch, which holds the dedupe + last-seen stamp +
+	 * top-up logic (unit-tested in tokenCounter.test.ts).
 	 */
 	private filterFreshRecords(records: TokenUsage[]): TokenUsage[] {
-		const deduped = dedupeByMessageId(records);
-		const fresh: TokenUsage[] = [];
-		for (const record of deduped) {
-			const counted = reconcileSeenUsage(record, this.countedById);
-			if (counted !== null) {
-				fresh.push(counted);
-			}
-		}
-		return fresh;
+		return reconcileBatch(
+			records,
+			this.countedById,
+			this.lastSeenById,
+			Date.now(),
+		);
 	}
 
 	/**
@@ -266,9 +290,12 @@ export class SessionWatcher {
 			// parse, so incremental reads don't re-count it (and can top up if a
 			// later read carries larger usage for the same message id).
 			this.countedById.clear();
+			this.lastSeenById.clear();
+			const seededAt = Date.now();
 			for (const record of seenRecords) {
 				if (record.messageId) {
 					this.countedById.set(record.messageId, record);
+					this.lastSeenById.set(record.messageId, seededAt);
 				}
 			}
 			logger.info(
@@ -295,6 +322,7 @@ export class SessionWatcher {
 		this.processedFiles.clear();
 		this.totalLinesSkipped = 0;
 		this.countedById.clear();
+		this.lastSeenById.clear();
 
 		logger.info("SessionWatcher state reset");
 	}

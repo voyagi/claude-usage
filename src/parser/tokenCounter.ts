@@ -113,7 +113,9 @@ export function addToAggregation(
 	target.cacheCreationTokens += source.cacheCreationTokens;
 	target.cacheReadTokens += source.cacheReadTokens;
 	target.totalCost += source.cost;
-	target.messageCount += 1;
+	// A top-up delta (reconcileSeenUsage) carries extra tokens for a message
+	// already counted on first sight, so it must not be counted as a new message.
+	target.messageCount += source.isTopUp ? 0 : 1;
 
 	// Update timestamp range
 	if (target.firstMessage === null || source.timestamp < target.firstMessage) {
@@ -136,6 +138,10 @@ export function addToAggregation(
  * rather than blindly the last one. On real transcripts the last occurrence IS
  * the largest in 99.98% of varying-usage ids; keeping the max also covers the
  * rare out-of-order stragglers and matches reconcileSeenUsage (the live path).
+ * Inverse risk: a genuine *downward* correction in a later line would be
+ * over-counted by keep-largest — but that case is rarer and ambiguous
+ * (indistinguishable from an out-of-order write) than the streaming growth it
+ * fixes, so keep-largest is the deliberate, data-backed default (pinned by test).
  * Id-less records can't be deduped and are each kept.
  *
  * A worked example lives in the dedupeByMessageId tests.
@@ -192,9 +198,11 @@ export function projectNameFromCwd(cwd: string | undefined): string {
  * Mutates `countedById` to remember the largest usage seen per id.
  *
  * @returns the record to aggregate (full record, or a token delta), or null to skip.
- *   NOTE: a delta top-up still increments messageCount by 1 when aggregated. That
- *   straddle case (a message's streamed re-logs split across two incremental
- *   reads) is rare; token/cost accuracy is the priority here.
+ *   A delta top-up is flagged `isTopUp` so aggregation adds its tokens/cost
+ *   without re-counting it as a new message (the message was counted on first
+ *   sight). That straddle case — a message's streamed re-logs split across two
+ *   incremental reads — is rare, but its token, cost, AND message counts now
+ *   match a full reparse.
  */
 export function reconcileSeenUsage(
 	record: TokenUsage,
@@ -229,5 +237,77 @@ export function reconcileSeenUsage(
 		cacheCreation5m: Math.max(0, record.cacheCreation5m - prev.cacheCreation5m),
 		cacheCreation1h: Math.max(0, record.cacheCreation1h - prev.cacheCreation1h),
 		cost: 0, // recalculated by the caller, priced on the delta tokens
+		isTopUp: true, // delta tops up an already-counted message; don't re-count it
 	};
+}
+
+/**
+ * Reconcile a freshly-read incremental batch against the live dedupe guard.
+ *
+ * Dedupes the batch by message id, then for each record stamps `lastSeenById`
+ * and reconciles against `countedById` (emitting a full record, a token top-up
+ * delta, or nothing). The stamp fires BEFORE reconcile and for EVERY id — even
+ * one whose re-log reconcile drops as equal/smaller — because that stamp-on-drop
+ * is the invariant that keeps an id Claude Code is still re-logging prune-safe.
+ * Moving the stamp inside the `counted !== null` branch would silently reopen the
+ * re-counted-as-new inflation. Mutates both maps; id-less records are emitted but
+ * tracked in neither map (they cannot be deduped).
+ *
+ * @returns the records to aggregate (full records and/or top-up deltas)
+ */
+export function reconcileBatch(
+	records: TokenUsage[],
+	countedById: Map<string, TokenUsage>,
+	lastSeenById: Map<string, number>,
+	nowMs: number,
+): TokenUsage[] {
+	const deduped = dedupeByMessageId(records);
+	const fresh: TokenUsage[] = [];
+	for (const record of deduped) {
+		if (record.messageId) {
+			lastSeenById.set(record.messageId, nowMs);
+		}
+		const counted = reconcileSeenUsage(record, countedById);
+		if (counted !== null) {
+			fresh.push(counted);
+		}
+	}
+	return fresh;
+}
+
+/**
+ * Bound the live dedupe guard's memory by dropping message ids that have not
+ * appeared in the incremental stream for `ttlMs`.
+ *
+ * reconcileSeenUsage keeps one entry per message id seen since the last full
+ * parse; over a long-lived session that map grows without bound. Pruning is
+ * keyed on LAST-SEEN time (when the id last appeared in a read), NOT the
+ * message's creation timestamp: Claude Code can append further re-log lines for
+ * an existing message.id as a session progresses, so an id that is still being
+ * re-logged must stay in the guard — otherwise its next re-log is miscounted as
+ * a brand-new message (inflating live totals until the next full reparse). An id
+ * idle for `ttlMs` is genuinely finished, so it is safe to forget. Never affects
+ * token/cost correctness: a full reparse re-seeds the guard from scratch anyway.
+ *
+ * @param countedById the guard map (mutated in place)
+ * @param lastSeenById id -> last-seen epoch ms; pruned in lockstep (mutated)
+ * @param nowMs current wall-clock time in ms (Date.now())
+ * @param ttlMs max idle time in ms before an unseen id is dropped
+ * @returns number of ids pruned
+ */
+export function pruneSeenUsage(
+	countedById: Map<string, TokenUsage>,
+	lastSeenById: Map<string, number>,
+	nowMs: number,
+	ttlMs: number,
+): number {
+	let pruned = 0;
+	for (const [id, lastSeen] of lastSeenById) {
+		if (nowMs - lastSeen > ttlMs) {
+			countedById.delete(id);
+			lastSeenById.delete(id);
+			pruned++;
+		}
+	}
+	return pruned;
 }
