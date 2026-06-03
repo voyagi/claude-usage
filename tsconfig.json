@@ -13,7 +13,12 @@
 		"declaration": true,
 		"sourceMap": true,
 		"jsx": "react-jsx",
-		"jsxImportSource": "react"
+		"jsxImportSource": "react",
+		// TS6 no longer auto-includes every @types/* package as ambient globals,
+		// so list the ones we rely on globally: node (process, NodeJS, node:*) and
+		// jest (describe/it/expect). Import-based types (react, react-dom, vscode)
+		// still resolve through their import statements and don't belong here.
+		"types": ["node", "jest"]
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]
