@@ -127,11 +127,17 @@ export function addToAggregation(
 /**
  * Collapse re-logged duplicate records to one per message id.
  *
- * Claude Code writes the same assistant message (identical id and usage) across
- * many JSONL lines, so naively summing every line multiplies a single response's
- * tokens. This keeps the LAST record for each non-empty messageId (the last write
- * carries the final usage) and passes through records with no id unchanged — they
- * cannot be deduped and must each be counted.
+ * Why duplicates exist: Claude Code re-logs the same assistant message (same
+ * `message.id`) across many JSONL lines as a session progresses — a single API
+ * response can appear dozens of times (measured up to 39x, ~2x total token
+ * inflation across real transcripts). Summing every line would multiply one
+ * response's tokens, so this keeps only the LAST record per non-empty id (the
+ * last write carries the final/largest usage) and passes through id-less records
+ * unchanged — they cannot be deduped and must each be counted.
+ *
+ * A worked 39x example lives in the dedupeByMessageId tests. For the live/
+ * incremental path (where a re-logged burst can straddle two reads), the same
+ * keep-the-final-usage invariant is enforced by reconcileSeenUsage.
  *
  * @param records Parsed token usage records
  * @returns Deduplicated records (order not preserved; aggregation is order-independent)
