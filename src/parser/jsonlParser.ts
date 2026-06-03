@@ -24,6 +24,7 @@ export async function parseSessionFile(
 	const records: TokenUsage[] = [];
 	const errors: string[] = [];
 	let linesSkipped = 0;
+	let schemaFailures = 0;
 
 	try {
 		// Create read stream without exclusive locks - allows concurrent writes
@@ -54,8 +55,19 @@ export async function parseSessionFile(
 				const tokenUsage = parseAssistantMessage(parsed);
 
 				if (tokenUsage === null) {
-					// Missing usage data or validation failed - skip silently
-					// This is normal for some message types
+					// An assistant line that carries a usage block but fails the
+					// schema is the signal that Claude Code's transcript format
+					// drifted — count it so the UI can warn that totals may be
+					// undercounted. Assistant lines with no usage (e.g. tool-only
+					// turns) are normal and not counted. Check undefined and null
+					// explicitly so a future `!=`→`!==` cleanup can't silently widen
+					// this to count every no-usage assistant turn as drift.
+					if (
+						parsed.message?.usage !== undefined &&
+						parsed.message.usage !== null
+					) {
+						schemaFailures++;
+					}
 					continue;
 				}
 
@@ -76,6 +88,7 @@ export async function parseSessionFile(
 			filePath,
 			records,
 			linesSkipped,
+			schemaFailures,
 			errors,
 		};
 	} catch (fileError) {
@@ -92,6 +105,7 @@ export async function parseSessionFile(
 			filePath,
 			records: [],
 			linesSkipped,
+			schemaFailures,
 			errors,
 		};
 	}
@@ -106,11 +120,13 @@ export async function parseAllSessions(logger: Logger): Promise<{
 	records: TokenUsage[];
 	filesProcessed: number;
 	linesSkipped: number;
+	schemaFailures: number;
 	errors: string[];
 }> {
 	const allRecords: TokenUsage[] = [];
 	const allErrors: string[] = [];
 	let totalLinesSkipped = 0;
+	let totalSchemaFailures = 0;
 	let filesProcessed = 0;
 
 	// Discover all JSONL files (including subagents)
@@ -129,6 +145,7 @@ export async function parseAllSessions(logger: Logger): Promise<{
 		for (const result of results) {
 			allRecords.push(...result.records);
 			totalLinesSkipped += result.linesSkipped;
+			totalSchemaFailures += result.schemaFailures;
 			allErrors.push(...result.errors);
 
 			if (result.errors.length === 0) {
@@ -147,13 +164,14 @@ export async function parseAllSessions(logger: Logger): Promise<{
 	logger.info(
 		`Parsing complete: ${filesProcessed}/${sessionFiles.length} files processed, ` +
 			`${allRecords.length} records extracted, ${dedupedRecords.length} after dedup, ` +
-			`${totalLinesSkipped} lines skipped`,
+			`${totalLinesSkipped} lines skipped, ${totalSchemaFailures} schema failures`,
 	);
 
 	return {
 		records: dedupedRecords,
 		filesProcessed,
 		linesSkipped: totalLinesSkipped,
+		schemaFailures: totalSchemaFailures,
 		errors: allErrors,
 	};
 }

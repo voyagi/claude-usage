@@ -124,6 +124,8 @@ export interface FileParseResult {
 	filePath: string;
 	records: TokenUsage[];
 	linesSkipped: number;
+	/** Assistant lines that carried a usage block but failed the schema (format-drift signal). */
+	schemaFailures: number;
 	errors: string[];
 }
 

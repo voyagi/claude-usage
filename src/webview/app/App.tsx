@@ -128,6 +128,28 @@ export function App() {
 				)}
 			</main>
 
+			{data && data.unparsedUsageRecords > 0 && (
+				<div
+					role="status"
+					aria-live="polite"
+					style={{
+						margin: "8px 0",
+						padding: "8px 10px",
+						borderRadius: "4px",
+						background: "var(--vscode-inputValidation-warningBackground)",
+						border:
+							"1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border))",
+						color:
+							"var(--vscode-inputValidation-warningForeground, var(--vscode-foreground))",
+						fontSize: "11px",
+					}}
+				>
+					⚠ {data.unparsedUsageRecords.toLocaleString()} usage record
+					{data.unparsedUsageRecords === 1 ? "" : "s"} couldn't be read — your
+					totals may be undercounted. This extension build may be out of date
+					with Claude Code's log format.
+				</div>
+			)}
 			{data && (
 				<footer
 					style={{

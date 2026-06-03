@@ -118,6 +118,11 @@ export interface DashboardData {
 	dataSourcePath: string; // Watched directory path for transparency footer
 	isFirstRun: boolean; // True if user has never seen the dashboard before
 	hasCustomPricing: boolean; // True if user has overridden any pricing values
+
+	// Parse health: assistant usage records that failed the schema in the last
+	// full parse. > 0 means Claude Code's transcript format may have drifted, so
+	// totals could be undercounted.
+	unparsedUsageRecords: number;
 }
 
 /**
