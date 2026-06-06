@@ -9,8 +9,8 @@
    - Select scope: Marketplace > Manage
    - Copy the token (shown only once)
 3. **Publisher created** -- either:
-   - Web: https://marketplace.visualstudio.com/manage → Create Publisher (use `voyagi`)
-   - CLI: `npx vsce create-publisher voyagi`
+   - Web: https://marketplace.visualstudio.com/manage → Create Publisher (use `Taranity`)
+   - CLI: `npx vsce create-publisher Taranity`
 
 ## Build and Package
 
@@ -24,7 +24,7 @@ Produces `claude-usage-monitor-1.0.0.vsix` (~418 KB).
 ## Publish
 
 ```bash
-npx vsce login voyagi       # paste your PAT when prompted
+npx vsce login Taranity       # paste your PAT when prompted
 npx vsce publish             # publishes current version
 ```
 
@@ -49,5 +49,5 @@ Or in VS Code: `Ctrl+Shift+P` > "Extensions: Install from VSIX..."
 ## Unpublish
 
 ```bash
-npx vsce unpublish voyagi.claude-usage-monitor
+npx vsce unpublish Taranity.claude-usage-monitor
 ```
