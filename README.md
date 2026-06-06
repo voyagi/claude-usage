@@ -42,7 +42,7 @@ Full transparency -- here is exactly what this extension reads and stores:
 
 ## Installation
 
-1. Install from the VS Code marketplace (or `code --install-extension voyagi.claude-usage-monitor`)
+1. Install from the VS Code marketplace (or `code --install-extension Taranity.claude-usage-monitor`)
 2. The extension activates automatically when `~/.claude/` exists
 3. Look for the Claude Usage icon in the activity bar
 

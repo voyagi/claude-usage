@@ -2,7 +2,7 @@
 	"name": "claude-usage-monitor",
 	"version": "1.1.0",
 	"description": "Local-only Claude Code usage monitoring — zero network calls",
-	"publisher": "voyagi",
+	"publisher": "Taranity",
 	"displayName": "Claude Usage Monitor",
 	"engines": {
 		"vscode": "^1.96.0",
