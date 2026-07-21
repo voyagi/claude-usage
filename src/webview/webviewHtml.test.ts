@@ -62,7 +62,15 @@ describe("webview HTML shell", () => {
 			path.join(__dirname, "..", "..", "esbuild.config.mjs"),
 			"utf8",
 		);
-		const outfile = config.match(/outfile:\s*"(dist\/webview\.js)"/)?.[1];
+		// Capture whatever the outfile IS, rather than matching the value we
+		// expect: a pattern with the name baked into its own capture group
+		// derives nothing, fails on a correct rename, and -- because match()
+		// takes the first hit -- is defeated by any comment mentioning an
+		// outfile. Anchoring to webviewConfig avoids matching the extension
+		// bundle's outfile instead.
+		const outfile = config.match(
+			/webviewConfig\s*=\s*\{[\s\S]*?outfile:\s*"([^"]+)"/,
+		)?.[1];
 		expect(outfile).toBeTruthy();
 
 		const emittedCss = (outfile as string).replace(/\.js$/, ".css");
