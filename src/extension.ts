@@ -233,7 +233,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// API fetching is now handled by the PollingTimer, not triggered by file changes
 	sessionWatcher = new SessionWatcher(
 		context,
-		(buckets, stats) => {
+		(buckets, stats, freshRecords) => {
 			// Store for refreshStatusBar() to use when API data arrives
 			lastKnownBuckets = buckets;
 			lastKnownStats = stats;
@@ -259,8 +259,10 @@ export async function activate(context: vscode.ExtensionContext) {
 			);
 			statusBar.update(data);
 
-			// Update dashboard with new data
+			// Update dashboard with new data. Records go first so the attribution
+			// card is rebuilt from them before the push to the webview.
 			if (dashboardProvider) {
+				dashboardProvider.appendRecords(freshRecords);
 				dashboardProvider.updateBuckets(buckets, data, getSelectedPlan());
 			}
 

@@ -40,9 +40,15 @@ const COUNTED_ID_PRUNE_FLOOR = 512;
  */
 export class SessionWatcher {
 	private readonly context: vscode.ExtensionContext;
+	/**
+	 * Notifies of new usage. `freshRecords` carries the newly-counted records
+	 * from this read (empty when everything was a duplicate) so consumers that
+	 * track records, not just aggregates, can stay current without a reparse.
+	 */
 	private readonly onUpdate: (
 		buckets: TimeBuckets,
 		stats: { filesProcessed: number; linesSkipped: number },
+		freshRecords: TokenUsage[],
 	) => void;
 	private readonly onRateLimitEvent?: (event: RateLimitEvent) => void;
 	private watcher: vscode.FileSystemWatcher | null = null;
@@ -81,6 +87,7 @@ export class SessionWatcher {
 		onUpdate: (
 			buckets: TimeBuckets,
 			stats: { filesProcessed: number; linesSkipped: number },
+			freshRecords: TokenUsage[],
 		) => void,
 		onRateLimitEvent?: (event: RateLimitEvent) => void,
 	) {
@@ -240,10 +247,14 @@ export class SessionWatcher {
 			this.totalLinesSkipped += result.linesSkipped;
 
 			// Notify via callback
-			this.onUpdate(this.currentBuckets, {
-				filesProcessed: this.processedFiles.size,
-				linesSkipped: this.totalLinesSkipped,
-			});
+			this.onUpdate(
+				this.currentBuckets,
+				{
+					filesProcessed: this.processedFiles.size,
+					linesSkipped: this.totalLinesSkipped,
+				},
+				freshRecords,
+			);
 
 			logger.info(
 				`Parsed ${result.records.length} records (${freshRecords.length} counted after dedupe) ` +

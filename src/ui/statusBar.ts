@@ -98,9 +98,11 @@ export class StatusBarManager {
 		// back to the local estimate, and render nothing when neither knows.
 		const scopedApi = api?.scopedWeekly?.[0] ?? null;
 		const scopedLocal = data.rateLimits.weeklyScoped;
+		// `||`, not `??`: an empty-string label is as unknown as a missing one,
+		// and letting "" through would render the nameless ":0%" this guards.
 		const scopedLabel =
-			scopedApi?.label ??
-			scopedLocal?.name.replace(/^Weekly\s+/, "").trim() ??
+			scopedApi?.label ||
+			scopedLocal?.name.replace(/^Weekly\s+/, "").trim() ||
 			null;
 		const scopedPct = scopedApi
 			? Math.round(scopedApi.utilization * 100)
@@ -186,7 +188,7 @@ export class StatusBarManager {
 		this.weeklyItem.show();
 		// No scoped limit known (API unreachable and never seen before): showing a
 		// bare ":0%" would be worse than showing nothing.
-		this._hasScopedLimit = scopedLabel !== null;
+		this._hasScopedLimit = Boolean(scopedLabel);
 		if (this._hasScopedLimit) {
 			this.scopedItem.show();
 		} else {

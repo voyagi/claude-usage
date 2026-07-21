@@ -173,7 +173,9 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
 			{/* Section 3: Rate Limits */}
 			<div className="card">
-				<h3 className="card-title">Rate Limits (estimated)</h3>
+				{/* Not "(estimated)": with the API reachable these are exact. Rows
+				    that fell back to a local estimate say so individually. */}
+				<h3 className="card-title">Rate Limits</h3>
 				<ProgressBar
 					label="Session (5hr)"
 					current={data.session5h.currentTokens}

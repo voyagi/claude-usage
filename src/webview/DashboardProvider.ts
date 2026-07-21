@@ -466,6 +466,25 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	}
 
 	/**
+	 * Add records counted by the file watcher since the last full parse.
+	 *
+	 * Without this the attribution card would freeze at whatever the last full
+	 * parse saw: the watcher only ever pushed buckets, so live usage moved the
+	 * totals and the rate-limit bars while "what's contributing" quietly went
+	 * stale until the next restart or manual refresh.
+	 *
+	 * Top-up deltas are excluded -- they carry only the extra tokens for a
+	 * message already counted, so adding them would double-count that message's
+	 * attribution.
+	 */
+	public appendRecords(records: TokenUsage[]): void {
+		const counted = records.filter((record) => !record.isTopUp);
+		if (counted.length === 0) return;
+		this._records = this._records.concat(counted);
+		this._attribution = computeAttribution(this._records);
+	}
+
+	/**
 	 * Filter stored records by period and send to webview.
 	 */
 	private _handleMessageDetailRequest(

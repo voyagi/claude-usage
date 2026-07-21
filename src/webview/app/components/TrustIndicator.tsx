@@ -58,6 +58,8 @@ export function TrustIndicator() {
 						<br />✓ Stores data in VS Code globalState (local)
 						<br />✓ Asks api.anthropic.com for your own usage percentages,
 						signed in as you
+						<br />✓ Asks platform.claude.com to refresh that login when it
+						expires
 					</div>
 					<div
 						style={{

@@ -64,6 +64,30 @@ describe("resolveModelPricing", () => {
 		).toBe(1.0);
 	});
 
+	it("prices the fable and mythos families", () => {
+		// Regression: the billability gate listed only opus/sonnet/haiku, so every
+		// Fable request resolved to null and was costed at $0. That silently
+		// removed real usage from the totals AND from the cost-weighted usage
+		// attribution -- on an account whose scoped weekly limit IS Fable.
+		expect(resolveModelPricing("claude-fable-5", pricing)).toMatchObject({
+			inputPerMillion: 10.0,
+			outputPerMillion: 50.0,
+		});
+		expect(resolveModelPricing("claude-mythos-5", pricing)).toMatchObject({
+			inputPerMillion: 10.0,
+			outputPerMillion: 50.0,
+		});
+	});
+
+	it("prices a dated or newer fable id by family rather than at zero", () => {
+		expect(
+			resolveModelPricing("claude-fable-5-20260714", pricing)?.inputPerMillion,
+		).toBe(10.0);
+		expect(
+			resolveModelPricing("claude-fable-6", pricing)?.outputPerMillion,
+		).toBe(50.0);
+	});
+
 	it("returns null for non-billable / synthetic models", () => {
 		expect(resolveModelPricing("<synthetic>", pricing)).toBeNull();
 		expect(resolveModelPricing("text-embedding-3", pricing)).toBeNull();

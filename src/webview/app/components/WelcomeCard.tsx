@@ -59,9 +59,9 @@ export function WelcomeCard({ onDismiss }: WelcomeCardProps) {
 				}}
 			>
 				This extension monitors your Claude Code usage by reading local session
-				files. The only thing it ever talks to is{" "}
-				<strong>Anthropic's own usage endpoint</strong>, signed in as you, to
-				read your exact limit percentages. Nothing goes anywhere else.
+				files. The only service it ever talks to is <strong>Anthropic</strong>,
+				signed in as you, to read your exact limit percentages and to refresh
+				that login when it expires. Nothing goes anywhere else.
 			</p>
 			<ul
 				style={{
@@ -75,6 +75,7 @@ export function WelcomeCard({ onDismiss }: WelcomeCardProps) {
 				<li>Reads: ~/.claude/projects/ (JSONL session files)</li>
 				<li>Reads: ~/.claude/.credentials.json (your Claude Code login)</li>
 				<li>Calls: api.anthropic.com, for your own usage percentages</li>
+				<li>Calls: platform.claude.com, only to refresh an expired login</li>
 				<li>No telemetry, no analytics, no third parties</li>
 			</ul>
 		</div>
