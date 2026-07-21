@@ -1,6 +1,7 @@
 src/
 .planning/
 .claude/
+.crash-buffers/
 node_modules/
 .git/
 .gitignore
