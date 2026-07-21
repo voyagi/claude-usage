@@ -64,11 +64,16 @@ describe("webview HTML shell", () => {
 		);
 		// Capture whatever the outfile IS, rather than matching the value we
 		// expect: a pattern with the name baked into its own capture group
-		// derives nothing, fails on a correct rename, and -- because match()
-		// takes the first hit -- is defeated by any comment mentioning an
-		// outfile. Anchoring to webviewConfig avoids matching the extension
-		// bundle's outfile instead.
-		const outfile = config.match(
+		// derives nothing and fails on a correct rename. Anchoring to
+		// webviewConfig avoids picking up the extension bundle's outfile.
+		//
+		// Line comments are stripped first because match() takes the first hit,
+		// so a commented-out config block left in the file would be captured in
+		// preference to the live one -- verified: with such a block present the
+		// unstripped pattern reads the dead value and the test passes while the
+		// real href dangles. Block comments would still slip through.
+		const code = config.replace(/^\s*\/\/.*$/gm, "");
+		const outfile = code.match(
 			/webviewConfig\s*=\s*\{[\s\S]*?outfile:\s*"([^"]+)"/,
 		)?.[1];
 		expect(outfile).toBeTruthy();
