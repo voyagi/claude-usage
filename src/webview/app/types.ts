@@ -39,6 +39,78 @@ export interface RateLimitData {
 	percentage: number;
 	resetTime: string | null; // ISO 8601 string for serialization
 	isHit: boolean;
+	/**
+	 * True when the percentage came from local JSONL rather than the API.
+	 *
+	 * Every row needs this, not just the scoped one: with the API unreachable
+	 * the session and weekly percentages are estimates too, and an unqualified
+	 * number is the kind of confident-and-wrong the rest of this codebase goes
+	 * out of its way to avoid.
+	 */
+	isEstimated: boolean;
+}
+
+/**
+ * A model-scoped weekly limit. `label` is the API's display name for the scoped
+ * model (e.g. "Fable").
+ */
+export interface ScopedRateLimitData extends RateLimitData {
+	label: string;
+}
+
+/** Behaviour signal keys, mirroring src/aggregation/attribution.ts */
+export type BehaviorKey =
+	| "cacheMiss"
+	| "longContext"
+	| "subagentHeavy"
+	| "highParallel"
+	| "longRunning";
+
+/** One named contributor (skill, subagent, plugin, MCP server) */
+export interface AttributionEntry {
+	name: string;
+	cost: number;
+	percentage: number;
+}
+
+/** One behaviour signal */
+export interface BehaviorEntry {
+	key: BehaviorKey;
+	percentage: number;
+}
+
+/** Attribution for one time window (serialization-safe) */
+export interface AttributionWindow {
+	totalCost: number;
+	recordCount: number;
+	behaviors: BehaviorEntry[];
+	skills: AttributionEntry[];
+	agents: AttributionEntry[];
+	plugins: AttributionEntry[];
+	mcpServers: AttributionEntry[];
+}
+
+/** Day and week attribution views for the "what's contributing" section */
+export interface UsageAttribution {
+	day: AttributionWindow;
+	week: AttributionWindow;
+}
+
+/** Age of the API figures, mirroring src/types.ts StalenessLevel */
+export type StalenessLevel =
+	| "fresh"
+	| "normal"
+	| "dim"
+	| "stale"
+	| "critical"
+	| "unavailable";
+
+/** Usage-credit spend, in major currency units (serialization-safe) */
+export interface SpendSummary {
+	used: number;
+	limit: number | null;
+	percentage: number;
+	currency: string;
 }
 
 /**
@@ -80,13 +152,38 @@ export interface DashboardData {
 	monthCost: number;
 	totalCost: number;
 
-	// Rate limits (all three limits with detailed info)
+	// Rate limits with detailed info
 	session5h: RateLimitData;
 	weekly: RateLimitData;
-	weeklySonnet: RateLimitData;
+	/**
+	 * Model-scoped weekly limits (e.g. "Weekly Fable"). Empty when the API is
+	 * unreachable and no scoped model has been seen -- which model Anthropic
+	 * scopes changes over time, so it is never assumed.
+	 */
+	scopedWeekly: ScopedRateLimitData[];
 
 	// Predictive weekly-cap forecast (null when not computable)
 	weeklyForecast: WeeklyCapForecast | null;
+
+	/**
+	 * What usage is attributable to (skills, subagents, plugins, MCP servers)
+	 * plus independent behaviour signals, for the last 24h and 7d. Null until a
+	 * full parse has produced records.
+	 */
+	attribution: UsageAttribution | null;
+
+	/**
+	 * Usage credits that cover you past the plan limits. Null unless the account
+	 * has extra usage enabled.
+	 */
+	spend: SpendSummary | null;
+
+	/**
+	 * How old the API figures are. A row sourced from a stale cache is exact but
+	 * out of date, which `isEstimated` does not capture -- it only distinguishes
+	 * API from local. The status bar already dims for this; the dashboard says it.
+	 */
+	apiStaleness: StalenessLevel;
 
 	// Session timing
 	windowStart: string | null; // ISO 8601 string

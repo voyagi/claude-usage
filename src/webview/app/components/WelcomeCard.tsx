@@ -1,5 +1,5 @@
 /**
- * First-run welcome card explaining zero network calls and local data access.
+ * First-run welcome card explaining what the extension reads and who it talks to.
  * Dismissible and persists across sessions via globalState.
  */
 import { vscode } from "../index";
@@ -59,8 +59,9 @@ export function WelcomeCard({ onDismiss }: WelcomeCardProps) {
 				}}
 			>
 				This extension monitors your Claude Code usage by reading local session
-				files. It makes <strong>zero network calls</strong> -- all data stays on
-				your machine.
+				files. The only service it ever talks to is <strong>Anthropic</strong>,
+				signed in as you, to read your exact limit percentages and to refresh
+				that login when it expires. Nothing goes anywhere else.
 			</p>
 			<ul
 				style={{
@@ -72,8 +73,10 @@ export function WelcomeCard({ onDismiss }: WelcomeCardProps) {
 				}}
 			>
 				<li>Reads: ~/.claude/projects/ (JSONL session files)</li>
-				<li>Reads: ~/.claude/.credentials.json (plan tier detection)</li>
-				<li>No telemetry, no API calls, no analytics</li>
+				<li>Reads: ~/.claude/.credentials.json (your Claude Code login)</li>
+				<li>Calls: api.anthropic.com, for your own usage percentages</li>
+				<li>Calls: platform.claude.com, only to refresh an expired login</li>
+				<li>No telemetry, no analytics, no third parties</li>
 			</ul>
 		</div>
 	);

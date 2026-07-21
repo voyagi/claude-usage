@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as readline from "node:readline";
 import type { FileParseResult, TokenUsage } from "../types.js";
 import type { Logger } from "../utils/logger.js";
+import type { SessionFileDiscoveryOptions } from "../utils/paths.js";
 import { findAllSessionFiles, getClaudeProjectsDir } from "../utils/paths.js";
 import { parseAssistantMessage } from "./schemas.js";
 import { dedupeByMessageId } from "./tokenCounter.js";
@@ -116,7 +117,10 @@ export async function parseSessionFile(
  * @param logger Logger instance for warnings and errors
  * @returns Aggregated parse results with sorted records
  */
-export async function parseAllSessions(logger: Logger): Promise<{
+export async function parseAllSessions(
+	logger: Logger,
+	options: SessionFileDiscoveryOptions = {},
+): Promise<{
 	records: TokenUsage[];
 	filesProcessed: number;
 	linesSkipped: number;
@@ -129,8 +133,13 @@ export async function parseAllSessions(logger: Logger): Promise<{
 	let totalSchemaFailures = 0;
 	let filesProcessed = 0;
 
-	// Discover all JSONL files (including subagents)
-	const sessionFiles = await findAllSessionFiles(getClaudeProjectsDir());
+	// Discover every transcript: top-level sessions, archived sessions, subagent
+	// and workflow transcripts.
+	const startedAt = Date.now();
+	const sessionFiles = await findAllSessionFiles(
+		getClaudeProjectsDir(),
+		options,
+	);
 
 	logger.info(`Found ${sessionFiles.length} session files to process`);
 
@@ -162,7 +171,8 @@ export async function parseAllSessions(logger: Logger): Promise<{
 	dedupedRecords.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
 	logger.info(
-		`Parsing complete: ${filesProcessed}/${sessionFiles.length} files processed, ` +
+		`Parsing complete in ${((Date.now() - startedAt) / 1000).toFixed(1)}s: ` +
+			`${filesProcessed}/${sessionFiles.length} files processed, ` +
 			`${allRecords.length} records extracted, ${dedupedRecords.length} after dedup, ` +
 			`${totalLinesSkipped} lines skipped, ${totalSchemaFailures} schema failures`,
 	);

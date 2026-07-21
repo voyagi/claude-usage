@@ -3,6 +3,7 @@
  * Displays token breakdown, rate limits, session timing, and burn rate.
  */
 import type { DashboardData } from "../types";
+import { ContributingSection } from "./ContributingSection";
 import { ProgressBar } from "./ProgressBar";
 
 interface OverviewTabProps {
@@ -88,7 +89,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 	const worstLimitPercentage = Math.max(
 		data.session5h.percentage,
 		data.weekly.percentage,
-		data.weeklySonnet.percentage,
+		...data.scopedWeekly.map((limit) => limit.percentage),
 	);
 
 	const elapsedPercentage = calculateElapsedPercentage(data.windowStart);
@@ -172,22 +173,41 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
 			{/* Section 3: Rate Limits */}
 			<div className="card">
-				<h3 className="card-title">Rate Limits (estimated)</h3>
+				{/* Not "(estimated)" wholesale: with the API reachable these are
+				    exact. Each row that fell back to a local estimate says so. */}
+				<h3 className="card-title">Rate Limits</h3>
+				{/* An exact-but-old percentage is not an estimate, so isEstimated
+				    does not cover it. Say it once for the card rather than per row. */}
+				{(data.apiStaleness === "stale" ||
+					data.apiStaleness === "critical") && (
+					<div
+						style={{
+							fontSize: "calc(var(--vscode-font-size) * 0.85)",
+							marginBottom: "8px",
+							color: "var(--vscode-descriptionForeground)",
+						}}
+					>
+						These percentages are from an older reading and may have moved
+						since.
+					</div>
+				)}
 				<ProgressBar
-					label="Session (5hr)"
+					label={`Session (5hr)${data.session5h.isEstimated ? " (est.)" : ""}`}
 					current={data.session5h.currentTokens}
 					limit={data.session5h.estimatedLimit}
 					percentage={data.session5h.percentage}
 					resetTime={data.session5h.resetTime}
 					isHit={data.session5h.isHit}
+					isEstimated={data.session5h.isEstimated}
 				/>
 				<ProgressBar
-					label="Weekly"
+					label={`Weekly${data.weekly.isEstimated ? " (est.)" : ""}`}
 					current={data.weekly.currentTokens}
 					limit={data.weekly.estimatedLimit}
 					percentage={data.weekly.percentage}
 					resetTime={data.weekly.resetTime}
 					isHit={data.weekly.isHit}
+					isEstimated={data.weekly.isEstimated}
 				/>
 				{data.weeklyForecast && (
 					<div
@@ -205,14 +225,32 @@ export function OverviewTab({ data }: OverviewTabProps) {
 							: `On track: ~${formatDays(data.weeklyForecast.daysUntilCap)} to the weekly cap at your recent pace; resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`}
 					</div>
 				)}
-				<ProgressBar
-					label="Weekly Sonnet"
-					current={data.weeklySonnet.currentTokens}
-					limit={data.weeklySonnet.estimatedLimit}
-					percentage={data.weeklySonnet.percentage}
-					resetTime={data.weeklySonnet.resetTime}
-					isHit={data.weeklySonnet.isHit}
-				/>
+				{data.spend && (
+					<div
+						style={{
+							fontSize: "calc(var(--vscode-font-size) * 0.85)",
+							marginBottom: "10px",
+							color: "var(--vscode-descriptionForeground)",
+						}}
+					>
+						Usage credits: {data.spend.currency} {data.spend.used.toFixed(2)}
+						{data.spend.limit !== null
+							? ` of ${data.spend.limit.toFixed(2)} (${data.spend.percentage.toFixed(0)}%)`
+							: " used"}
+					</div>
+				)}
+				{data.scopedWeekly.map((limit) => (
+					<ProgressBar
+						key={limit.label}
+						label={`Weekly ${limit.label}${limit.isEstimated ? " (est.)" : ""}`}
+						current={limit.currentTokens}
+						limit={limit.estimatedLimit}
+						percentage={limit.percentage}
+						resetTime={limit.resetTime}
+						isHit={limit.isHit}
+						isEstimated={limit.isEstimated}
+					/>
+				))}
 			</div>
 
 			{/* Section 4: Session Timing */}
@@ -268,6 +306,9 @@ export function OverviewTab({ data }: OverviewTabProps) {
 					</div>
 				)}
 			</div>
+
+			{/* Section 6: What's driving the usage */}
+			<ContributingSection attribution={data.attribution} />
 		</div>
 	);
 }

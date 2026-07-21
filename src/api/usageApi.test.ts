@@ -25,7 +25,7 @@ jest.mock("node:fs/promises", () => ({
 
 import { EventEmitter } from "node:events";
 import type { Logger } from "../utils/logger";
-import { fetchApiUsage } from "./usageApi";
+import { fetchApiUsage, parseUsagePayload } from "./usageApi";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -467,7 +467,7 @@ describe("usageApi: fetchApiUsage - network failures", () => {
 describe("usageApi: fetchApiUsage - successful parsing", () => {
 	beforeEach(() => jest.clearAllMocks());
 
-	it("parses extraUsage when present", async () => {
+	it("parses the legacy per-model keys when limits[] is absent", async () => {
 		const logger = makeLogger();
 		mockReadFile.mockResolvedValue(validCredentials());
 
@@ -499,13 +499,13 @@ describe("usageApi: fetchApiUsage - successful parsing", () => {
 			expect(result.data.fiveHour?.utilization).toBe(0.5);
 			expect(result.data.fiveHour?.resetsAt).toBe("2026-03-23T20:00:00Z");
 			expect(result.data.sevenDay?.utilization).toBe(0.3);
-			expect(result.data.sevenDaySonnet).toBeNull();
-			expect(result.data.sevenDayOpus?.utilization).toBe(0.1);
+			// seven_day_sonnet was null, so only Opus survives as a scoped limit
+			expect(result.data.scopedWeekly).toHaveLength(1);
+			expect(result.data.scopedWeekly[0].label).toBe("Opus");
+			expect(result.data.scopedWeekly[0].utilization).toBe(0.1);
 			expect(result.data.rateLimitTier).toBe("tier4");
-			expect(result.data.extraUsage).toEqual({
-				creditsUsed: 42.5,
-				creditsTotal: 100,
-			});
+			expect(result.data.extraUsage?.creditsUsed).toBe(42.5);
+			expect(result.data.extraUsage?.creditsTotal).toBe(100);
 			expect(result.data.fetchedAt).toBeInstanceOf(Date);
 		}
 	});
@@ -535,5 +535,181 @@ describe("usageApi: fetchApiUsage - successful parsing", () => {
 		if (result.ok) {
 			expect(result.data.extraUsage).toBeNull();
 		}
+	});
+});
+
+// ── parseUsagePayload: the 2026-07 API shape ───────────────────────
+
+describe("usageApi: parseUsagePayload - limits[] shape", () => {
+	/** Trimmed copy of a real 2026-07-21 response from /api/oauth/usage */
+	const CURRENT_SHAPE = {
+		five_hour: {
+			utilization: 17,
+			resets_at: "2026-07-21T19:20:00.383267+00:00",
+			limit_dollars: null,
+			used_dollars: null,
+			remaining_dollars: null,
+		},
+		seven_day: {
+			utilization: 56,
+			resets_at: "2026-07-24T08:00:00.383291+00:00",
+		},
+		seven_day_opus: null,
+		seven_day_sonnet: null,
+		tangelo: null,
+		extra_usage: {
+			is_enabled: false,
+			monthly_limit: null,
+			used_credits: null,
+			utilization: null,
+			currency: null,
+			disabled_reason: null,
+		},
+		limits: [
+			{
+				kind: "session",
+				group: "session",
+				percent: 17,
+				severity: "normal",
+				resets_at: "2026-07-21T19:20:00.383267+00:00",
+				scope: null,
+				is_active: false,
+			},
+			{
+				kind: "weekly_all",
+				group: "weekly",
+				percent: 56,
+				severity: "normal",
+				resets_at: "2026-07-24T08:00:00.383291+00:00",
+				scope: null,
+				is_active: false,
+			},
+			{
+				kind: "weekly_scoped",
+				group: "weekly",
+				percent: 60,
+				severity: "normal",
+				resets_at: "2026-07-24T08:00:00.383503+00:00",
+				scope: { model: { id: null, display_name: "Fable" }, surface: null },
+				is_active: true,
+			},
+		],
+		spend: {
+			used: { amount_minor: 0, currency: "USD", exponent: 2 },
+			limit: null,
+			percent: 0,
+			severity: "normal",
+			enabled: false,
+		},
+	};
+
+	it("reads session and weekly from limits[]", () => {
+		const data = parseUsagePayload(CURRENT_SHAPE);
+		expect(data.fiveHour?.utilization).toBe(0.17);
+		expect(data.fiveHour?.severity).toBe("normal");
+		expect(data.sevenDay?.utilization).toBe(0.56);
+	});
+
+	it("surfaces the scoped weekly limit with the model name the API supplies", () => {
+		const data = parseUsagePayload(CURRENT_SHAPE);
+		expect(data.scopedWeekly).toHaveLength(1);
+		expect(data.scopedWeekly[0]).toMatchObject({
+			label: "Fable",
+			utilization: 0.6,
+			isActive: true,
+		});
+	});
+
+	it("does not fall back to the legacy null per-model keys", () => {
+		const data = parseUsagePayload(CURRENT_SHAPE);
+		// Regression guard: seven_day_sonnet/opus are null in the current API.
+		// Reading them instead of limits[] is what silently emptied the third bar.
+		expect(data.scopedWeekly.some((w) => w.label === "Sonnet")).toBe(false);
+	});
+
+	it("parses spend into major currency units", () => {
+		const data = parseUsagePayload({
+			...CURRENT_SHAPE,
+			spend: {
+				used: { amount_minor: 1234, currency: "USD", exponent: 2 },
+				limit: { amount_minor: 5000, currency: "USD", exponent: 2 },
+				percent: 24,
+				severity: "normal",
+				enabled: true,
+			},
+		});
+		expect(data.spend).toEqual({
+			used: 12.34,
+			limit: 50,
+			percent: 24,
+			currency: "USD",
+			severity: "normal",
+			enabled: true,
+		});
+	});
+
+	it("returns null extraUsage when credits are disabled and empty", () => {
+		expect(parseUsagePayload(CURRENT_SHAPE).extraUsage).toBeNull();
+	});
+
+	it("derives extraUsage utilization from real credit amounts", () => {
+		const data = parseUsagePayload({
+			...CURRENT_SHAPE,
+			extra_usage: {
+				is_enabled: true,
+				monthly_limit: 200,
+				used_credits: 50,
+				utilization: 25,
+				currency: "USD",
+				disabled_reason: null,
+			},
+		});
+		expect(data.extraUsage).toEqual({
+			isEnabled: true,
+			creditsUsed: 50,
+			creditsTotal: 200,
+			utilization: 0.25,
+			currency: "USD",
+			disabledReason: null,
+		});
+	});
+
+	it("survives a payload with no limits[] and no legacy keys", () => {
+		const data = parseUsagePayload({});
+		expect(data.fiveHour).toBeNull();
+		expect(data.sevenDay).toBeNull();
+		expect(data.scopedWeekly).toEqual([]);
+		expect(data.spend).toBeNull();
+		expect(data.extraUsage).toBeNull();
+	});
+
+	it("ignores scoped limits that carry no usable label", () => {
+		const data = parseUsagePayload({
+			limits: [
+				{
+					kind: "weekly_scoped",
+					group: "weekly",
+					percent: 40,
+					resets_at: null,
+					scope: { model: { id: null, display_name: null }, surface: null },
+				},
+			],
+		});
+		expect(data.scopedWeekly).toEqual([]);
+	});
+
+	it("labels a surface-scoped limit by its surface", () => {
+		const data = parseUsagePayload({
+			limits: [
+				{
+					kind: "weekly_scoped",
+					group: "weekly",
+					percent: 40,
+					resets_at: null,
+					scope: { model: null, surface: "Cowork" },
+				},
+			],
+		});
+		expect(data.scopedWeekly[0].label).toBe("Cowork");
 	});
 });

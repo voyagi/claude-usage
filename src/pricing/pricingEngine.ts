@@ -31,9 +31,16 @@ function priced(
 
 /**
  * Default per-million-token USD pricing, verified against Anthropic's official
- * pricing page (June 2026). Opus 4.5-4.8 share $5/$25; Sonnet 4.5/4.6 $3/$15;
- * Haiku 4.5 $1/$5; Haiku 3.5 (retired) $0.80/$4. Unknown/newer model strings are
- * resolved by family in resolveModelPricing().
+ * pricing page. Opus 4.5-4.8 share $5/$25; Sonnet 4.5/4.6 $3/$15; Haiku 4.5
+ * $1/$5; Haiku 3.5 (retired) $0.80/$4 (June 2026). Fable 5 and Mythos 5 are both
+ * $10/$50, each checked separately against platform.claude.com/docs pricing on
+ * 2026-07-21. Unknown/newer model strings are resolved by family in
+ * resolveModelPricing().
+ *
+ * A model missing from BOTH this table and the family gate below is priced at
+ * zero, not approximately -- so a new family must be added here the moment it
+ * appears in transcripts, or its usage silently vanishes from cost totals and
+ * from the cost-weighted usage attribution.
  */
 const DEFAULT_PRICING: Record<string, ModelPricing> = {
 	"claude-opus-4-8": priced(5.0, 25.0),
@@ -44,16 +51,23 @@ const DEFAULT_PRICING: Record<string, ModelPricing> = {
 	"claude-sonnet-4-5": priced(3.0, 15.0),
 	"claude-haiku-4-5": priced(1.0, 5.0),
 	"claude-haiku-3-5": priced(0.8, 4.0),
+	"claude-fable-5": priced(10.0, 50.0),
+	"claude-mythos-5": priced(10.0, 50.0),
 };
 
 /**
  * Newest known model per family — used to price unknown/newer model strings
  * (e.g. a future opus version) at the correct family rate instead of mis-pricing.
  */
-const FAMILY_FALLBACK: Record<"opus" | "sonnet" | "haiku", string> = {
+const FAMILY_FALLBACK: Record<
+	"opus" | "sonnet" | "haiku" | "fable" | "mythos",
+	string
+> = {
 	opus: "claude-opus-4-8",
 	sonnet: "claude-sonnet-4-6",
 	haiku: "claude-haiku-4-5",
+	fable: "claude-fable-5",
+	mythos: "claude-mythos-5",
 };
 
 /**
@@ -126,7 +140,9 @@ export function resolveModelPricing(
 		return exact;
 	}
 
-	// 2. Billability gate: only Claude opus/sonnet/haiku models have a token cost
+	// 2. Billability gate: only real Claude model families have a token cost.
+	// Anything not listed here prices at zero, so every new family Anthropic
+	// ships must be added or its usage disappears from the totals entirely.
 	const lower = model.toLowerCase();
 	const family = lower.includes("opus")
 		? "opus"
@@ -134,7 +150,11 @@ export function resolveModelPricing(
 			? "sonnet"
 			: lower.includes("haiku")
 				? "haiku"
-				: null;
+				: lower.includes("fable")
+					? "fable"
+					: lower.includes("mythos")
+						? "mythos"
+						: null;
 	if (family === null) {
 		return null;
 	}

@@ -54,6 +54,12 @@ let refinedLimits: RefinedLimits | null = null;
 let lastKnownSessionTokens = 0;
 let lastKnownWeeklyTokens = 0;
 let cachedApiUsage: ApiUsageData | null = null;
+/**
+ * Display name of the model the weekly scoped limit covers (e.g. "Fable").
+ * Learned from the API and persisted so the scoped bar survives a restart while
+ * offline. Anthropic changes which model is scoped, so it is never hardcoded.
+ */
+let lastKnownScopedModel: string | null = null;
 let pollingTimer: PollingTimer | null = null;
 let usageCache: UsageCache | null = null;
 const AUTH_DEAD_NOTIFY_COOLDOWN_MS = 5 * 60_000; // 5 minutes
@@ -142,6 +148,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		);
 	}
 
+	// Load the last scoped-limit model we saw, so the scoped bar renders on a
+	// cold start before the first successful API poll.
+	lastKnownScopedModel =
+		context.globalState.get<string>("lastKnownScopedModel") ?? null;
+
+	/** Remember the scoped model whenever the API names a new one */
+	function rememberScopedModel(data: ApiUsageData): void {
+		const label = data.scopedWeekly[0]?.label;
+		if (!label || label === lastKnownScopedModel) return;
+		lastKnownScopedModel = label;
+		context.globalState
+			.update("lastKnownScopedModel", label)
+			.then(undefined, (err) => {
+				logger.error(`Failed to persist scoped model name: ${err}`);
+			});
+		logger.info(`Weekly scoped limit now applies to: ${label}`);
+	}
+
 	// Handle rate limit events from SessionWatcher
 	function handleRateLimitEvent(event: RateLimitEvent): void {
 		const plan = getPlanConfig(getSelectedPlan());
@@ -209,7 +233,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// API fetching is now handled by the PollingTimer, not triggered by file changes
 	sessionWatcher = new SessionWatcher(
 		context,
-		(buckets, stats) => {
+		(buckets, stats, freshRecords) => {
 			// Store for refreshStatusBar() to use when API data arrives
 			lastKnownBuckets = buckets;
 			lastKnownStats = stats;
@@ -229,13 +253,16 @@ export async function activate(context: vscode.ExtensionContext) {
 				stats,
 				getSelectedPlan(),
 				lastBurnRate,
-				refinedLimits,
+				getEffectiveLimits(),
 				cachedApiUsage,
+				lastKnownScopedModel,
 			);
 			statusBar.update(data);
 
-			// Update dashboard with new data
+			// Update dashboard with new data. Records go first so the attribution
+			// card is rebuilt from them before the push to the webview.
 			if (dashboardProvider) {
+				dashboardProvider.appendRecords(freshRecords);
 				dashboardProvider.updateBuckets(buckets, data, getSelectedPlan());
 			}
 
@@ -279,8 +306,9 @@ export async function activate(context: vscode.ExtensionContext) {
 			lastKnownStats,
 			getSelectedPlan(),
 			lastBurnRate,
-			refinedLimits,
+			getEffectiveLimits(),
 			cachedApiUsage,
+			lastKnownScopedModel,
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -299,6 +327,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	const existingCache = await usageCache.readCache();
 	if (existingCache) {
 		cachedApiUsage = existingCache.apiUsage;
+		// Older cache entries predate scopedWeekly; normalize so consumers can
+		// always index it without a guard.
+		if (!Array.isArray(cachedApiUsage.scopedWeekly)) {
+			cachedApiUsage.scopedWeekly = [];
+		}
+		rememberScopedModel(cachedApiUsage);
 		// If cached data is old (>5 min), assume we're rate-limited until
 		// the first poll proves otherwise. Prevents brief grey flash on startup.
 		const cacheAgeMs = Date.now() - new Date(existingCache.writtenAt).getTime();
@@ -315,6 +349,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		() => fetchApiUsage(logger),
 		(apiData) => {
 			cachedApiUsage = apiData;
+			rememberScopedModel(apiData);
 			statusBar.setRateLimited(false);
 
 			// Auto-detect tier from API response
@@ -381,6 +416,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (cacheData.writtenBy === String(process.pid)) return;
 
 		cachedApiUsage = cacheData.apiUsage;
+		if (!Array.isArray(cachedApiUsage.scopedWeekly)) {
+			cachedApiUsage.scopedWeekly = [];
+		}
+		rememberScopedModel(cachedApiUsage);
 		logger.info("Updated API data from shared cache (other window wrote)");
 		refreshStatusBar();
 	});
@@ -465,6 +504,11 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (sessionWatcher) {
 					await sessionWatcher.resetState();
 				}
+				// Same reason as the clearData path: resetState() drops the offsets,
+				// so files are re-read from byte 0 and would otherwise be replayed
+				// on top of records the dashboard still holds.
+				allRecords = [];
+				dashboardProvider?.setRecords([]);
 				statusBar.showNoData();
 				vscode.window.showInformationMessage(
 					"Session data cleared. Refreshing...",
@@ -540,6 +584,12 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (sessionWatcher) {
 				await sessionWatcher.resetState();
 			}
+			// Drop the dashboard's records too. resetState() clears the watcher's
+			// dedupe guard and offsets, so the next file change re-reads from byte
+			// 0 -- leaving the old copies in place would double-count them in the
+			// attribution card and the drill-down.
+			allRecords = [];
+			dashboardProvider?.setRecords([]);
 			statusBar.showNoData();
 			vscode.window.showInformationMessage(
 				"Claude Usage: Data cleared. Reload window to reparse JSONL files.",
@@ -599,6 +649,43 @@ export function deactivate() {
 }
 
 /**
+ * Manual token-limit overrides from settings.
+ *
+ * These take precedence over both the plan defaults and the auto-learned refined
+ * limits: an explicit number the user typed should not be quietly overruled by
+ * an estimate. 0 means "unset".
+ */
+function getLimitOverrides(): RefinedLimits | null {
+	const config = vscode.workspace.getConfiguration("claude-usage");
+	const session = config.get<number>("rateLimits.session.threshold", 0);
+	const weekly = config.get<number>("rateLimits.weekly.threshold", 0);
+	const scoped =
+		config.get<number>("rateLimits.weeklyScoped.threshold", 0) ||
+		// Deprecated key, still honoured so existing settings keep working
+		config.get<number>("rateLimits.weeklySonnet.threshold", 0);
+
+	if (session <= 0 && weekly <= 0 && scoped <= 0) {
+		return null;
+	}
+
+	const overrides: RefinedLimits = { lastUpdated: new Date().toISOString() };
+	if (session > 0) overrides.sessionTokenLimit = session;
+	if (weekly > 0) overrides.weeklyTokenLimit = weekly;
+	if (scoped > 0) overrides.weeklyScopedLimit = scoped;
+	return overrides;
+}
+
+/**
+ * Limits to calculate against: user overrides win, then auto-learned refined
+ * limits, then the plan defaults inside calculateRateLimits.
+ */
+function getEffectiveLimits(): RefinedLimits | null {
+	const overrides = getLimitOverrides();
+	if (!overrides) return refinedLimits;
+	return { ...refinedLimits, ...overrides };
+}
+
+/**
  * Perform initial JSONL parse and populate status bar
  * Loads cached data first for instant display, then reparses in background
  */
@@ -632,8 +719,9 @@ async function performInitialParse(
 			cached.stats,
 			getSelectedPlan(),
 			lastBurnRate,
-			refinedLimits,
+			getEffectiveLimits(),
 			cachedApiUsage,
+			lastKnownScopedModel,
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -655,8 +743,13 @@ async function performInitialParse(
 		return;
 	}
 
-	// Parse all JSONL files
-	const parseResult = await parseAllSessions(logger);
+	// Parse all JSONL files. Archived sessions are the bulk of the tree, so they
+	// are the one part a user can opt out of when the parse cost outweighs the
+	// historical trend data.
+	const includeArchived = vscode.workspace
+		.getConfiguration("claude-usage")
+		.get<boolean>("includeArchivedSessions", true);
+	const parseResult = await parseAllSessions(logger, { includeArchived });
 
 	// Surface parse health (transcript-format-drift signal) to the dashboard even
 	// if 0 records survived — a total format break shows up as many schema failures.
@@ -727,8 +820,9 @@ async function performInitialParse(
 		stats,
 		getSelectedPlan(),
 		lastBurnRate,
-		refinedLimits,
+		getEffectiveLimits(),
 		cachedApiUsage,
+		lastKnownScopedModel,
 	);
 	statusBar.update(data);
 

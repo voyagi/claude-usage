@@ -1,42 +1,48 @@
 # Claude Usage Monitor
 
-Local-only usage monitoring for Claude Code. Zero network calls. Zero telemetry. Your data stays on your machine.
+Usage monitoring for Claude Code, built from your local session logs. No telemetry, no third parties, no separate API key.
 
 ## Why This Extension?
 
-Existing Claude usage trackers require API keys, make network calls, or send telemetry. This extension takes a different approach:
+Existing Claude usage trackers ask for their own API keys or ship telemetry somewhere. This extension takes a different approach:
 
-- **Reads local files only** -- parses JSONL session logs from `~/.claude/projects/`
-- **Zero network calls** -- no outbound requests, ever
-- **No API keys needed** -- works entirely from local data
+- **Reads local files** -- parses JSONL session logs from `~/.claude/projects/`
+- **Talks only to Anthropic** -- the one network call reads your own limit percentages from the same endpoint Claude Code's Account & Usage panel uses, signed in with the login you already have
+- **No API keys needed** -- reuses your existing Claude Code session
 - **Minimal dependencies** -- small, auditable codebase
 
 ## What You Get
 
 - **Always-on status bar** showing tokens, cost, and rate limit proximity
 - **Sidebar dashboard** with token breakdown, trend charts, and session comparison
+- **Usage attribution** showing which skills, subagents, plugins, and MCP servers your limit is going to
 - **Rate limit tracking** with burn rate calculation and proximity warnings
 - **Auto-detection** of your Claude plan tier from local credentials
 - **Data export** to JSON for custom analysis
 
 ## What This Extension Accesses
 
-Full transparency -- here is exactly what this extension reads and stores:
+Full transparency -- here is exactly what this extension reads, sends, and stores:
 
 | Action | Details |
 |--------|---------|
-| **Reads** | `~/.claude/projects/**/*.jsonl` (session logs) |
-| **Reads** | `~/.claude/.credentials.json` (plan tier auto-detection) |
+| **Reads** | `~/.claude/projects/**/*.jsonl` (session logs, including archived and subagent transcripts) |
+| **Reads** | `~/.claude/.credentials.json` (your existing Claude Code OAuth token) |
+| **Sends** | `GET api.anthropic.com/api/oauth/usage` -- your token, to read your own limit percentages |
+| **Sends** | `POST platform.claude.com/v1/oauth/token` -- only to refresh that token when it expires |
 | **Stores** | VS Code `globalState` (cached aggregations, local only) |
+| **Stores** | `~/.claude/cache/usage-api.json` (shared between VS Code windows, local only) |
+
+The network calls carry your OAuth token to Anthropic and nothing else: no transcripts, no prompts, no code. They are what makes the percentages exact instead of estimated. If they fail, the extension falls back to estimates from local logs and keeps working.
 
 ### What This Extension Does NOT Do
 
 | Never | Explanation |
 |-------|-------------|
-| Network requests | No HTTP, WebSocket, or any outbound connections |
 | Telemetry | No usage tracking, analytics, or crash reporting |
-| Data transmission | No data leaves your machine, period |
-| API key access | No Anthropic API keys needed or requested |
+| Third parties | Nothing is sent anywhere except Anthropic |
+| Content transmission | Your prompts, responses, and code never leave your machine |
+| API key access | No separate Anthropic API key needed or requested |
 | File modification | Only reads Claude session files, never writes to them |
 | Workspace access | Does not read your project source code |
 
@@ -59,9 +65,18 @@ Always-visible metrics showing:
 
 ### Dashboard (Sidebar Panel)
 
-- **Overview tab**: Token breakdown, rate limits with progress bars, session timing, burn rate
+- **Overview tab**: Token breakdown, rate limits with progress bars, session timing, burn rate, and what your usage is going to
 - **Trends tab**: Stacked bar charts for daily/weekly/monthly usage, expandable data table
 - **Session tab**: Current session vs. historical average comparison
+
+### What's Contributing To Your Usage
+
+The Overview tab breaks your last 24 hours and 7 days down two ways, matching the section Claude Code shows in its own Account & Usage panel:
+
+- **Named contributors**: skills, subagents, plugins, and MCP servers, read from the attribution tags Claude Code writes on each request
+- **Behaviours**: independent characteristics of how the usage was spent, such as large cache misses, long context, subagent-heavy sessions, several sessions running at once, and sessions left open for 8+ hours
+
+Neither list is a partition. One request can be tagged with a skill, a subagent, and an MCP server at once, and can match several behaviours, so the shares deliberately do not add up to 100%. Weighting is by cost, which already accounts for per-model and cache-tier rates. Anthropic does not publish how its own panel weights these, so treat the numbers as close estimates of the same idea rather than an exact match.
 
 ### Command Palette
 
@@ -96,18 +111,21 @@ Configure via VS Code Settings (`Ctrl+,` then search "Claude Usage"):
 | Pricing | `{}` | Custom per-model pricing overrides |
 | Compact Mode | `false` | Shorter status bar text |
 | Refresh Interval | `60` | Seconds between usage checks |
-| Rate Limit Overrides | `0` | Manual token limit overrides (session/weekly/weeklySonnet) |
+| Include Archived Sessions | `true` | Parse `archived/` sessions. They hold most of your history and most of the parse cost; turn off for a faster, lighter startup |
+| Rate Limit Overrides | `0` | Manual token limit overrides (session/weekly/weeklyScoped) |
 | Warning Thresholds | 60% / 95% | Yellow and red warning levels |
 | Burn Rate Window | `15` | Minutes for burn rate calculation |
 
 ## How It Works
 
-1. Claude Code writes session data as JSONL files to `~/.claude/projects/`
-2. This extension watches those files for changes (500ms debounce)
-3. New records are parsed incrementally (byte offset tracking)
-4. Usage is aggregated into time buckets (session, daily, weekly, monthly)
-5. Status bar and dashboard update in real-time
-6. All aggregated data is cached in VS Code globalState for instant startup
+1. Claude Code writes session data as JSONL files under `~/.claude/projects/`, at several nesting levels: top-level sessions, `archived/` sessions, and per-session subagent and workflow transcripts
+2. This extension walks that whole tree, so a nesting level Claude Code adds later starts counting the day it appears
+3. Those files are watched for changes (500ms debounce) and new records parsed incrementally (byte offset tracking)
+4. Usage is aggregated into time buckets (session, daily, weekly, monthly), deduplicated by message id so re-logged streaming writes count once
+5. Rate limit percentages come from Anthropic's usage endpoint when reachable, and fall back to local estimates when it is not
+6. Status bar and dashboard update in real-time; all aggregated data is cached in VS Code globalState for instant startup
+
+A full parse reads your whole history, and it runs on every window start and every manual refresh, not just the first time. On a large `~/.claude/projects/` that is on the order of half a minute of background work and around 100 MB held per window. Cached data is displayed immediately while it runs, so you are not left waiting, but if that cost bothers you, turning off **Include Archived Sessions** removes most of it.
 
 ## Supported Plans
 

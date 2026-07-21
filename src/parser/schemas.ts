@@ -3,7 +3,7 @@
  */
 
 import { z } from "zod";
-import type { TokenUsage } from "../types.js";
+import type { TokenUsage, UsageAttributionTags } from "../types.js";
 import { projectNameFromCwd } from "./tokenCounter.js";
 
 /**
@@ -51,6 +51,10 @@ export const UsageSchema = z
 
 /**
  * Schema for assistant message from JSONL
+ *
+ * The `attribution*` fields are stamped by Claude Code on records produced
+ * under a skill, subagent, plugin, or MCP tool. They are what its own usage
+ * panel attributes usage with, and they are absent on ordinary turns.
  */
 export const AssistantMessageSchema = z
 	.object({
@@ -58,6 +62,11 @@ export const AssistantMessageSchema = z
 		timestamp: z.string().datetime(),
 		sessionId: z.string(),
 		cwd: z.string().optional(),
+		attributionSkill: z.string().optional(),
+		attributionAgent: z.string().optional(),
+		attributionPlugin: z.string().optional(),
+		attributionMcpServer: z.string().optional(),
+		attributionMcpTool: z.string().optional(),
 		message: z
 			.object({
 				id: z.string().optional(),
@@ -67,6 +76,46 @@ export const AssistantMessageSchema = z
 			.passthrough(),
 	})
 	.passthrough();
+
+/**
+ * Collect the attribution tags present on a record, or undefined when none are.
+ *
+ * Returning undefined rather than an empty object matters: most records carry
+ * no attribution at all, and a full parse holds hundreds of thousands of them.
+ */
+function extractAttribution(data: {
+	attributionSkill?: string;
+	attributionAgent?: string;
+	attributionPlugin?: string;
+	attributionMcpServer?: string;
+	attributionMcpTool?: string;
+}): UsageAttributionTags | undefined {
+	const tags: UsageAttributionTags = {};
+	let found = false;
+
+	if (data.attributionSkill) {
+		tags.skill = data.attributionSkill;
+		found = true;
+	}
+	if (data.attributionAgent) {
+		tags.agent = data.attributionAgent;
+		found = true;
+	}
+	if (data.attributionPlugin) {
+		tags.plugin = data.attributionPlugin;
+		found = true;
+	}
+	if (data.attributionMcpServer) {
+		tags.mcpServer = data.attributionMcpServer;
+		found = true;
+	}
+	if (data.attributionMcpTool) {
+		tags.mcpTool = data.attributionMcpTool;
+		found = true;
+	}
+
+	return found ? tags : undefined;
+}
 
 /**
  * Parse a pre-parsed JSON object and extract token usage data
@@ -106,6 +155,7 @@ export function parseAssistantMessage(json: unknown): TokenUsage | null {
 			cacheCreation5m: cacheCreation?.ephemeral_5m_input_tokens ?? 0,
 			cacheCreation1h: cacheCreation?.ephemeral_1h_input_tokens ?? 0,
 			cost: 0, // Will be calculated by pricing module
+			attribution: extractAttribution(data),
 		};
 	} catch (_error) {
 		return null;

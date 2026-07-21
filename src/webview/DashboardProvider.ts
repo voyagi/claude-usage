@@ -12,6 +12,8 @@ import {
 	subHours,
 } from "date-fns";
 import * as vscode from "vscode";
+import type { UsageAttribution } from "../aggregation/attribution.js";
+import { computeAttribution } from "../aggregation/attribution.js";
 import { forecastWeeklyCap } from "../core/burnRate.js";
 import type {
 	AggregatedUsage,
@@ -27,6 +29,8 @@ import type {
 	MessageDetail,
 	ProjectUsage,
 	RateLimitData,
+	ScopedRateLimitData,
+	SpendSummary,
 	TrendDataPoint,
 	WebviewMessage,
 } from "./app/types.js";
@@ -39,6 +43,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	private _buckets?: TimeBuckets;
 	private _statusBarData?: StatusBarData;
 	private _records: TokenUsage[] = [];
+	/** Cached usage attribution, recomputed only when records change. */
+	private _attribution: UsageAttribution | null = null;
+	/** messageId -> record, so watcher updates can find what they amend. */
+	private readonly _recordsByMessageId = new Map<string, TokenUsage>();
 	private _planType: string = "pro";
 	private _activePeriod: "daily" | "weekly" | "monthly" = "daily";
 	private _isFirstRun: boolean = false;
@@ -67,7 +75,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		activePeriod: "daily" | "weekly" | "monthly" = "daily",
 		isFirstRun: boolean = false,
 		hasCustomPricing: boolean = false,
-	): Omit<DashboardData, "unparsedUsageRecords"> {
+	): Omit<DashboardData, "unparsedUsageRecords" | "attribution"> {
 		const now = new Date();
 		const today = format(now, "yyyy-MM-dd");
 
@@ -96,6 +104,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				: info.percentage,
 			resetTime: apiWindow?.resetsAt ?? info.resetTime?.toISOString() ?? null,
 			isHit: apiWindow ? apiWindow.utilization >= 1.0 : info.isHit,
+			// Without an API window this percentage is local tokens over a plan
+			// default, which is a guess and must be labelled as one.
+			isEstimated: !apiWindow,
 		});
 
 		const session5h = convertRateLimit(
@@ -106,10 +117,53 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			statusBarData.rateLimits.weekly,
 			api?.sevenDay ?? null,
 		);
-		const weeklySonnet = convertRateLimit(
-			statusBarData.rateLimits.weeklySonnet,
-			api?.sevenDaySonnet ?? null,
-		);
+		// Model-scoped weekly limits. The API is authoritative (it names the model
+		// and gives the true percentage); the local estimate is only a fallback for
+		// the one scoped model we have previously learned about.
+		const scopedWeekly: ScopedRateLimitData[] = [];
+		if (api?.scopedWeekly?.length) {
+			for (const window of api.scopedWeekly) {
+				const local =
+					statusBarData.rateLimits.weeklyScoped?.name ===
+					`Weekly ${window.label}`
+						? statusBarData.rateLimits.weeklyScoped
+						: null;
+				scopedWeekly.push({
+					name: `Weekly ${window.label}`,
+					label: window.label,
+					currentTokens: local?.currentTokens ?? 0,
+					estimatedLimit: local?.estimatedLimit ?? 0,
+					percentage: Math.round(window.utilization * 100),
+					resetTime: window.resetsAt,
+					isHit: window.utilization >= 1.0,
+					isEstimated: false,
+				});
+			}
+		} else if (statusBarData.rateLimits.weeklyScoped) {
+			const local = statusBarData.rateLimits.weeklyScoped;
+			scopedWeekly.push({
+				name: local.name,
+				label: local.name.replace(/^Weekly\s+/, "").trim(),
+				currentTokens: local.currentTokens,
+				estimatedLimit: local.estimatedLimit,
+				percentage: local.percentage,
+				resetTime: local.resetTime?.toISOString() ?? null,
+				isHit: local.isHit,
+				isEstimated: true,
+			});
+		}
+
+		// Usage credits, shown only when the account actually has them enabled
+		const spendSource = api?.spend;
+		const spend: SpendSummary | null =
+			spendSource?.enabled === true
+				? {
+						used: spendSource.used,
+						limit: spendSource.limit,
+						percentage: spendSource.percent,
+						currency: spendSource.currency,
+					}
+				: null;
 
 		// 4. Session timing - use API reset time when available
 		let windowStart: string | null = null;
@@ -231,7 +285,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			totalCost,
 			session5h,
 			weekly,
-			weeklySonnet,
+			scopedWeekly,
+			spend,
+			apiStaleness: statusBarData.staleness,
 			windowStart,
 			windowExpiry,
 			timeRemainingMinutes,
@@ -368,7 +424,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 * Public method for extension.ts to push data updates to the webview.
 	 * Data is cached so it can be sent when webview becomes visible.
 	 */
-	public updateData(data: Omit<DashboardData, "unparsedUsageRecords">): void {
+	public updateData(
+		data: Omit<DashboardData, "unparsedUsageRecords" | "attribution">,
+	): void {
 		// Stamp the latest parse-health signal on every push (all rebuild paths
 		// funnel through here), so the format-drift warning persists across
 		// incremental updates and period changes. Typing the input as Omit<>
@@ -376,6 +434,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		const stamped: DashboardData = {
 			...data,
 			unparsedUsageRecords: this._schemaFailures,
+			attribution: this._attribution,
 		};
 		this._currentData = stamped;
 
@@ -403,9 +462,97 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 
 	/**
 	 * Replace stored records for on-demand message detail drill-down.
+	 *
+	 * Attribution is recomputed here rather than per render: it is a full scan
+	 * of every record, and the records only change on a reparse.
 	 */
 	public setRecords(records: TokenUsage[]): void {
 		this._records = records;
+		this._recordsByMessageId.clear();
+		for (const record of records) {
+			if (record.messageId)
+				this._recordsByMessageId.set(record.messageId, record);
+		}
+		this._attribution = computeAttribution(records);
+	}
+
+	/**
+	 * Add records counted by the file watcher since the last full parse.
+	 *
+	 * Without this the attribution card would freeze at whatever the last full
+	 * parse saw: the watcher only pushed buckets, so live usage moved the totals
+	 * and the rate-limit bars while "what's contributing" quietly went stale
+	 * until the next restart or manual refresh.
+	 *
+	 * Two things this must not get wrong:
+	 *
+	 * - A top-up delta carries ONLY the extra tokens for a message counted on an
+	 *   earlier read. Appending it would inflate the record count and, for a
+	 *   subagent message, the subagent-request tally behind the subagent-heavy
+	 *   signal. Dropping it instead would under-report that message's cost, so
+	 *   the delta is folded into the record already held.
+	 * - The same message can arrive again after a reset clears the watcher's
+	 *   dedupe guard, so a repeat of an id we already hold replaces it rather
+	 *   than appending a duplicate.
+	 */
+	public appendRecords(records: TokenUsage[]): void {
+		if (records.length === 0) return;
+
+		let changed = false;
+		for (const record of records) {
+			const existing = record.messageId
+				? this._recordsByMessageId.get(record.messageId)
+				: undefined;
+
+			if (record.isTopUp) {
+				// Fold the delta into the message it tops up. With no record to
+				// top up (reset, or a full parse that never saw it) there is
+				// nothing to correct, and the delta alone would misrepresent it.
+				if (existing) {
+					existing.inputTokens += record.inputTokens;
+					existing.outputTokens += record.outputTokens;
+					existing.cacheCreationTokens += record.cacheCreationTokens;
+					existing.cacheReadTokens += record.cacheReadTokens;
+					// The ephemeral split is part of the delta too; leaving it out
+					// makes cacheCreationTokens exceed 5m + 1h on folded records.
+					existing.cacheCreation5m += record.cacheCreation5m;
+					existing.cacheCreation1h += record.cacheCreation1h;
+					existing.cost += record.cost;
+					changed = true;
+				}
+				continue;
+			}
+
+			if (existing) {
+				// Re-read of a message we already hold. Overwrite the held object
+				// in place rather than swapping it into the array: locating it
+				// would be a linear scan of every record, once per re-read record,
+				// and a re-read replays a whole file at once.
+				//
+				// Still reachable, though a reset no longer causes it: the watcher's
+				// dedupe guard ages ids out after 6h idle while this index keeps
+				// them, and a full parse's setRecords lands before the watcher is
+				// seeded, so a file change in that window arrives as a full record
+				// for an id already held. Do not delete this branch on the grounds
+				// that resets now clear the records.
+				//
+				// Assign wholesale rather than field by field. A hand-written list
+				// is what let the ephemeral cache split go missing from the fold
+				// above, and it would silently skip any field added to TokenUsage
+				// later. Safe here: this branch is unreachable for a top-up, and
+				// the ids are equal by construction.
+				Object.assign(existing, record);
+			} else {
+				this._records.push(record);
+				if (record.messageId)
+					this._recordsByMessageId.set(record.messageId, record);
+			}
+			changed = true;
+		}
+
+		if (changed) {
+			this._attribution = computeAttribution(this._records);
+		}
 	}
 
 	/**

@@ -25,12 +25,29 @@ import type {
 } from "../types.js";
 
 /**
- * Calculate rate limit status for all three limits
+ * Match a scoped-limit display label (e.g. "Fable") against a model id
+ * (e.g. "claude-fable-5"). The API labels the scoped model by display name, so
+ * a case-insensitive containment check is the only stable link between the two.
+ */
+export function modelMatchesScopeLabel(model: string, label: string): boolean {
+	const needle = label.trim().toLowerCase();
+	if (!needle) return false;
+	return model.toLowerCase().includes(needle);
+}
+
+/**
+ * Calculate rate limit status for the session, weekly, and model-scoped limits.
+ *
+ * @param scopedModelLabel Display name of the model the weekly scoped limit
+ *   applies to (e.g. "Fable"), learned from the API. When absent, the scoped
+ *   limit is reported as null rather than guessed -- Anthropic changes which
+ *   model is scoped, so assuming one produces a confidently wrong bar.
  */
 export function calculateRateLimits(
 	buckets: TimeBuckets,
 	planType: PlanType,
 	refinedLimits?: RefinedLimits | null,
+	scopedModelLabel?: string | null,
 ): RateLimitStatus {
 	const plan = getPlanConfig(planType);
 	const now = new Date();
@@ -40,8 +57,8 @@ export function calculateRateLimits(
 		refinedLimits?.sessionTokenLimit ?? plan.sessionTokenLimit;
 	const effectiveWeeklyLimit =
 		refinedLimits?.weeklyTokenLimit ?? plan.weeklyTokenLimit;
-	const effectiveSonnetLimit =
-		refinedLimits?.weeklySonnetLimit ?? plan.weeklySonnetLimit;
+	const effectiveScopedLimit =
+		refinedLimits?.weeklyScopedLimit ?? plan.weeklyScopedLimit;
 
 	// Session 5hr limit: Sum output tokens from hourly buckets within the last 5 hours
 	// Using hourly buckets instead of session aggregates avoids over-counting
@@ -93,41 +110,45 @@ export function calculateRateLimits(
 			: false,
 	};
 
-	// Weekly Sonnet limit: Sum output tokens only from claude-sonnet-* models this week
-	let weeklySonnetTokens = 0;
-	for (const [key, agg] of buckets.modelWeekly.entries()) {
-		// Key format: "YYYY-WII:model-name"
-		if (key.startsWith(`${weekKey}:`) && key.includes("claude-sonnet")) {
-			weeklySonnetTokens += agg.outputTokens;
+	// Weekly scoped limit: output tokens for the model the API says is scoped.
+	// Without that label we cannot know which model counts, so we report nothing
+	// instead of defaulting to a model that may no longer be the scoped one.
+	let weeklyScoped: RateLimitInfo | null = null;
+	if (scopedModelLabel) {
+		let scopedTokens = 0;
+		for (const [key, agg] of buckets.modelWeekly.entries()) {
+			// Key format: "YYYY-WII:model-name"
+			if (!key.startsWith(`${weekKey}:`)) continue;
+			const model = key.slice(weekKey.length + 1);
+			if (modelMatchesScopeLabel(model, scopedModelLabel)) {
+				scopedTokens += agg.outputTokens;
+			}
 		}
-	}
 
-	const weeklySonnet: RateLimitInfo = {
-		name: "Weekly Sonnet",
-		currentTokens: weeklySonnetTokens,
-		estimatedLimit: effectiveSonnetLimit ?? 0,
-		percentage: effectiveSonnetLimit
-			? Math.min(
-					100,
-					Math.round((weeklySonnetTokens / effectiveSonnetLimit) * 100),
-				)
-			: 0,
-		resetTime: addDays(weekStart, 7),
-		isHit: effectiveSonnetLimit
-			? weeklySonnetTokens / effectiveSonnetLimit >= 1.0
-			: false,
-	};
+		weeklyScoped = {
+			name: `Weekly ${scopedModelLabel}`,
+			currentTokens: scopedTokens,
+			estimatedLimit: effectiveScopedLimit ?? 0,
+			percentage: effectiveScopedLimit
+				? Math.min(100, Math.round((scopedTokens / effectiveScopedLimit) * 100))
+				: 0,
+			resetTime: addDays(weekStart, 7),
+			isHit: effectiveScopedLimit
+				? scopedTokens / effectiveScopedLimit >= 1.0
+				: false,
+		};
+	}
 
 	const worstPercentage = Math.max(
 		session5h.percentage,
 		weekly.percentage,
-		weeklySonnet.percentage,
+		weeklyScoped?.percentage ?? 0,
 	);
 
 	return {
 		session5h,
 		weekly,
-		weeklySonnet,
+		weeklyScoped,
 		worstPercentage,
 	};
 }
@@ -189,6 +210,8 @@ export function calculateBurnRate(buckets: TimeBuckets): number {
 /**
  * Build complete StatusBarData from time buckets
  * @param burnRateOverride - Optional EMA-smoothed burn rate (defaults to simple 10-min calculation)
+ * @param lastKnownScopedModel - Persisted scoped-model label, used when the API
+ *   is unreachable so the scoped bar does not vanish while offline
  */
 export function buildStatusBarData(
 	buckets: TimeBuckets,
@@ -197,6 +220,7 @@ export function buildStatusBarData(
 	burnRateOverride?: number,
 	refinedLimits?: RefinedLimits | null,
 	apiUsage?: ApiUsageData | null,
+	lastKnownScopedModel?: string | null,
 ): StatusBarData {
 	const now = new Date();
 	const today = format(now, "yyyy-MM-dd");
@@ -226,7 +250,12 @@ export function buildStatusBarData(
 			burnRateOverride !== undefined
 				? burnRateOverride
 				: calculateBurnRate(buckets),
-		rateLimits: calculateRateLimits(buckets, planType, refinedLimits),
+		rateLimits: calculateRateLimits(
+			buckets,
+			planType,
+			refinedLimits,
+			apiUsage?.scopedWeekly[0]?.label ?? lastKnownScopedModel ?? null,
+		),
 		apiUsage: apiUsage ?? null,
 		staleness: getStaleness(apiUsage?.fetchedAt ?? null),
 		lastUpdated: now,
