@@ -1,6 +1,27 @@
+# Anything listed here is kept out of the packaged VSIX. Note this is a
+# SEPARATE list from .gitignore and the two diverge in opposite directions:
+#
+#   - A git-IGNORED file reaches a local `npm run package` if it is sitting in
+#     the tree. CI starts from a clean checkout, so it only ships one the build
+#     itself creates -- `dist/` is git-ignored and IS published, which is why
+#     "git-ignored means CI-safe" is wrong.
+#   - A git-TRACKED file is present in every CI checkout, so it is packaged
+#     unless a rule in THIS file excludes it. Those are the ones that leak
+#     without anyone doing anything unusual, which is why the list below has to
+#     be complete rather than merely reasonable.
+#
+# So internal notes that live in the repo must be listed here explicitly, and
+# secrets must be listed here too in case someone packages from a dirty tree.
 src/
 .planning/
 .claude/
+.crash-buffers/
+CRASH-BUFFER.md
+HANDOFF-*.md
+.env
+.env.*
+out/
+*.vsix
 node_modules/
 .git/
 .gitignore

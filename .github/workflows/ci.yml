@@ -4,5 +4,21 @@ jobs:
   ci:
     uses: voyagi/.github-workflows/.github/workflows/node-ci.yml@main
     with:
+      # Every one of these defaults to false in the shared workflow, so passing
+      # only run-knip left CI running `npm ci` plus Biome and nothing else: the
+      # whole test suite was skipped on every run, and a green check meant only
+      # that formatting passed.
+      run-build: true
+      run-tests: true
+      # run-trivy reports but does not gate on vulnerabilities, and reads clean
+      # while it isn't: the shared workflow passes no exit-code to trivy-action,
+      # so Trivy exits 0 whatever it FINDS, and it suppresses dev dependencies
+      # by default -- which is where all 10 current HIGH advisories live. It
+      # prints "0" and passes. (It does still exit non-zero on operational
+      # failures such as a DB download error, and the shared gate fires on
+      # those, so this step is not inert.) Making findings gate needs exit-code
+      # and TRIVY_INCLUDE_DEV_DEPS in voyagi/.github-workflows -- neither is
+      # exposed as an input here. Kept on because reporting beats nothing.
+      run-trivy: true
       run-knip: false
     secrets: inherit
