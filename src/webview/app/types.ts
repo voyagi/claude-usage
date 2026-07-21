@@ -96,6 +96,15 @@ export interface UsageAttribution {
 	week: AttributionWindow;
 }
 
+/** Age of the API figures, mirroring src/types.ts StalenessLevel */
+export type StalenessLevel =
+	| "fresh"
+	| "normal"
+	| "dim"
+	| "stale"
+	| "critical"
+	| "unavailable";
+
 /** Usage-credit spend, in major currency units (serialization-safe) */
 export interface SpendSummary {
 	used: number;
@@ -168,6 +177,13 @@ export interface DashboardData {
 	 * has extra usage enabled.
 	 */
 	spend: SpendSummary | null;
+
+	/**
+	 * How old the API figures are. A row sourced from a stale cache is exact but
+	 * out of date, which `isEstimated` does not capture -- it only distinguishes
+	 * API from local. The status bar already dims for this; the dashboard says it.
+	 */
+	apiStaleness: StalenessLevel;
 
 	// Session timing
 	windowStart: string | null; // ISO 8601 string

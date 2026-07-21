@@ -287,6 +287,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			weekly,
 			scopedWeekly,
 			spend,
+			apiStaleness: statusBarData.staleness,
 			windowStart,
 			windowExpiry,
 			timeRemainingMinutes,
@@ -512,6 +513,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 					existing.outputTokens += record.outputTokens;
 					existing.cacheCreationTokens += record.cacheCreationTokens;
 					existing.cacheReadTokens += record.cacheReadTokens;
+					// The ephemeral split is part of the delta too; leaving it out
+					// makes cacheCreationTokens exceed 5m + 1h on folded records.
+					existing.cacheCreation5m += record.cacheCreation5m;
+					existing.cacheCreation1h += record.cacheCreation1h;
 					existing.cost += record.cost;
 					changed = true;
 				}
@@ -519,10 +524,22 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			}
 
 			if (existing) {
-				// Re-read of a message we already hold: replace in place
-				const index = this._records.indexOf(existing);
-				if (index >= 0) this._records[index] = record;
-				this._recordsByMessageId.set(record.messageId as string, record);
+				// Re-read of a message we already hold. Overwrite the held object
+				// in place rather than swapping it into the array: locating it
+				// would be a linear scan of every record, once per re-read record,
+				// and a re-read replays a whole file at once.
+				existing.timestamp = record.timestamp;
+				existing.model = record.model;
+				existing.sessionId = record.sessionId;
+				existing.projectName = record.projectName;
+				existing.inputTokens = record.inputTokens;
+				existing.outputTokens = record.outputTokens;
+				existing.cacheCreationTokens = record.cacheCreationTokens;
+				existing.cacheReadTokens = record.cacheReadTokens;
+				existing.cacheCreation5m = record.cacheCreation5m;
+				existing.cacheCreation1h = record.cacheCreation1h;
+				existing.cost = record.cost;
+				existing.attribution = record.attribution;
 			} else {
 				this._records.push(record);
 				if (record.messageId)

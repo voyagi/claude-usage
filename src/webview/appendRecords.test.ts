@@ -84,14 +84,47 @@ describe("DashboardProvider.appendRecords", () => {
 
 	it("replaces rather than duplicates when a message id arrives again", () => {
 		const provider = makeProvider();
-		provider.setRecords([record({ messageId: "a", outputTokens: 100 })]);
+		provider.setRecords([
+			record({ messageId: "a", outputTokens: 100, cost: 1 }),
+		]);
 
-		// After a reset the watcher re-reads a file from byte 0 and replays it
-		provider.appendRecords([record({ messageId: "a", outputTokens: 100 })]);
+		// After a reset the watcher re-reads a file from byte 0 and replays it,
+		// this time with the final usage. Distinct values so this can tell
+		// "replaced" apart from "ignored".
+		provider.appendRecords([
+			record({ messageId: "a", outputTokens: 250, cost: 2.5 }),
+		]);
 
 		const records = recordsOf(provider);
 		expect(records).toHaveLength(1);
-		expect(records[0].outputTokens).toBe(100);
+		expect(records[0].outputTokens).toBe(250);
+		expect(records[0].cost).toBe(2.5);
+	});
+
+	it("folds the ephemeral cache split, not just the totals", () => {
+		const provider = makeProvider();
+		provider.setRecords([
+			record({
+				messageId: "a",
+				cacheCreationTokens: 100,
+				cacheCreation5m: 60,
+				cacheCreation1h: 40,
+			}),
+		]);
+		provider.appendRecords([
+			record({
+				messageId: "a",
+				cacheCreationTokens: 50,
+				cacheCreation5m: 30,
+				cacheCreation1h: 20,
+				isTopUp: true,
+			}),
+		]);
+
+		// The split must keep summing to the total, or folded records look corrupt
+		const folded = recordsOf(provider)[0];
+		expect(folded.cacheCreationTokens).toBe(150);
+		expect(folded.cacheCreation5m + folded.cacheCreation1h).toBe(150);
 	});
 
 	it("keeps records that carry no message id", () => {

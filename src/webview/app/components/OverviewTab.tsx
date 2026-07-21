@@ -176,6 +176,21 @@ export function OverviewTab({ data }: OverviewTabProps) {
 				{/* Not "(estimated)" wholesale: with the API reachable these are
 				    exact. Each row that fell back to a local estimate says so. */}
 				<h3 className="card-title">Rate Limits</h3>
+				{/* An exact-but-old percentage is not an estimate, so isEstimated
+				    does not cover it. Say it once for the card rather than per row. */}
+				{(data.apiStaleness === "stale" ||
+					data.apiStaleness === "critical") && (
+					<div
+						style={{
+							fontSize: "calc(var(--vscode-font-size) * 0.85)",
+							marginBottom: "8px",
+							color: "var(--vscode-descriptionForeground)",
+						}}
+					>
+						These percentages are from an older reading and may have moved
+						since.
+					</div>
+				)}
 				<ProgressBar
 					label={`Session (5hr)${data.session5h.isEstimated ? " (est.)" : ""}`}
 					current={data.session5h.currentTokens}

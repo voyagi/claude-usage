@@ -504,6 +504,11 @@ export async function activate(context: vscode.ExtensionContext) {
 				if (sessionWatcher) {
 					await sessionWatcher.resetState();
 				}
+				// Same reason as the clearData path: resetState() drops the offsets,
+				// so files are re-read from byte 0 and would otherwise be replayed
+				// on top of records the dashboard still holds.
+				allRecords = [];
+				dashboardProvider?.setRecords([]);
 				statusBar.showNoData();
 				vscode.window.showInformationMessage(
 					"Session data cleared. Refreshing...",
