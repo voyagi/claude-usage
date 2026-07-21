@@ -42,6 +42,16 @@ export interface RateLimitData {
 }
 
 /**
+ * A model-scoped weekly limit. `label` is the API's display name for the scoped
+ * model (e.g. "Fable"); `isEstimated` is true when the percentage came from
+ * local JSONL rather than the API.
+ */
+export interface ScopedRateLimitData extends RateLimitData {
+	label: string;
+	isEstimated: boolean;
+}
+
+/**
  * Per-project usage totals (serialization-safe).
  */
 export interface ProjectUsage {
@@ -80,10 +90,15 @@ export interface DashboardData {
 	monthCost: number;
 	totalCost: number;
 
-	// Rate limits (all three limits with detailed info)
+	// Rate limits with detailed info
 	session5h: RateLimitData;
 	weekly: RateLimitData;
-	weeklySonnet: RateLimitData;
+	/**
+	 * Model-scoped weekly limits (e.g. "Weekly Fable"). Empty when the API is
+	 * unreachable and no scoped model has been seen -- which model Anthropic
+	 * scopes changes over time, so it is never assumed.
+	 */
+	scopedWeekly: ScopedRateLimitData[];
 
 	// Predictive weekly-cap forecast (null when not computable)
 	weeklyForecast: WeeklyCapForecast | null;

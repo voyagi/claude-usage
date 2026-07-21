@@ -27,6 +27,7 @@ import type {
 	MessageDetail,
 	ProjectUsage,
 	RateLimitData,
+	ScopedRateLimitData,
 	TrendDataPoint,
 	WebviewMessage,
 } from "./app/types.js";
@@ -106,10 +107,41 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			statusBarData.rateLimits.weekly,
 			api?.sevenDay ?? null,
 		);
-		const weeklySonnet = convertRateLimit(
-			statusBarData.rateLimits.weeklySonnet,
-			api?.sevenDaySonnet ?? null,
-		);
+		// Model-scoped weekly limits. The API is authoritative (it names the model
+		// and gives the true percentage); the local estimate is only a fallback for
+		// the one scoped model we have previously learned about.
+		const scopedWeekly: ScopedRateLimitData[] = [];
+		if (api?.scopedWeekly?.length) {
+			for (const window of api.scopedWeekly) {
+				const local =
+					statusBarData.rateLimits.weeklyScoped?.name ===
+					`Weekly ${window.label}`
+						? statusBarData.rateLimits.weeklyScoped
+						: null;
+				scopedWeekly.push({
+					name: `Weekly ${window.label}`,
+					label: window.label,
+					currentTokens: local?.currentTokens ?? 0,
+					estimatedLimit: local?.estimatedLimit ?? 0,
+					percentage: Math.round(window.utilization * 100),
+					resetTime: window.resetsAt,
+					isHit: window.utilization >= 1.0,
+					isEstimated: false,
+				});
+			}
+		} else if (statusBarData.rateLimits.weeklyScoped) {
+			const local = statusBarData.rateLimits.weeklyScoped;
+			scopedWeekly.push({
+				name: local.name,
+				label: local.name.replace(/^Weekly\s+/, "").trim(),
+				currentTokens: local.currentTokens,
+				estimatedLimit: local.estimatedLimit,
+				percentage: local.percentage,
+				resetTime: local.resetTime?.toISOString() ?? null,
+				isHit: local.isHit,
+				isEstimated: true,
+			});
+		}
 
 		// 4. Session timing - use API reset time when available
 		let windowStart: string | null = null;
@@ -231,7 +263,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			totalCost,
 			session5h,
 			weekly,
-			weeklySonnet,
+			scopedWeekly,
 			windowStart,
 			windowExpiry,
 			timeRemainingMinutes,

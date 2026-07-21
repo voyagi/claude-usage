@@ -87,7 +87,7 @@ export interface PlanConfig {
 	// Token limits (estimates based on community reports)
 	sessionTokenLimit?: number; // 5hr rolling window limit (output tokens)
 	weeklyTokenLimit?: number; // Weekly limit (output tokens)
-	weeklySonnetLimit?: number; // Weekly model-specific limit (output tokens)
+	weeklyScopedLimit?: number; // Weekly model-scoped limit (output tokens)
 }
 
 /**
@@ -141,7 +141,7 @@ export interface FileParseResult {
  * Rate limit information for a single limit window
  */
 export interface RateLimitInfo {
-	name: string; // e.g. "Session (5hr)", "Weekly", "Weekly Sonnet"
+	name: string; // e.g. "Session (5hr)", "Weekly", "Weekly Fable"
 	currentTokens: number; // billable tokens consumed in this window
 	estimatedLimit: number; // estimated token cap for this limit
 	percentage: number; // 0-100, currentTokens/estimatedLimit * 100, capped at 100
@@ -150,37 +150,83 @@ export interface RateLimitInfo {
 }
 
 /**
- * Aggregate of all three rate limits
+ * Aggregate of the rate limits we track.
+ *
+ * `weeklyScoped` is the model-scoped weekly limit (the API's `weekly_scoped`
+ * kind). Which model it covers is chosen by Anthropic and changes over time --
+ * it was Sonnet/Opus, it is Fable as of 2026-07 -- so it is null until we learn
+ * the scoped model name from the API. We never guess it from local data alone.
  */
 export interface RateLimitStatus {
 	session5h: RateLimitInfo;
 	weekly: RateLimitInfo;
-	weeklySonnet: RateLimitInfo;
-	worstPercentage: number; // max of all three percentages (drives color coding)
+	weeklyScoped: RateLimitInfo | null;
+	worstPercentage: number; // max of all known percentages (drives color coding)
 }
 
 /** Persisted refined limit estimates from observed 429 events */
 export interface RefinedLimits {
 	sessionTokenLimit?: number;
 	weeklyTokenLimit?: number;
-	weeklySonnetLimit?: number;
+	weeklyScopedLimit?: number;
 	lastUpdated: string; // ISO timestamp
 }
+
+/** Severity the API attaches to a limit window */
+export type LimitSeverity = "normal" | "warning" | "critical" | (string & {});
 
 /** Real-time rate limit data from Anthropic API */
 export interface ApiRateLimitWindow {
 	utilization: number; // 0.0-1.0
 	resetsAt: string | null; // ISO timestamp
+	severity?: LimitSeverity;
+	/** True when the API flags this as the limit currently constraining usage */
+	isActive?: boolean;
+}
+
+/**
+ * A model- or surface-scoped limit window (API `limits[]` entry of kind
+ * "weekly_scoped"). `label` is the API's own display name for the scope, e.g.
+ * "Fable" -- rendered as "Weekly Fable".
+ */
+export interface ApiScopedWindow extends ApiRateLimitWindow {
+	label: string;
+}
+
+/** Extra-usage (credit) state. Shape changed 2026-07: credits may be null. */
+export interface ExtraUsageInfo {
+	isEnabled: boolean;
+	creditsUsed: number | null;
+	creditsTotal: number | null;
+	utilization: number | null; // 0.0-1.0
+	currency: string | null;
+	disabledReason: string | null;
+}
+
+/** Spend state from the API's `spend` object (major currency units) */
+export interface SpendInfo {
+	used: number;
+	limit: number | null;
+	percent: number; // 0-100
+	currency: string;
+	severity: LimitSeverity;
+	enabled: boolean;
 }
 
 /** API usage response (fetched from same endpoint as Claude Code's Account & Usage) */
 export interface ApiUsageData {
 	fiveHour: ApiRateLimitWindow | null;
 	sevenDay: ApiRateLimitWindow | null;
-	sevenDaySonnet: ApiRateLimitWindow | null;
-	sevenDayOpus: ApiRateLimitWindow | null;
+	/**
+	 * Model/surface-scoped weekly limits, newest API shape (`limits[]` entries of
+	 * kind "weekly_scoped"). Replaces the fixed sevenDaySonnet/sevenDayOpus pair:
+	 * those top-level keys still exist but return null, and the scoped model is
+	 * now named dynamically by the server.
+	 */
+	scopedWeekly: ApiScopedWindow[];
 	rateLimitTier: string | null;
-	extraUsage: { creditsUsed: number; creditsTotal: number } | null;
+	extraUsage: ExtraUsageInfo | null;
+	spend: SpendInfo | null;
 	fetchedAt: Date;
 }
 

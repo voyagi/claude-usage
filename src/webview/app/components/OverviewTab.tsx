@@ -88,7 +88,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 	const worstLimitPercentage = Math.max(
 		data.session5h.percentage,
 		data.weekly.percentage,
-		data.weeklySonnet.percentage,
+		...data.scopedWeekly.map((limit) => limit.percentage),
 	);
 
 	const elapsedPercentage = calculateElapsedPercentage(data.windowStart);
@@ -205,14 +205,17 @@ export function OverviewTab({ data }: OverviewTabProps) {
 							: `On track: ~${formatDays(data.weeklyForecast.daysUntilCap)} to the weekly cap at your recent pace; resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`}
 					</div>
 				)}
-				<ProgressBar
-					label="Weekly Sonnet"
-					current={data.weeklySonnet.currentTokens}
-					limit={data.weeklySonnet.estimatedLimit}
-					percentage={data.weeklySonnet.percentage}
-					resetTime={data.weeklySonnet.resetTime}
-					isHit={data.weeklySonnet.isHit}
-				/>
+				{data.scopedWeekly.map((limit) => (
+					<ProgressBar
+						key={limit.label}
+						label={`Weekly ${limit.label}${limit.isEstimated ? " (est.)" : ""}`}
+						current={limit.currentTokens}
+						limit={limit.estimatedLimit}
+						percentage={limit.percentage}
+						resetTime={limit.resetTime}
+						isHit={limit.isHit}
+					/>
+				))}
 			</div>
 
 			{/* Section 4: Session Timing */}

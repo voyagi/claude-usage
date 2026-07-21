@@ -77,16 +77,16 @@ function makeStatusBarData(
 		rateLimits: {
 			session5h: makeRateLimitInfo("Session (5hr)", 40),
 			weekly: makeRateLimitInfo("Weekly", 25),
-			weeklySonnet: makeRateLimitInfo("Weekly Sonnet", 15),
+			weeklyScoped: makeRateLimitInfo("Weekly Fable", 15),
 			worstPercentage: 40,
 		},
 		apiUsage: {
 			fiveHour: { utilization: 0.4, resetsAt: null },
 			sevenDay: { utilization: 0.25, resetsAt: null },
-			sevenDaySonnet: { utilization: 0.15, resetsAt: null },
-			sevenDayOpus: null,
+			scopedWeekly: [{ label: "Fable", utilization: 0.15, resetsAt: null }],
 			rateLimitTier: "tier4",
 			extraUsage: null,
+			spend: null,
 			fetchedAt: new Date(),
 		},
 		staleness: "fresh" as StalenessLevel,
@@ -101,7 +101,7 @@ function createManager(): {
 	manager: StatusBarManager;
 	sessionItem: any;
 	weeklyItem: any;
-	sonnetItem: any;
+	scopedItem: any;
 } {
 	const vscode = require("vscode");
 	vscode._items.length = 0;
@@ -116,7 +116,7 @@ function createManager(): {
 		manager,
 		sessionItem: vscode._items[0],
 		weeklyItem: vscode._items[1],
-		sonnetItem: vscode._items[2],
+		scopedItem: vscode._items[2],
 	};
 }
 
@@ -132,14 +132,56 @@ describe("StatusBarManager: auth-dead display", () => {
 		expect(sessionItem.text).toBe("$(key) Auth expired");
 	});
 
-	it("still shows weekly and sonnet percentages when auth is dead", () => {
-		const { manager, weeklyItem, sonnetItem } = createManager();
+	it("still shows weekly and scoped percentages when auth is dead", () => {
+		const { manager, weeklyItem, scopedItem } = createManager();
 
 		manager.setAuthState("dead");
 		manager.update(makeStatusBarData());
 
 		expect(weeklyItem.text).toBe("W:25% ?");
-		expect(sonnetItem.text).toBe("So:15% ?");
+		// Prefix follows the API's scoped model name, not a hardcoded "So"
+		expect(scopedItem.text).toBe("Fa:15% ?");
+	});
+
+	it("labels the scoped item from whatever model the API scopes", () => {
+		const { manager, scopedItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: {
+					fiveHour: { utilization: 0.4, resetsAt: null },
+					sevenDay: { utilization: 0.25, resetsAt: null },
+					scopedWeekly: [
+						{ label: "Sonnet", utilization: 0.62, resetsAt: null },
+					],
+					rateLimitTier: "tier4",
+					extraUsage: null,
+					spend: null,
+					fetchedAt: new Date(),
+				},
+			}),
+		);
+
+		expect(scopedItem.text).toContain("So:62%");
+	});
+
+	it("hides the scoped item when no scoped model is known", () => {
+		const { manager, scopedItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: null,
+				rateLimits: {
+					session5h: makeRateLimitInfo("Session (5hr)", 40),
+					weekly: makeRateLimitInfo("Weekly", 25),
+					weeklyScoped: null,
+					worstPercentage: 40,
+				},
+			}),
+		);
+
+		expect(scopedItem.hide).toHaveBeenCalled();
+		expect(scopedItem.show).not.toHaveBeenCalled();
 	});
 
 	it("shows normal text when auth state is healthy", () => {
@@ -169,38 +211,38 @@ describe("StatusBarManager: staleness dimming", () => {
 	const STALE_COLOR = "#808080";
 	const SESSION_COLOR = "#4EC9B0";
 	const WEEKLY_COLOR = "#DCDCAA";
-	const SONNET_COLOR = "#C586C0";
+	const SCOPED_COLOR = "#C586C0";
 
 	it("uses CRITICAL_COLOR when auth is dead", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.setAuthState("dead");
 		manager.update(makeStatusBarData());
 
 		expect(sessionItem.color).toBe(CRITICAL_COLOR);
 		expect(weeklyItem.color).toBe(CRITICAL_COLOR);
-		expect(sonnetItem.color).toBe(CRITICAL_COLOR);
+		expect(scopedItem.color).toBe(CRITICAL_COLOR);
 	});
 
 	it("uses CRITICAL_COLOR when staleness is critical (even if auth healthy)", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.setAuthState("healthy");
 		manager.update(makeStatusBarData({ staleness: "critical" }));
 
 		expect(sessionItem.color).toBe(CRITICAL_COLOR);
 		expect(weeklyItem.color).toBe(CRITICAL_COLOR);
-		expect(sonnetItem.color).toBe(CRITICAL_COLOR);
+		expect(scopedItem.color).toBe(CRITICAL_COLOR);
 	});
 
 	it("uses normal colors for dim staleness (1-2h is not concerning)", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.update(makeStatusBarData({ staleness: "dim" }));
 
 		expect(sessionItem.color).toBe(SESSION_COLOR);
 		expect(weeklyItem.color).toBe(WEEKLY_COLOR);
-		expect(sonnetItem.color).toBe(SONNET_COLOR);
+		expect(scopedItem.color).toBe(SCOPED_COLOR);
 	});
 
 	it("uses STALE_COLOR for stale staleness", () => {
@@ -220,23 +262,23 @@ describe("StatusBarManager: staleness dimming", () => {
 	});
 
 	it("uses normal distinct colors for fresh staleness", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.update(makeStatusBarData({ staleness: "fresh" }));
 
 		expect(sessionItem.color).toBe(SESSION_COLOR);
 		expect(weeklyItem.color).toBe(WEEKLY_COLOR);
-		expect(sonnetItem.color).toBe(SONNET_COLOR);
+		expect(scopedItem.color).toBe(SCOPED_COLOR);
 	});
 
 	it("uses normal distinct colors for normal staleness", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.update(makeStatusBarData({ staleness: "normal" }));
 
 		expect(sessionItem.color).toBe(SESSION_COLOR);
 		expect(weeklyItem.color).toBe(WEEKLY_COLOR);
-		expect(sonnetItem.color).toBe(SONNET_COLOR);
+		expect(scopedItem.color).toBe(SCOPED_COLOR);
 	});
 });
 
@@ -357,24 +399,24 @@ describe("StatusBarManager: stale marker", () => {
 
 describe("StatusBarManager: display states", () => {
 	it("showRefreshing shows spinner and hides secondary items", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.showRefreshing();
 
 		expect(sessionItem.text).toContain("Refreshing");
 		expect(weeklyItem.hide).toHaveBeenCalled();
-		expect(sonnetItem.hide).toHaveBeenCalled();
+		expect(scopedItem.hide).toHaveBeenCalled();
 	});
 
 	it("showError shows warning and hides secondary items", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.showError("Something went wrong");
 
 		expect(sessionItem.text).toContain("Error");
 		expect(sessionItem.tooltip).toBe("Something went wrong");
 		expect(weeklyItem.hide).toHaveBeenCalled();
-		expect(sonnetItem.hide).toHaveBeenCalled();
+		expect(scopedItem.hide).toHaveBeenCalled();
 
 		// showError arms a 5s errorTimer; dispose clears it so the timer doesn't
 		// leak into other tests (Jest "worker failed to exit" / flaky runs).
@@ -382,14 +424,14 @@ describe("StatusBarManager: display states", () => {
 	});
 
 	it("showNoData shows cloud icon and hides secondary items", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.showNoData();
 
 		expect(sessionItem.text).toContain("No data");
 		expect(sessionItem.show).toHaveBeenCalled();
 		expect(weeklyItem.hide).toHaveBeenCalled();
-		expect(sonnetItem.hide).toHaveBeenCalled();
+		expect(scopedItem.hide).toHaveBeenCalled();
 	});
 
 	it("showError auto-clears to showNoData after timeout", () => {
@@ -425,17 +467,17 @@ describe("StatusBarManager: display states", () => {
 
 describe("StatusBarManager: toggle", () => {
 	it("hides all items on first toggle, shows on second", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.toggle();
 		expect(sessionItem.hide).toHaveBeenCalled();
 		expect(weeklyItem.hide).toHaveBeenCalled();
-		expect(sonnetItem.hide).toHaveBeenCalled();
+		expect(scopedItem.hide).toHaveBeenCalled();
 
 		manager.toggle();
 		expect(sessionItem.show).toHaveBeenCalled();
 		expect(weeklyItem.show).toHaveBeenCalled();
-		expect(sonnetItem.show).toHaveBeenCalled();
+		expect(scopedItem.show).toHaveBeenCalled();
 	});
 });
 
@@ -443,13 +485,13 @@ describe("StatusBarManager: toggle", () => {
 
 describe("StatusBarManager: dispose", () => {
 	it("disposes all status bar items", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.dispose();
 
 		expect(sessionItem.dispose).toHaveBeenCalled();
 		expect(weeklyItem.dispose).toHaveBeenCalled();
-		expect(sonnetItem.dispose).toHaveBeenCalled();
+		expect(scopedItem.dispose).toHaveBeenCalled();
 	});
 });
 
@@ -487,21 +529,21 @@ describe("StatusBarManager: tooltip content", () => {
 	});
 
 	it("shows all 3 items after update", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.update(makeStatusBarData());
 
 		expect(sessionItem.show).toHaveBeenCalled();
 		expect(weeklyItem.show).toHaveBeenCalled();
-		expect(sonnetItem.show).toHaveBeenCalled();
+		expect(scopedItem.show).toHaveBeenCalled();
 	});
 
 	it("shares tooltip across all 3 items", () => {
-		const { manager, sessionItem, weeklyItem, sonnetItem } = createManager();
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
 
 		manager.update(makeStatusBarData());
 
 		expect(sessionItem.tooltip).toBe(weeklyItem.tooltip);
-		expect(weeklyItem.tooltip).toBe(sonnetItem.tooltip);
+		expect(weeklyItem.tooltip).toBe(scopedItem.tooltip);
 	});
 });

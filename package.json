@@ -164,11 +164,19 @@
 					"markdownDescription": "Override estimated weekly output token limit. Set to 0 to use auto-detected value.",
 					"scope": "window"
 				},
+				"claude-usage.rateLimits.weeklyScoped.threshold": {
+					"type": "number",
+					"default": 0,
+					"minimum": 0,
+					"markdownDescription": "Override estimated weekly output token limit for the model-scoped weekly limit (the limit Claude shows as \"Weekly Fable\", previously \"Weekly Sonnet\" -- Anthropic changes which model it covers). Set to 0 to use auto-detected value.",
+					"scope": "window"
+				},
 				"claude-usage.rateLimits.weeklySonnet.threshold": {
 					"type": "number",
 					"default": 0,
 					"minimum": 0,
-					"markdownDescription": "Override estimated weekly Sonnet model output token limit. Set to 0 to use auto-detected value.",
+					"markdownDescription": "Override estimated weekly Sonnet model output token limit.",
+					"deprecationMessage": "Renamed to claude-usage.rateLimits.weeklyScoped.threshold -- the scoped weekly limit is no longer Sonnet-specific.",
 					"scope": "window"
 				},
 				"claude-usage.rateLimits.warnings.yellow": {

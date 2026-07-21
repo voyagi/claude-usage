@@ -44,10 +44,10 @@ function makeApiData(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
 	return {
 		fiveHour: { utilization: 0.5, resetsAt: null },
 		sevenDay: { utilization: 0.3, resetsAt: null },
-		sevenDaySonnet: { utilization: 0.2, resetsAt: null },
-		sevenDayOpus: null,
+		scopedWeekly: [{ label: "Fable", utilization: 0.2, resetsAt: null }],
 		rateLimitTier: null,
 		extraUsage: null,
+		spend: null,
 		fetchedAt: new Date(),
 		...overrides,
 	};

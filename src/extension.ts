@@ -54,6 +54,12 @@ let refinedLimits: RefinedLimits | null = null;
 let lastKnownSessionTokens = 0;
 let lastKnownWeeklyTokens = 0;
 let cachedApiUsage: ApiUsageData | null = null;
+/**
+ * Display name of the model the weekly scoped limit covers (e.g. "Fable").
+ * Learned from the API and persisted so the scoped bar survives a restart while
+ * offline. Anthropic changes which model is scoped, so it is never hardcoded.
+ */
+let lastKnownScopedModel: string | null = null;
 let pollingTimer: PollingTimer | null = null;
 let usageCache: UsageCache | null = null;
 const AUTH_DEAD_NOTIFY_COOLDOWN_MS = 5 * 60_000; // 5 minutes
@@ -140,6 +146,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		logger.info(
 			`Loaded refined limits from globalState (last updated: ${refinedLimits.lastUpdated})`,
 		);
+	}
+
+	// Load the last scoped-limit model we saw, so the scoped bar renders on a
+	// cold start before the first successful API poll.
+	lastKnownScopedModel =
+		context.globalState.get<string>("lastKnownScopedModel") ?? null;
+
+	/** Remember the scoped model whenever the API names a new one */
+	function rememberScopedModel(data: ApiUsageData): void {
+		const label = data.scopedWeekly[0]?.label;
+		if (!label || label === lastKnownScopedModel) return;
+		lastKnownScopedModel = label;
+		context.globalState
+			.update("lastKnownScopedModel", label)
+			.then(undefined, (err) => {
+				logger.error(`Failed to persist scoped model name: ${err}`);
+			});
+		logger.info(`Weekly scoped limit now applies to: ${label}`);
 	}
 
 	// Handle rate limit events from SessionWatcher
@@ -231,6 +255,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				lastBurnRate,
 				refinedLimits,
 				cachedApiUsage,
+				lastKnownScopedModel,
 			);
 			statusBar.update(data);
 
@@ -281,6 +306,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			lastBurnRate,
 			refinedLimits,
 			cachedApiUsage,
+			lastKnownScopedModel,
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -299,6 +325,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	const existingCache = await usageCache.readCache();
 	if (existingCache) {
 		cachedApiUsage = existingCache.apiUsage;
+		// Older cache entries predate scopedWeekly; normalize so consumers can
+		// always index it without a guard.
+		if (!Array.isArray(cachedApiUsage.scopedWeekly)) {
+			cachedApiUsage.scopedWeekly = [];
+		}
+		rememberScopedModel(cachedApiUsage);
 		// If cached data is old (>5 min), assume we're rate-limited until
 		// the first poll proves otherwise. Prevents brief grey flash on startup.
 		const cacheAgeMs = Date.now() - new Date(existingCache.writtenAt).getTime();
@@ -315,6 +347,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		() => fetchApiUsage(logger),
 		(apiData) => {
 			cachedApiUsage = apiData;
+			rememberScopedModel(apiData);
 			statusBar.setRateLimited(false);
 
 			// Auto-detect tier from API response
@@ -381,6 +414,10 @@ export async function activate(context: vscode.ExtensionContext) {
 		if (cacheData.writtenBy === String(process.pid)) return;
 
 		cachedApiUsage = cacheData.apiUsage;
+		if (!Array.isArray(cachedApiUsage.scopedWeekly)) {
+			cachedApiUsage.scopedWeekly = [];
+		}
+		rememberScopedModel(cachedApiUsage);
 		logger.info("Updated API data from shared cache (other window wrote)");
 		refreshStatusBar();
 	});
@@ -634,6 +671,7 @@ async function performInitialParse(
 			lastBurnRate,
 			refinedLimits,
 			cachedApiUsage,
+			lastKnownScopedModel,
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -729,6 +767,7 @@ async function performInitialParse(
 		lastBurnRate,
 		refinedLimits,
 		cachedApiUsage,
+		lastKnownScopedModel,
 	);
 	statusBar.update(data);
 

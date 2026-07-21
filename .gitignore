@@ -19,6 +19,7 @@ Thumbs.db
 .claude/settings.json
 .mcp.json
 CRASH-BUFFER.md
+.crash-buffers/
 coverage/
 dev/
 
