@@ -219,6 +219,7 @@
 		"lint": "biome check src",
 		"pretest": "npm run build",
 		"test": "jest",
+		"pretest:watch": "npm run build",
 		"test:watch": "jest --watch",
 		"package": "vsce package"
 	},

@@ -5,8 +5,10 @@
 #     the tree. CI starts from a clean checkout, so it only ships one the build
 #     itself creates -- `dist/` is git-ignored and IS published, which is why
 #     "git-ignored means CI-safe" is wrong.
-#   - A git-TRACKED file is shipped by CI unconditionally. Those are the ones
-#     that leak without anyone doing something unusual.
+#   - A git-TRACKED file is present in every CI checkout, so it is packaged
+#     unless a rule in THIS file excludes it. Those are the ones that leak
+#     without anyone doing anything unusual, which is why the list below has to
+#     be complete rather than merely reasonable.
 #
 # So internal notes that live in the repo must be listed here explicitly, and
 # secrets must be listed here too in case someone packages from a dirty tree.
