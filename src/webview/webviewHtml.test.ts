@@ -21,7 +21,7 @@ jest.mock(
 	{ virtual: true },
 );
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { DashboardProvider } from "./DashboardProvider.js";
 
@@ -80,6 +80,32 @@ describe("webview HTML shell", () => {
 
 		const emittedCss = (outfile as string).replace(/\.js$/, ".css");
 		expect(renderHtml()).toContain(`/${emittedCss}"`);
+	});
+
+	it("emits the stylesheet it links", () => {
+		// The href can name exactly the right file and still dangle if nothing
+		// produces it. Deleting the `import "./styles/app.css"` from index.tsx
+		// stops the file being emitted, leaves every other assertion here green,
+		// and reproduces the original bug exactly: link present, no stylesheet,
+		// dashboard unstyled. Only checking the artifact catches that.
+		//
+		// `pretest` builds first, so dist/ is current when this runs. Note
+		// esbuild does not clean dist/, so a stale file can mask this locally --
+		// it bites in the packaged VSIX, built from a fresh checkout.
+		const href = renderHtml().match(
+			/<link rel="stylesheet" href="([^"]+)"/,
+		)?.[1];
+		expect(href).toBeTruthy();
+
+		const emitted = path.join(
+			__dirname,
+			"..",
+			"..",
+			"dist",
+			(href as string).split("/").pop() as string,
+		);
+		expect(existsSync(emitted)).toBe(true);
+		expect(statSync(emitted).size).toBeGreaterThan(0);
 	});
 
 	it("loads the script bundle", () => {
