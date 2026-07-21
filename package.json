@@ -150,6 +150,12 @@
 					"description": "How often to refresh usage data (seconds). Affects file watcher debounce.",
 					"scope": "window"
 				},
+				"claude-usage.includeArchivedSessions": {
+					"type": "boolean",
+					"default": true,
+					"markdownDescription": "Include sessions Claude Code has moved to `archived/` when parsing usage. These are most of the transcript data, so they carry most of your history but also most of the parse cost. Turn off for a faster, lighter startup at the cost of older trend data.",
+					"scope": "window"
+				},
 				"claude-usage.rateLimits.session.threshold": {
 					"type": "number",
 					"default": 0,

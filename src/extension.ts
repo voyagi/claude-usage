@@ -693,8 +693,13 @@ async function performInitialParse(
 		return;
 	}
 
-	// Parse all JSONL files
-	const parseResult = await parseAllSessions(logger);
+	// Parse all JSONL files. Archived sessions are the bulk of the tree, so they
+	// are the one part a user can opt out of when the parse cost outweighs the
+	// historical trend data.
+	const includeArchived = vscode.workspace
+		.getConfiguration("claude-usage")
+		.get<boolean>("includeArchivedSessions", true);
+	const parseResult = await parseAllSessions(logger, { includeArchived });
 
 	// Surface parse health (transcript-format-drift signal) to the dashboard even
 	// if 0 records survived — a total format break shows up as many schema failures.
