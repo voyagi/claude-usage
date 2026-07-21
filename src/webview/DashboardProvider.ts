@@ -528,18 +528,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				// in place rather than swapping it into the array: locating it
 				// would be a linear scan of every record, once per re-read record,
 				// and a re-read replays a whole file at once.
-				existing.timestamp = record.timestamp;
-				existing.model = record.model;
-				existing.sessionId = record.sessionId;
-				existing.projectName = record.projectName;
-				existing.inputTokens = record.inputTokens;
-				existing.outputTokens = record.outputTokens;
-				existing.cacheCreationTokens = record.cacheCreationTokens;
-				existing.cacheReadTokens = record.cacheReadTokens;
-				existing.cacheCreation5m = record.cacheCreation5m;
-				existing.cacheCreation1h = record.cacheCreation1h;
-				existing.cost = record.cost;
-				existing.attribution = record.attribution;
+				//
+				// Assign wholesale rather than field by field. A hand-written list
+				// is what let the ephemeral cache split go missing from the fold
+				// above, and it would silently skip any field added to TokenUsage
+				// later. Safe here: this branch is unreachable for a top-up, and
+				// the ids are equal by construction.
+				Object.assign(existing, record);
 			} else {
 				this._records.push(record);
 				if (record.messageId)
