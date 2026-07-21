@@ -32,9 +32,10 @@ function priced(
 /**
  * Default per-million-token USD pricing, verified against Anthropic's official
  * pricing page. Opus 4.5-4.8 share $5/$25; Sonnet 4.5/4.6 $3/$15; Haiku 4.5
- * $1/$5; Haiku 3.5 (retired) $0.80/$4 (June 2026). Fable 5 and Mythos 5 are
- * $10/$50 (verified 2026-07-21). Unknown/newer model strings are resolved by
- * family in resolveModelPricing().
+ * $1/$5; Haiku 3.5 (retired) $0.80/$4 (June 2026). Fable 5 and Mythos 5 are both
+ * $10/$50, each checked separately against platform.claude.com/docs pricing on
+ * 2026-07-21. Unknown/newer model strings are resolved by family in
+ * resolveModelPricing().
  *
  * A model missing from BOTH this table and the family gate below is priced at
  * zero, not approximately -- so a new family must be added here the moment it

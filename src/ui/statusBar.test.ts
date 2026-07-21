@@ -165,6 +165,34 @@ describe("StatusBarManager: auth-dead display", () => {
 		expect(scopedItem.text).toContain("So:62%");
 	});
 
+	it("treats an empty scoped label as unknown, not as a label", () => {
+		const { manager, scopedItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: {
+					fiveHour: { utilization: 0.4, resetsAt: null },
+					sevenDay: { utilization: 0.25, resetsAt: null },
+					// An empty label must not slip through and render ":15%"
+					scopedWeekly: [{ label: "", utilization: 0.15, resetsAt: null }],
+					rateLimitTier: "tier4",
+					extraUsage: null,
+					spend: null,
+					fetchedAt: new Date(),
+				},
+				rateLimits: {
+					session5h: makeRateLimitInfo("Session (5hr)", 40),
+					weekly: makeRateLimitInfo("Weekly", 25),
+					weeklyScoped: null,
+					worstPercentage: 40,
+				},
+			}),
+		);
+
+		expect(scopedItem.hide).toHaveBeenCalled();
+		expect(scopedItem.show).not.toHaveBeenCalled();
+	});
+
 	it("hides the scoped item when no scoped model is known", () => {
 		const { manager, scopedItem } = createManager();
 

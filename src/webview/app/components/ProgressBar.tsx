@@ -10,6 +10,12 @@ interface ProgressBarProps {
 	percentage: number;
 	resetTime: string | null;
 	isHit: boolean;
+	/**
+	 * True when `percentage` was derived from `current`/`limit` locally. When
+	 * false the percentage came from the API while the token counts are still
+	 * local estimates, so the two do not agree and only the percentage is shown.
+	 */
+	isEstimated?: boolean;
 }
 
 /**
@@ -54,18 +60,18 @@ export function ProgressBar({
 	percentage,
 	resetTime,
 	isHit,
+	isEstimated = true,
 }: ProgressBarProps) {
 	const colorClass = getColorClass(percentage);
+	// Only show the token ratio when the percentage actually came from it.
+	const showRatio = isEstimated && limit > 0;
 
 	return (
 		<div className="progress-container">
 			<div className="progress-header">
 				<span className="progress-label">{label}</span>
 				<span className="progress-stats">
-					{/* A limit of 0 means we have no local token estimate for this
-					    window (the percentage came from the API). Showing "0 / 0"
-					    next to a real percentage reads as broken. */}
-					{limit > 0
+					{showRatio
 						? `${formatNumber(current)} / ${formatNumber(limit)} (${percentage.toFixed(1)}%)`
 						: `${percentage.toFixed(1)}%`}
 				</span>

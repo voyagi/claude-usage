@@ -173,24 +173,26 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
 			{/* Section 3: Rate Limits */}
 			<div className="card">
-				{/* Not "(estimated)": with the API reachable these are exact. Rows
-				    that fell back to a local estimate say so individually. */}
+				{/* Not "(estimated)" wholesale: with the API reachable these are
+				    exact. Each row that fell back to a local estimate says so. */}
 				<h3 className="card-title">Rate Limits</h3>
 				<ProgressBar
-					label="Session (5hr)"
+					label={`Session (5hr)${data.session5h.isEstimated ? " (est.)" : ""}`}
 					current={data.session5h.currentTokens}
 					limit={data.session5h.estimatedLimit}
 					percentage={data.session5h.percentage}
 					resetTime={data.session5h.resetTime}
 					isHit={data.session5h.isHit}
+					isEstimated={data.session5h.isEstimated}
 				/>
 				<ProgressBar
-					label="Weekly"
+					label={`Weekly${data.weekly.isEstimated ? " (est.)" : ""}`}
 					current={data.weekly.currentTokens}
 					limit={data.weekly.estimatedLimit}
 					percentage={data.weekly.percentage}
 					resetTime={data.weekly.resetTime}
 					isHit={data.weekly.isHit}
+					isEstimated={data.weekly.isEstimated}
 				/>
 				{data.weeklyForecast && (
 					<div
@@ -231,6 +233,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 						percentage={limit.percentage}
 						resetTime={limit.resetTime}
 						isHit={limit.isHit}
+						isEstimated={limit.isEstimated}
 					/>
 				))}
 			</div>

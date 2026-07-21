@@ -39,16 +39,23 @@ export interface RateLimitData {
 	percentage: number;
 	resetTime: string | null; // ISO 8601 string for serialization
 	isHit: boolean;
+	/**
+	 * True when the percentage came from local JSONL rather than the API.
+	 *
+	 * Every row needs this, not just the scoped one: with the API unreachable
+	 * the session and weekly percentages are estimates too, and an unqualified
+	 * number is the kind of confident-and-wrong the rest of this codebase goes
+	 * out of its way to avoid.
+	 */
+	isEstimated: boolean;
 }
 
 /**
  * A model-scoped weekly limit. `label` is the API's display name for the scoped
- * model (e.g. "Fable"); `isEstimated` is true when the percentage came from
- * local JSONL rather than the API.
+ * model (e.g. "Fable").
  */
 export interface ScopedRateLimitData extends RateLimitData {
 	label: string;
-	isEstimated: boolean;
 }
 
 /** Behaviour signal keys, mirroring src/aggregation/attribution.ts */

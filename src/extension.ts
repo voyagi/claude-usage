@@ -579,6 +579,12 @@ export async function activate(context: vscode.ExtensionContext) {
 			if (sessionWatcher) {
 				await sessionWatcher.resetState();
 			}
+			// Drop the dashboard's records too. resetState() clears the watcher's
+			// dedupe guard and offsets, so the next file change re-reads from byte
+			// 0 -- leaving the old copies in place would double-count them in the
+			// attribution card and the drill-down.
+			allRecords = [];
+			dashboardProvider?.setRecords([]);
 			statusBar.showNoData();
 			vscode.window.showInformationMessage(
 				"Claude Usage: Data cleared. Reload window to reparse JSONL files.",

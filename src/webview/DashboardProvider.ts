@@ -45,6 +45,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	private _records: TokenUsage[] = [];
 	/** Cached usage attribution, recomputed only when records change. */
 	private _attribution: UsageAttribution | null = null;
+	/** messageId -> record, so watcher updates can find what they amend. */
+	private readonly _recordsByMessageId = new Map<string, TokenUsage>();
 	private _planType: string = "pro";
 	private _activePeriod: "daily" | "weekly" | "monthly" = "daily";
 	private _isFirstRun: boolean = false;
@@ -102,6 +104,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				: info.percentage,
 			resetTime: apiWindow?.resetsAt ?? info.resetTime?.toISOString() ?? null,
 			isHit: apiWindow ? apiWindow.utilization >= 1.0 : info.isHit,
+			// Without an API window this percentage is local tokens over a plan
+			// default, which is a guess and must be labelled as one.
+			isEstimated: !apiWindow,
 		});
 
 		const session5h = convertRateLimit(
@@ -462,6 +467,11 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 */
 	public setRecords(records: TokenUsage[]): void {
 		this._records = records;
+		this._recordsByMessageId.clear();
+		for (const record of records) {
+			if (record.messageId)
+				this._recordsByMessageId.set(record.messageId, record);
+		}
 		this._attribution = computeAttribution(records);
 	}
 
@@ -469,19 +479,61 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 * Add records counted by the file watcher since the last full parse.
 	 *
 	 * Without this the attribution card would freeze at whatever the last full
-	 * parse saw: the watcher only ever pushed buckets, so live usage moved the
-	 * totals and the rate-limit bars while "what's contributing" quietly went
-	 * stale until the next restart or manual refresh.
+	 * parse saw: the watcher only pushed buckets, so live usage moved the totals
+	 * and the rate-limit bars while "what's contributing" quietly went stale
+	 * until the next restart or manual refresh.
 	 *
-	 * Top-up deltas are excluded -- they carry only the extra tokens for a
-	 * message already counted, so adding them would double-count that message's
-	 * attribution.
+	 * Two things this must not get wrong:
+	 *
+	 * - A top-up delta carries ONLY the extra tokens for a message counted on an
+	 *   earlier read. Appending it would inflate the record count and, for a
+	 *   subagent message, the subagent-request tally behind the subagent-heavy
+	 *   signal. Dropping it instead would under-report that message's cost, so
+	 *   the delta is folded into the record already held.
+	 * - The same message can arrive again after a reset clears the watcher's
+	 *   dedupe guard, so a repeat of an id we already hold replaces it rather
+	 *   than appending a duplicate.
 	 */
 	public appendRecords(records: TokenUsage[]): void {
-		const counted = records.filter((record) => !record.isTopUp);
-		if (counted.length === 0) return;
-		this._records = this._records.concat(counted);
-		this._attribution = computeAttribution(this._records);
+		if (records.length === 0) return;
+
+		let changed = false;
+		for (const record of records) {
+			const existing = record.messageId
+				? this._recordsByMessageId.get(record.messageId)
+				: undefined;
+
+			if (record.isTopUp) {
+				// Fold the delta into the message it tops up. With no record to
+				// top up (reset, or a full parse that never saw it) there is
+				// nothing to correct, and the delta alone would misrepresent it.
+				if (existing) {
+					existing.inputTokens += record.inputTokens;
+					existing.outputTokens += record.outputTokens;
+					existing.cacheCreationTokens += record.cacheCreationTokens;
+					existing.cacheReadTokens += record.cacheReadTokens;
+					existing.cost += record.cost;
+					changed = true;
+				}
+				continue;
+			}
+
+			if (existing) {
+				// Re-read of a message we already hold: replace in place
+				const index = this._records.indexOf(existing);
+				if (index >= 0) this._records[index] = record;
+				this._recordsByMessageId.set(record.messageId as string, record);
+			} else {
+				this._records.push(record);
+				if (record.messageId)
+					this._recordsByMessageId.set(record.messageId, record);
+			}
+			changed = true;
+		}
+
+		if (changed) {
+			this._attribution = computeAttribution(this._records);
+		}
 	}
 
 	/**
