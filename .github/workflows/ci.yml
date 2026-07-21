@@ -10,6 +10,13 @@ jobs:
       # that formatting passed.
       run-build: true
       run-tests: true
+      # run-trivy reports but does NOT gate, and reads clean while it isn't:
+      # the shared workflow passes no exit-code to trivy-action, so Trivy always
+      # exits 0 and the failure gate cannot fire, and Trivy suppresses dev
+      # dependencies by default, which is where all 10 current HIGH advisories
+      # live. It prints "0" and passes. Making it a real gate needs exit-code
+      # and TRIVY_INCLUDE_DEV_DEPS in voyagi/.github-workflows -- neither is
+      # exposed as an input here. Kept on because reporting beats nothing.
       run-trivy: true
       run-knip: false
     secrets: inherit

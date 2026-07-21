@@ -42,6 +42,35 @@ function renderHtml(): string {
 	)._getHtmlForWebview(webview);
 }
 
+const repoRoot = path.join(__dirname, "..", "..");
+
+/**
+ * The stylesheet path esbuild actually emits, derived from the build config
+ * rather than restated here, so the href and the artifact checks below are both
+ * pinned to the real output instead of to each other.
+ *
+ * Capture whatever the outfile IS rather than matching the value we expect: a
+ * pattern with the name baked into its own capture group derives nothing and
+ * fails on a correct rename. Anchoring to webviewConfig avoids picking up the
+ * extension bundle's outfile. Line comments are stripped first because match()
+ * takes the first hit, so a commented-out config block would be read in
+ * preference to the live one -- verified: with such a block present the
+ * unstripped pattern reads the dead value while the real href dangles. Block
+ * comments would still slip through, which is why the artifact check exists.
+ */
+function emittedStylesheetPath(): string {
+	const config = readFileSync(
+		path.join(repoRoot, "esbuild.config.mjs"),
+		"utf8",
+	);
+	const code = config.replace(/^\s*\/\/.*$/gm, "");
+	const outfile = code.match(
+		/webviewConfig\s*=\s*\{[\s\S]*?outfile:\s*"([^"]+)"/,
+	)?.[1];
+	expect(outfile).toBeTruthy();
+	return (outfile as string).replace(/\.js$/, ".css");
+}
+
 describe("webview HTML shell", () => {
 	it("links the bundled stylesheet through asWebviewUri", () => {
 		const html = renderHtml();
@@ -54,32 +83,7 @@ describe("webview HTML shell", () => {
 	});
 
 	it("links the stylesheet name esbuild actually emits", () => {
-		// The href is a hardcoded string; the real filename is a sibling derived
-		// from the webview bundle's outfile. Nothing else ties the two together,
-		// so renaming the outfile would leave a dangling href that renders,
-		// throws nothing, and keeps every other test green.
-		const config = readFileSync(
-			path.join(__dirname, "..", "..", "esbuild.config.mjs"),
-			"utf8",
-		);
-		// Capture whatever the outfile IS, rather than matching the value we
-		// expect: a pattern with the name baked into its own capture group
-		// derives nothing and fails on a correct rename. Anchoring to
-		// webviewConfig avoids picking up the extension bundle's outfile.
-		//
-		// Line comments are stripped first because match() takes the first hit,
-		// so a commented-out config block left in the file would be captured in
-		// preference to the live one -- verified: with such a block present the
-		// unstripped pattern reads the dead value and the test passes while the
-		// real href dangles. Block comments would still slip through.
-		const code = config.replace(/^\s*\/\/.*$/gm, "");
-		const outfile = code.match(
-			/webviewConfig\s*=\s*\{[\s\S]*?outfile:\s*"([^"]+)"/,
-		)?.[1];
-		expect(outfile).toBeTruthy();
-
-		const emittedCss = (outfile as string).replace(/\.js$/, ".css");
-		expect(renderHtml()).toContain(`/${emittedCss}"`);
+		expect(renderHtml()).toContain(`/${emittedStylesheetPath()}"`);
 	});
 
 	it("emits the stylesheet it links", () => {
@@ -92,18 +96,10 @@ describe("webview HTML shell", () => {
 		// `pretest` builds first, so dist/ is current when this runs. Note
 		// esbuild does not clean dist/, so a stale file can mask this locally --
 		// it bites in the packaged VSIX, built from a fresh checkout.
-		const href = renderHtml().match(
-			/<link rel="stylesheet" href="([^"]+)"/,
-		)?.[1];
-		expect(href).toBeTruthy();
-
-		const emitted = path.join(
-			__dirname,
-			"..",
-			"..",
-			"dist",
-			(href as string).split("/").pop() as string,
-		);
+		// Resolve through the config-derived path rather than hardcoding "dist",
+		// so moving the outfile to another directory does not fail here for the
+		// wrong reason.
+		const emitted = path.join(repoRoot, emittedStylesheetPath());
 		expect(existsSync(emitted)).toBe(true);
 		expect(statSync(emitted).size).toBeGreaterThan(0);
 	});
