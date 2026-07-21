@@ -36,6 +36,31 @@ export interface TokenUsage {
 	 * normal record.
 	 */
 	isTopUp?: boolean;
+	/**
+	 * What this request is attributable to, as recorded by Claude Code itself on
+	 * the transcript line (`attributionSkill`, `attributionAgent`, ...). Absent
+	 * on plain conversation turns, which is most of them -- kept as an optional
+	 * object so those records stay small.
+	 */
+	attribution?: UsageAttributionTags;
+}
+
+/**
+ * Attribution tags Claude Code stamps on a transcript record. Every field is
+ * optional and independent: a skill can invoke a subagent that calls an MCP
+ * tool, and the record then carries all three.
+ */
+export interface UsageAttributionTags {
+	/** Skill or slash command, e.g. "suggest-run" */
+	skill?: string;
+	/** Subagent type, e.g. "post-task-reviewer", "workflow-subagent" */
+	agent?: string;
+	/** Plugin that owns the skill/agent, e.g. "impeccable" */
+	plugin?: string;
+	/** MCP server name, e.g. "figma" */
+	mcpServer?: string;
+	/** MCP tool name, e.g. "get_screenshot" */
+	mcpTool?: string;
 }
 
 /**

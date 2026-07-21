@@ -51,6 +51,44 @@ export interface ScopedRateLimitData extends RateLimitData {
 	isEstimated: boolean;
 }
 
+/** Behaviour signal keys, mirroring src/aggregation/attribution.ts */
+export type BehaviorKey =
+	| "cacheMiss"
+	| "longContext"
+	| "subagentHeavy"
+	| "highParallel"
+	| "longRunning";
+
+/** One named contributor (skill, subagent, plugin, MCP server) */
+export interface AttributionEntry {
+	name: string;
+	cost: number;
+	percentage: number;
+}
+
+/** One behaviour signal */
+export interface BehaviorEntry {
+	key: BehaviorKey;
+	percentage: number;
+}
+
+/** Attribution for one time window (serialization-safe) */
+export interface AttributionWindow {
+	totalCost: number;
+	recordCount: number;
+	behaviors: BehaviorEntry[];
+	skills: AttributionEntry[];
+	agents: AttributionEntry[];
+	plugins: AttributionEntry[];
+	mcpServers: AttributionEntry[];
+}
+
+/** Day and week attribution views for the "what's contributing" section */
+export interface UsageAttribution {
+	day: AttributionWindow;
+	week: AttributionWindow;
+}
+
 /**
  * Per-project usage totals (serialization-safe).
  */
@@ -102,6 +140,13 @@ export interface DashboardData {
 
 	// Predictive weekly-cap forecast (null when not computable)
 	weeklyForecast: WeeklyCapForecast | null;
+
+	/**
+	 * What usage is attributable to (skills, subagents, plugins, MCP servers)
+	 * plus independent behaviour signals, for the last 24h and 7d. Null until a
+	 * full parse has produced records.
+	 */
+	attribution: UsageAttribution | null;
 
 	// Session timing
 	windowStart: string | null; // ISO 8601 string

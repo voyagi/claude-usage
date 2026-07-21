@@ -47,6 +47,29 @@ const NO_USAGE = JSON.stringify({
 	message: { id: "msg_3", model: "claude-opus-4-8" },
 });
 
+/**
+ * Real-shaped record from a subagent transcript. The attribution* field names
+ * are copied verbatim from a Claude Code 2.1.216 transcript: if they drift, the
+ * usage breakdown silently goes blank, so pin them here.
+ */
+const ATTRIBUTED = JSON.stringify({
+	type: "assistant",
+	timestamp: "2026-07-21T12:00:00.000Z",
+	sessionId: "s2",
+	isSidechain: true,
+	agentId: "a202026c3c122997b",
+	attributionSkill: "suggest-run",
+	attributionAgent: "post-task-reviewer",
+	attributionPlugin: "impeccable",
+	attributionMcpServer: "figma",
+	attributionMcpTool: "get_screenshot",
+	message: {
+		id: "msg_attributed",
+		model: "claude-opus-4-8",
+		usage: { input_tokens: 2, output_tokens: 938 },
+	},
+});
+
 function tmpFile(lines: string[]): string {
 	const p = path.join(
 		os.tmpdir(),
@@ -55,6 +78,37 @@ function tmpFile(lines: string[]): string {
 	fs.writeFileSync(p, lines.join("\n"));
 	return p;
 }
+
+describe("parseSessionFile attribution tags", () => {
+	it("reads every attribution field Claude Code stamps on a record", async () => {
+		const file = tmpFile([ATTRIBUTED]);
+		try {
+			const r = await parseSessionFile(file, logger);
+			expect(r.records).toHaveLength(1);
+			expect(r.records[0].attribution).toEqual({
+				skill: "suggest-run",
+				agent: "post-task-reviewer",
+				plugin: "impeccable",
+				mcpServer: "figma",
+				mcpTool: "get_screenshot",
+			});
+		} finally {
+			fs.unlinkSync(file);
+		}
+	});
+
+	it("leaves attribution undefined on an ordinary turn", async () => {
+		const file = tmpFile([GOOD]);
+		try {
+			const r = await parseSessionFile(file, logger);
+			// undefined rather than {}: a full parse holds hundreds of thousands
+			// of these and most carry no attribution at all
+			expect(r.records[0].attribution).toBeUndefined();
+		} finally {
+			fs.unlinkSync(file);
+		}
+	});
+});
 
 describe("parseSessionFile schema-failure counting (format-drift signal)", () => {
 	it("counts assistant lines that have a usage block but fail the schema", async () => {

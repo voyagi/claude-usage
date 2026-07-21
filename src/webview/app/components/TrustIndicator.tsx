@@ -1,6 +1,9 @@
 /**
- * Trust indicator badge showing local-only data processing.
- * Displays a lock icon and "Local Only" text with expandable access details.
+ * Trust indicator badge summarising what the extension touches.
+ *
+ * Keep this honest and in step with the code: usage percentages come from
+ * Anthropic's own usage endpoint (see src/api/usageApi.ts), so this must not
+ * claim the extension makes no network requests.
  */
 import { useState } from "react";
 
@@ -29,7 +32,7 @@ export function TrustIndicator() {
 				<span role="img" aria-label="Lock">
 					🔒
 				</span>
-				<span>Local Only</span>
+				<span>Your data, Anthropic only</span>
 				<span style={{ marginLeft: "auto", fontSize: "10px" }}>
 					{expanded ? "▲" : "▼"}
 				</span>
@@ -51,8 +54,10 @@ export function TrustIndicator() {
 					</div>
 					<div style={{ color: "var(--vscode-terminal-ansiGreen)" }}>
 						✓ Reads ~/.claude/projects/*.jsonl (session logs)
-						<br />✓ Reads ~/.claude/.credentials.json (plan detection)
+						<br />✓ Reads ~/.claude/.credentials.json (your Claude Code login)
 						<br />✓ Stores data in VS Code globalState (local)
+						<br />✓ Asks api.anthropic.com for your own usage percentages,
+						signed in as you
 					</div>
 					<div
 						style={{
@@ -60,10 +65,10 @@ export function TrustIndicator() {
 							marginTop: "6px",
 						}}
 					>
-						✗ No network requests of any kind
-						<br />✗ No telemetry or analytics
-						<br />✗ No data sent to any server
-						<br />✗ No API keys required
+						✗ No telemetry or analytics
+						<br />✗ Nothing sent anywhere except Anthropic
+						<br />✗ No third parties, ever
+						<br />✗ No separate API key needed
 					</div>
 				</div>
 			)}

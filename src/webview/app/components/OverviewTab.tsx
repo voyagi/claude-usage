@@ -3,6 +3,7 @@
  * Displays token breakdown, rate limits, session timing, and burn rate.
  */
 import type { DashboardData } from "../types";
+import { ContributingSection } from "./ContributingSection";
 import { ProgressBar } from "./ProgressBar";
 
 interface OverviewTabProps {
@@ -271,6 +272,9 @@ export function OverviewTab({ data }: OverviewTabProps) {
 					</div>
 				)}
 			</div>
+
+			{/* Section 6: What's driving the usage */}
+			<ContributingSection attribution={data.attribution} />
 		</div>
 	);
 }

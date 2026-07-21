@@ -12,6 +12,8 @@ import {
 	subHours,
 } from "date-fns";
 import * as vscode from "vscode";
+import type { UsageAttribution } from "../aggregation/attribution.js";
+import { computeAttribution } from "../aggregation/attribution.js";
 import { forecastWeeklyCap } from "../core/burnRate.js";
 import type {
 	AggregatedUsage,
@@ -40,6 +42,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	private _buckets?: TimeBuckets;
 	private _statusBarData?: StatusBarData;
 	private _records: TokenUsage[] = [];
+	/** Cached usage attribution, recomputed only when records change. */
+	private _attribution: UsageAttribution | null = null;
 	private _planType: string = "pro";
 	private _activePeriod: "daily" | "weekly" | "monthly" = "daily";
 	private _isFirstRun: boolean = false;
@@ -68,7 +72,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		activePeriod: "daily" | "weekly" | "monthly" = "daily",
 		isFirstRun: boolean = false,
 		hasCustomPricing: boolean = false,
-	): Omit<DashboardData, "unparsedUsageRecords"> {
+	): Omit<DashboardData, "unparsedUsageRecords" | "attribution"> {
 		const now = new Date();
 		const today = format(now, "yyyy-MM-dd");
 
@@ -400,7 +404,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	 * Public method for extension.ts to push data updates to the webview.
 	 * Data is cached so it can be sent when webview becomes visible.
 	 */
-	public updateData(data: Omit<DashboardData, "unparsedUsageRecords">): void {
+	public updateData(
+		data: Omit<DashboardData, "unparsedUsageRecords" | "attribution">,
+	): void {
 		// Stamp the latest parse-health signal on every push (all rebuild paths
 		// funnel through here), so the format-drift warning persists across
 		// incremental updates and period changes. Typing the input as Omit<>
@@ -408,6 +414,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		const stamped: DashboardData = {
 			...data,
 			unparsedUsageRecords: this._schemaFailures,
+			attribution: this._attribution,
 		};
 		this._currentData = stamped;
 
@@ -435,9 +442,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 
 	/**
 	 * Replace stored records for on-demand message detail drill-down.
+	 *
+	 * Attribution is recomputed here rather than per render: it is a full scan
+	 * of every record, and the records only change on a reparse.
 	 */
 	public setRecords(records: TokenUsage[]): void {
 		this._records = records;
+		this._attribution = computeAttribution(records);
 	}
 
 	/**
