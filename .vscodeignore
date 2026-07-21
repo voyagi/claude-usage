@@ -1,9 +1,12 @@
 # Anything listed here is kept out of the packaged VSIX. Note this is a
 # SEPARATE list from .gitignore and the two diverge in opposite directions:
 #
-#   - A git-IGNORED file can still be packaged locally (`npm run package`), but
-#     never by CI, which publishes from a fresh checkout that cannot contain it.
-#   - A git-TRACKED file is exactly what CI ships. Those are the dangerous ones.
+#   - A git-IGNORED file reaches a local `npm run package` if it is sitting in
+#     the tree. CI starts from a clean checkout, so it only ships one the build
+#     itself creates -- `dist/` is git-ignored and IS published, which is why
+#     "git-ignored means CI-safe" is wrong.
+#   - A git-TRACKED file is shipped by CI unconditionally. Those are the ones
+#     that leak without anyone doing something unusual.
 #
 # So internal notes that live in the repo must be listed here explicitly, and
 # secrets must be listed here too in case someone packages from a dirty tree.

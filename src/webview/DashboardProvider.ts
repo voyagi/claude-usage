@@ -624,9 +624,18 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		// Generate nonce for CSP
 		const nonce = this._getNonce();
 
-		// Get URIs for bundled assets
+		// Get URIs for bundled assets.
+		//
+		// The stylesheet has to be linked explicitly. esbuild's "css" loader
+		// emits dist/webview.css as a SIBLING of the JS bundle rather than
+		// injecting it, so importing app.css from index.tsx is not enough: with
+		// no <link> the file is built, packaged, and never loaded, and every
+		// className in the React tree resolves to nothing.
 		const scriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this._extensionUri, "dist", "webview.js"),
+		);
+		const styleUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this._extensionUri, "dist", "webview.css"),
 		);
 
 		// CSP configuration
@@ -644,6 +653,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
+  <link rel="stylesheet" href="${styleUri}">
   <title>Claude Usage Dashboard</title>
 </head>
 <body>
