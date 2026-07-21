@@ -30,6 +30,7 @@ import type {
 	ProjectUsage,
 	RateLimitData,
 	ScopedRateLimitData,
+	SpendSummary,
 	TrendDataPoint,
 	WebviewMessage,
 } from "./app/types.js";
@@ -146,6 +147,18 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				isEstimated: true,
 			});
 		}
+
+		// Usage credits, shown only when the account actually has them enabled
+		const spendSource = api?.spend;
+		const spend: SpendSummary | null =
+			spendSource?.enabled === true
+				? {
+						used: spendSource.used,
+						limit: spendSource.limit,
+						percentage: spendSource.percent,
+						currency: spendSource.currency,
+					}
+				: null;
 
 		// 4. Session timing - use API reset time when available
 		let windowStart: string | null = null;
@@ -268,6 +281,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			session5h,
 			weekly,
 			scopedWeekly,
+			spend,
 			windowStart,
 			windowExpiry,
 			timeRemainingMinutes,

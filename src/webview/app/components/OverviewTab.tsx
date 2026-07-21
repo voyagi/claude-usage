@@ -206,6 +206,20 @@ export function OverviewTab({ data }: OverviewTabProps) {
 							: `On track: ~${formatDays(data.weeklyForecast.daysUntilCap)} to the weekly cap at your recent pace; resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`}
 					</div>
 				)}
+				{data.spend && (
+					<div
+						style={{
+							fontSize: "calc(var(--vscode-font-size) * 0.85)",
+							marginBottom: "10px",
+							color: "var(--vscode-descriptionForeground)",
+						}}
+					>
+						Usage credits: {data.spend.currency} {data.spend.used.toFixed(2)}
+						{data.spend.limit !== null
+							? ` of ${data.spend.limit.toFixed(2)} (${data.spend.percentage.toFixed(0)}%)`
+							: " used"}
+					</div>
+				)}
 				{data.scopedWeekly.map((limit) => (
 					<ProgressBar
 						key={limit.label}

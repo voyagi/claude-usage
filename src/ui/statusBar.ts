@@ -36,6 +36,11 @@ export class StatusBarManager {
 	private lastSignature = "";
 	private _authState: AuthState = "healthy";
 	private _rateLimited = false;
+	/**
+	 * Whether we know which model the weekly scoped limit covers. Until we do,
+	 * the scoped item stays hidden rather than showing a nameless ":0%".
+	 */
+	private _hasScopedLimit = false;
 
 	constructor(context: vscode.ExtensionContext) {
 		// Use high, adjacent priorities so all 3 stay grouped together
@@ -181,7 +186,8 @@ export class StatusBarManager {
 		this.weeklyItem.show();
 		// No scoped limit known (API unreachable and never seen before): showing a
 		// bare ":0%" would be worse than showing nothing.
-		if (scopedLabel) {
+		this._hasScopedLimit = scopedLabel !== null;
+		if (this._hasScopedLimit) {
 			this.scopedItem.show();
 		} else {
 			this.scopedItem.hide();
@@ -375,7 +381,11 @@ export class StatusBarManager {
 		if (this._visible) {
 			this.sessionItem.show();
 			this.weeklyItem.show();
-			this.scopedItem.show();
+			// Only restore the scoped item if we actually know which model it
+			// covers; showing it unconditionally would resurrect a blank ":0%".
+			if (this._hasScopedLimit) {
+				this.scopedItem.show();
+			}
 		} else {
 			this.sessionItem.hide();
 			this.weeklyItem.hide();

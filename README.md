@@ -125,7 +125,7 @@ Configure via VS Code Settings (`Ctrl+,` then search "Claude Usage"):
 5. Rate limit percentages come from Anthropic's usage endpoint when reachable, and fall back to local estimates when it is not
 6. Status bar and dashboard update in real-time; all aggregated data is cached in VS Code globalState for instant startup
 
-The first parse after installing reads your whole history, which on a large `~/.claude/projects/` takes on the order of half a minute in the background. Cached data is shown immediately while that runs.
+A full parse reads your whole history, and it runs on every window start and every manual refresh, not just the first time. On a large `~/.claude/projects/` that is on the order of half a minute of background work and around 100 MB held per window. Cached data is displayed immediately while it runs, so you are not left waiting, but if that cost bothers you, turning off **Include Archived Sessions** removes most of it.
 
 ## Supported Plans
 

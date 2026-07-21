@@ -466,8 +466,11 @@ describe("StatusBarManager: display states", () => {
 // ── toggle ──────────────────────────────────────────────────────────
 
 describe("StatusBarManager: toggle", () => {
-	it("hides all items on first toggle, shows on second", () => {
+	it("hides all items on first toggle, shows them again on second", () => {
 		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
+
+		// A scoped model must be known, or the scoped item stays hidden by design
+		manager.update(makeStatusBarData());
 
 		manager.toggle();
 		expect(sessionItem.hide).toHaveBeenCalled();
@@ -478,6 +481,17 @@ describe("StatusBarManager: toggle", () => {
 		expect(sessionItem.show).toHaveBeenCalled();
 		expect(weeklyItem.show).toHaveBeenCalled();
 		expect(scopedItem.show).toHaveBeenCalled();
+	});
+
+	it("does not resurrect the scoped item when no scoped model is known", () => {
+		const { manager, scopedItem } = createManager();
+
+		// Toggling off and back on must not bypass the hide-when-unknown rule,
+		// which would show a nameless ":0%".
+		manager.toggle();
+		manager.toggle();
+
+		expect(scopedItem.show).not.toHaveBeenCalled();
 	});
 });
 

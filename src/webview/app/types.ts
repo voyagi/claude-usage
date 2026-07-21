@@ -89,6 +89,14 @@ export interface UsageAttribution {
 	week: AttributionWindow;
 }
 
+/** Usage-credit spend, in major currency units (serialization-safe) */
+export interface SpendSummary {
+	used: number;
+	limit: number | null;
+	percentage: number;
+	currency: string;
+}
+
 /**
  * Per-project usage totals (serialization-safe).
  */
@@ -147,6 +155,12 @@ export interface DashboardData {
 	 * full parse has produced records.
 	 */
 	attribution: UsageAttribution | null;
+
+	/**
+	 * Usage credits that cover you past the plan limits. Null unless the account
+	 * has extra usage enabled.
+	 */
+	spend: SpendSummary | null;
 
 	// Session timing
 	windowStart: string | null; // ISO 8601 string

@@ -142,6 +142,80 @@ describe("computeAttributionWindow: named contributors", () => {
 		expect(share(result.skills, "ancient")).toBeUndefined();
 	});
 
+	it("skips records with an unparseable timestamp", () => {
+		const result = computeAttributionWindow(
+			[
+				withTags({ skill: "good" }, { cost: 5 }),
+				withTags(
+					{ skill: "corrupt" },
+					{ cost: 1000, timestamp: new Date("not-a-date") },
+				),
+			],
+			dayStart,
+			NOW,
+		);
+
+		// A NaN timestamp compares false against both bounds; make sure that
+		// exclusion is deliberate and cannot poison the totals.
+		expect(result.totalCost).toBe(5);
+		expect(result.recordCount).toBe(1);
+		expect(share(result.skills, "corrupt")).toBeUndefined();
+	});
+
+	it("includes records exactly on the window boundaries", () => {
+		const result = computeAttributionWindow(
+			[
+				withTags({ skill: "at-start" }, { cost: 1, timestamp: dayStart }),
+				withTags({ skill: "at-end" }, { cost: 1, timestamp: NOW }),
+			],
+			dayStart,
+			NOW,
+		);
+
+		expect(result.recordCount).toBe(2);
+		expect(result.totalCost).toBe(2);
+	});
+
+	it("keeps every share within 0-100", () => {
+		const result = computeAttributionWindow(
+			[
+				withTags(
+					{ skill: "s", agent: "a", plugin: "p", mcpServer: "m" },
+					{ cost: 3, cacheCreationTokens: 200_000, cacheReadTokens: 200_000 },
+				),
+				record({ cost: 1 }),
+			],
+			dayStart,
+			NOW,
+		);
+
+		const allShares = [
+			...result.behaviors.map((b) => b.percentage),
+			...result.skills.map((s) => s.percentage),
+			...result.agents.map((a) => a.percentage),
+			...result.plugins.map((p) => p.percentage),
+			...result.mcpServers.map((m) => m.percentage),
+		];
+		expect(allShares.length).toBeGreaterThan(0);
+		for (const value of allShares) {
+			expect(value).toBeGreaterThanOrEqual(0);
+			expect(value).toBeLessThanOrEqual(100);
+		}
+	});
+
+	it("does not divide by zero when every record in the window is free", () => {
+		const result = computeAttributionWindow(
+			[withTags({ skill: "free" }, { cost: 0 })],
+			dayStart,
+			NOW,
+		);
+
+		expect(result.recordCount).toBe(1);
+		expect(result.totalCost).toBe(0);
+		expect(result.skills[0].percentage).toBe(0);
+		expect(result.behaviors).toEqual([]);
+	});
+
 	it("returns zeroed output for an empty window without dividing by zero", () => {
 		const result = computeAttributionWindow([], dayStart, NOW);
 		expect(result.totalCost).toBe(0);

@@ -253,7 +253,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				stats,
 				getSelectedPlan(),
 				lastBurnRate,
-				refinedLimits,
+				getEffectiveLimits(),
 				cachedApiUsage,
 				lastKnownScopedModel,
 			);
@@ -304,7 +304,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			lastKnownStats,
 			getSelectedPlan(),
 			lastBurnRate,
-			refinedLimits,
+			getEffectiveLimits(),
 			cachedApiUsage,
 			lastKnownScopedModel,
 		);
@@ -636,6 +636,43 @@ export function deactivate() {
 }
 
 /**
+ * Manual token-limit overrides from settings.
+ *
+ * These take precedence over both the plan defaults and the auto-learned refined
+ * limits: an explicit number the user typed should not be quietly overruled by
+ * an estimate. 0 means "unset".
+ */
+function getLimitOverrides(): RefinedLimits | null {
+	const config = vscode.workspace.getConfiguration("claude-usage");
+	const session = config.get<number>("rateLimits.session.threshold", 0);
+	const weekly = config.get<number>("rateLimits.weekly.threshold", 0);
+	const scoped =
+		config.get<number>("rateLimits.weeklyScoped.threshold", 0) ||
+		// Deprecated key, still honoured so existing settings keep working
+		config.get<number>("rateLimits.weeklySonnet.threshold", 0);
+
+	if (session <= 0 && weekly <= 0 && scoped <= 0) {
+		return null;
+	}
+
+	const overrides: RefinedLimits = { lastUpdated: new Date().toISOString() };
+	if (session > 0) overrides.sessionTokenLimit = session;
+	if (weekly > 0) overrides.weeklyTokenLimit = weekly;
+	if (scoped > 0) overrides.weeklyScopedLimit = scoped;
+	return overrides;
+}
+
+/**
+ * Limits to calculate against: user overrides win, then auto-learned refined
+ * limits, then the plan defaults inside calculateRateLimits.
+ */
+function getEffectiveLimits(): RefinedLimits | null {
+	const overrides = getLimitOverrides();
+	if (!overrides) return refinedLimits;
+	return { ...refinedLimits, ...overrides };
+}
+
+/**
  * Perform initial JSONL parse and populate status bar
  * Loads cached data first for instant display, then reparses in background
  */
@@ -669,7 +706,7 @@ async function performInitialParse(
 			cached.stats,
 			getSelectedPlan(),
 			lastBurnRate,
-			refinedLimits,
+			getEffectiveLimits(),
 			cachedApiUsage,
 			lastKnownScopedModel,
 		);
@@ -770,7 +807,7 @@ async function performInitialParse(
 		stats,
 		getSelectedPlan(),
 		lastBurnRate,
-		refinedLimits,
+		getEffectiveLimits(),
 		cachedApiUsage,
 		lastKnownScopedModel,
 	);
