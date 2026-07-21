@@ -62,8 +62,12 @@ export function ProgressBar({
 			<div className="progress-header">
 				<span className="progress-label">{label}</span>
 				<span className="progress-stats">
-					{formatNumber(current)} / {formatNumber(limit)} (
-					{percentage.toFixed(1)}%)
+					{/* A limit of 0 means we have no local token estimate for this
+					    window (the percentage came from the API). Showing "0 / 0"
+					    next to a real percentage reads as broken. */}
+					{limit > 0
+						? `${formatNumber(current)} / ${formatNumber(limit)} (${percentage.toFixed(1)}%)`
+						: `${percentage.toFixed(1)}%`}
 				</span>
 			</div>
 
