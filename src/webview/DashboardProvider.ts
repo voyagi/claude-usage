@@ -529,6 +529,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				// would be a linear scan of every record, once per re-read record,
 				// and a re-read replays a whole file at once.
 				//
+				// Still reachable, though a reset no longer causes it: the watcher's
+				// dedupe guard ages ids out after 6h idle while this index keeps
+				// them, and a full parse's setRecords lands before the watcher is
+				// seeded, so a file change in that window arrives as a full record
+				// for an id already held. Do not delete this branch on the grounds
+				// that resets now clear the records.
+				//
 				// Assign wholesale rather than field by field. A hand-written list
 				// is what let the ephemeral cache split go missing from the fold
 				// above, and it would silently skip any field added to TokenUsage

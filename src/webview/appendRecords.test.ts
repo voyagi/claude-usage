@@ -125,6 +125,11 @@ describe("DashboardProvider.appendRecords", () => {
 		const folded = recordsOf(provider)[0];
 		expect(folded.cacheCreationTokens).toBe(150);
 		expect(folded.cacheCreation5m + folded.cacheCreation1h).toBe(150);
+		// The isTopUp guard is silent on a clean pass, so assert its effect
+		// directly: the held record must never inherit the flag. Without the
+		// early `continue`, the wholesale assign in the replace branch would
+		// stamp it here.
+		expect("isTopUp" in folded).toBe(false);
 	});
 
 	it("keeps records that carry no message id", () => {
