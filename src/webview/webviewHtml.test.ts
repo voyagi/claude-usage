@@ -21,6 +21,8 @@ jest.mock(
 	{ virtual: true },
 );
 
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { DashboardProvider } from "./DashboardProvider.js";
 
 /** Minimal webview stand-in: asWebviewUri just marks what was asked for. */
@@ -41,10 +43,30 @@ function renderHtml(): string {
 }
 
 describe("webview HTML shell", () => {
-	it("links the bundled stylesheet", () => {
+	it("links the bundled stylesheet through asWebviewUri", () => {
 		const html = renderHtml();
 		expect(html).toContain('rel="stylesheet"');
-		expect(html).toContain("webview.css");
+		// Assert the full href, not just the filename. A raw vscode.Uri also
+		// stringifies to something containing "webview.css", but as a file: URI
+		// the webview refuses to load it -- the same silently-unstyled failure
+		// this test exists to catch. Only the asWebviewUri form is loadable.
+		expect(html).toContain('href="webview-uri:/ext/dist/webview.css"');
+	});
+
+	it("links the stylesheet name esbuild actually emits", () => {
+		// The href is a hardcoded string; the real filename is a sibling derived
+		// from the webview bundle's outfile. Nothing else ties the two together,
+		// so renaming the outfile would leave a dangling href that renders,
+		// throws nothing, and keeps every other test green.
+		const config = readFileSync(
+			path.join(__dirname, "..", "..", "esbuild.config.mjs"),
+			"utf8",
+		);
+		const outfile = config.match(/outfile:\s*"(dist\/webview\.js)"/)?.[1];
+		expect(outfile).toBeTruthy();
+
+		const emittedCss = (outfile as string).replace(/\.js$/, ".css");
+		expect(renderHtml()).toContain(`/${emittedCss}"`);
 	});
 
 	it("loads the script bundle", () => {
