@@ -19,7 +19,8 @@ jest.mock(
 	{ virtual: true },
 );
 
-import { format, subDays } from "date-fns";
+import { subDays } from "date-fns";
+import { dailyBucketKey } from "../aggregation/timeBuckets.js";
 import type {
 	AggregatedUsage,
 	ApiUsageData,
@@ -154,15 +155,17 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 		// limit data", underneath a bar showing the API's exact percentage.
 		//
 		// Daily buckets are populated deliberately: with them empty the local
-		// forecast returns null for an unrelated reason and this assertion
-		// passes while testing nothing.
+		// forecast would be null for an unrelated reason, so this assertion
+		// would hold even if the fallback branch were wrong. (They are not read
+		// on the path this test exercises, which is the point -- if that ever
+		// changes, the fixture is already honest.)
 		const buckets = emptyBuckets();
 		for (let i = 0; i < 7; i++) {
-			// Same derivation as the code under test. Hand-rolling a UTC key here
-			// silently misses one bucket whenever local time and UTC fall on
-			// different dates, which on UTC+2 means this fails between 00:30 and
-			// 01:30 and passes the other 22 hours.
-			const day = format(subDays(new Date(), i), "yyyy-MM-dd");
+			// The same helper the production code keys buckets with, imported
+			// rather than restated: hand-rolling a UTC key here silently misses
+			// one bucket whenever the local and UTC calendars disagree, for a
+			// window as wide as the UTC offset, and CI runs UTC so it never sees it.
+			const day = dailyBucketKey(subDays(new Date(), i));
 			buckets.daily.set(day, {
 				inputTokens: 0,
 				outputTokens: 480_000,
@@ -196,11 +199,11 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 		// deleted outright.
 		const buckets = emptyBuckets();
 		for (let i = 0; i < 7; i++) {
-			// Same derivation as the code under test. Hand-rolling a UTC key here
-			// silently misses one bucket whenever local time and UTC fall on
-			// different dates, which on UTC+2 means this fails between 00:30 and
-			// 01:30 and passes the other 22 hours.
-			const day = format(subDays(new Date(), i), "yyyy-MM-dd");
+			// The same helper the production code keys buckets with, imported
+			// rather than restated: hand-rolling a UTC key here silently misses
+			// one bucket whenever the local and UTC calendars disagree, for a
+			// window as wide as the UTC offset, and CI runs UTC so it never sees it.
+			const day = dailyBucketKey(subDays(new Date(), i));
 			buckets.daily.set(day, {
 				inputTokens: 0,
 				outputTokens: 100_000,

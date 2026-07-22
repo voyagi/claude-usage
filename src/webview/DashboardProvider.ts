@@ -14,6 +14,7 @@ import {
 import * as vscode from "vscode";
 import type { UsageAttribution } from "../aggregation/attribution.js";
 import { computeAttribution } from "../aggregation/attribution.js";
+import { dailyBucketKey } from "../aggregation/timeBuckets.js";
 import { shouldShowCost } from "../config/costVisibility.js";
 import type { WeeklyCapForecast } from "../core/burnRate.js";
 import {
@@ -132,7 +133,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		hasCustomPricing: boolean = false,
 	): Omit<DashboardData, "unparsedUsageRecords" | "attribution"> {
 		const now = new Date();
-		const today = format(now, "yyyy-MM-dd");
+		const today = dailyBucketKey(now);
 
 		// 1. Token breakdown - get cache tokens from today's daily bucket
 		const todayBucket = buckets.daily.get(today);
@@ -356,7 +357,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			// be a misleading 24/7 extrapolation.
 			let last7DaysOutput = 0;
 			for (let i = 0; i < 7; i++) {
-				const day = format(subDays(now, i), "yyyy-MM-dd");
+				const day = dailyBucketKey(subDays(now, i));
 				last7DaysOutput += buckets.daily.get(day)?.outputTokens ?? 0;
 			}
 			weeklyForecast = forecastWeeklyCap(
