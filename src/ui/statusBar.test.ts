@@ -572,6 +572,32 @@ describe("StatusBarManager: tooltip content", () => {
 		expect(sessionItem.tooltip.value).toContain("500,000 tokens");
 	});
 
+	it("re-renders when only the cost-visibility decision changes", () => {
+		const { manager, sessionItem } = createManager();
+
+		// Identical limit percentages and costs; the ONLY difference is that
+		// credits become enabled. The render signature has to notice, or the
+		// tooltip keeps showing tokens until some unrelated number moves.
+		const withoutCredits = makeStatusBarData();
+		manager.update(withoutCredits);
+		expect(sessionItem.tooltip.value).not.toContain("$1.50");
+
+		const apiWithCredits = {
+			...(withoutCredits.apiUsage as NonNullable<StatusBarData["apiUsage"]>),
+			spend: {
+				used: 1.5,
+				limit: 50,
+				percent: 3,
+				currency: "USD",
+				severity: "normal",
+				enabled: true,
+			},
+		};
+		manager.update(makeStatusBarData({ apiUsage: apiWithCredits }));
+
+		expect(sessionItem.tooltip.value).toContain("$1.50");
+	});
+
 	it("includes cost in the tooltip once credits are enabled", () => {
 		const { manager, sessionItem } = createManager();
 

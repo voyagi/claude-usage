@@ -180,6 +180,27 @@ describe("DashboardProvider credits summary", () => {
 		).toBeNull();
 	});
 
+	it("derives the used amount when the payload reports only a utilization", () => {
+		// Some payloads carry a limit and a utilization but no used amount.
+		// Treating that as 0 would derive 0/limit and discard the utilization,
+		// showing "$0 of $200" with an empty bar on an account with real spend.
+		const result = buildSpendSummary(
+			api({
+				extraUsage: {
+					isEnabled: true,
+					creditsUsed: null,
+					creditsTotal: 200,
+					utilization: 0.35,
+					currency: "USD",
+					disabledReason: null,
+				},
+			}),
+		);
+
+		expect(result?.used).toBeCloseTo(70, 6);
+		expect(result?.percentage).toBeCloseTo(35, 6);
+	});
+
 	it("uses reported utilization when there is no credit total to divide by", () => {
 		const result = buildSpendSummary(
 			api({

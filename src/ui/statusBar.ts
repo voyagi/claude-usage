@@ -127,9 +127,14 @@ export class StatusBarManager {
 		// Two-letter prefix from the model name, e.g. "Fable" -> "Fa:"
 		const scopedPrefix = scopedLabel ? scopedLabel.slice(0, 2) : "";
 
-		// Skip redundant re-renders via signature hash
+		// Skip redundant re-renders via signature hash. Everything the tooltip
+		// renders has to appear here, including the cost-visibility decision:
+		// otherwise flipping showCostEstimates, or credits being detected for
+		// the first time, changes nothing on screen until some unrelated
+		// percentage happens to move.
 		const staleness = data.staleness;
-		const signature = `${sessionPct}|${weeklyPct}|${scopedLabel ?? "-"}:${scopedPct}|${staleness}|${sCd}|${wCd}|${soCd}|${data.todayCost.toFixed(2)}|${Math.round(data.burnRate)}`;
+		const showCost = shouldShowCost(api);
+		const signature = `${sessionPct}|${weeklyPct}|${scopedLabel ?? "-"}:${scopedPct}|${staleness}|${sCd}|${wCd}|${soCd}|${showCost}|${data.todayCost.toFixed(2)}|${data.monthCost.toFixed(2)}|${data.todayTokens}|${data.monthTokens}|${Math.round(data.burnRate)}`;
 		if (signature === this.lastSignature) return;
 		this.lastSignature = signature;
 

@@ -106,8 +106,16 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 
 		const extra = api?.extraUsage;
 		if (extra?.isEnabled === true) {
-			const used = extra.creditsUsed ?? 0;
 			const limit = extra.creditsTotal;
+			// Some payloads report a limit and a utilization but no used amount.
+			// Defaulting that to 0 would make share() derive 0/limit and throw
+			// away the utilization the parser did preserve, rendering "$0 of $N"
+			// beside an empty bar on an account with real spend.
+			const used =
+				extra.creditsUsed ??
+				(limit !== null && extra.utilization !== null
+					? limit * extra.utilization
+					: 0);
 			return {
 				used,
 				limit,
