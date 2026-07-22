@@ -661,7 +661,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		const filtered = this._records.filter((r) => {
 			switch (periodType) {
 				case "daily":
-					return format(r.timestamp, "yyyy-MM-dd") === period;
+					// `period` is a daily bucket key round-tripped through the
+					// webview, so it has to be compared using the same derivation.
+					return dailyBucketKey(r.timestamp) === period;
 				case "weekly": {
 					const wy = getISOWeekYear(r.timestamp);
 					const wn = getISOWeek(r.timestamp);

@@ -12,6 +12,7 @@ import {
 	startOfWeek,
 	subHours,
 } from "date-fns";
+import { dailyBucketKey } from "../aggregation/timeBuckets.js";
 import { getStaleness } from "../api/usageCache.js";
 import { getPlanConfig } from "../pricing/plans.js";
 import type {
@@ -224,7 +225,7 @@ export function buildStatusBarData(
 	lastKnownScopedModel?: string | null,
 ): StatusBarData {
 	const now = new Date();
-	const today = format(now, "yyyy-MM-dd");
+	const today = dailyBucketKey(now);
 	const thisMonth = format(now, "yyyy-MM");
 
 	// Aggregate totals from all daily buckets
