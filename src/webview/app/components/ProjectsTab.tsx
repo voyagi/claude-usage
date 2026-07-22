@@ -62,7 +62,10 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 	});
 
 	const handleSort = (key: SortKey) => {
-		if (key === sortKey) {
+		// Compare against the EFFECTIVE key: once it has diverged from sortKey,
+		// the first click on the column actually showing the arrow would
+		// otherwise be swallowed as a no-op.
+		if (key === effectiveSortKey) {
 			setSortAsc(!sortAsc);
 		} else {
 			setSortKey(key);

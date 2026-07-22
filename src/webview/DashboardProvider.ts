@@ -14,6 +14,7 @@ import {
 import * as vscode from "vscode";
 import type { UsageAttribution } from "../aggregation/attribution.js";
 import { computeAttribution } from "../aggregation/attribution.js";
+import { shouldShowCost } from "../config/costVisibility.js";
 import type { WeeklyCapForecast } from "../core/burnRate.js";
 import {
 	forecastWeeklyCap,
@@ -227,19 +228,9 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		// whichever shape their account reports.
 		const spend = DashboardProvider._buildSpendSummary(api);
 
-		// Dollar figures are an API-equivalent estimate, not what a subscriber
-		// pays: on a subscription the bill is flat and a "$8,906 month" is
-		// actively misleading. Show money only when money is actually in play,
-		// unless the user asks otherwise.
-		const costMode = vscode.workspace
-			.getConfiguration("claude-usage")
-			.get<"auto" | "always" | "never">("showCostEstimates", "auto");
-		const showCost =
-			costMode === "always"
-				? true
-				: costMode === "never"
-					? false
-					: spend !== null;
+		// Shared with the status bar tooltip so the two cannot disagree about
+		// whether this account deals in money.
+		const showCost = shouldShowCost(api);
 
 		// 4. Session timing - use API reset time when available
 		let windowStart: string | null = null;

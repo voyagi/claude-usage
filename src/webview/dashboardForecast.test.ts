@@ -186,16 +186,38 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 	});
 
 	it("falls back to the local estimate when there is no API data at all", () => {
-		const result = build(
+		// Buckets populated on purpose: with them empty the local forecast is
+		// null anyway, and this would pass even if the fallback branch were
+		// deleted outright.
+		const buckets = emptyBuckets();
+		for (let i = 0; i < 7; i++) {
+			const day = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10);
+			buckets.daily.set(day, {
+				inputTokens: 0,
+				outputTokens: 100_000,
+				cacheCreationTokens: 0,
+				cacheReadTokens: 0,
+				totalCost: 0,
+				messageCount: 1,
+				firstMessage: null,
+				lastMessage: null,
+			});
+		}
+
+		const result = DashboardProvider.buildDashboardData(
+			buckets,
 			statusBarData(null, {
 				currentTokens: 100_000,
 				estimatedLimit: 900_000,
 				resetTime: new Date(Date.now() + 3 * DAY_MS),
 			}),
+			"max5",
 		);
 
-		// No daily buckets means no pace, so no forecast rather than a fake one
-		expect(result.weeklyForecast?.isFromApi ?? false).toBe(false);
+		// A forecast IS produced here, and it is the local one
+		expect(result.weeklyForecast).not.toBeNull();
+		expect(result.weeklyForecast?.isFromApi).toBe(false);
+		expect(result.weeklyForecast?.avgDailyTokens).toBe(100_000);
 	});
 
 	it("stays silent in the first day of the API window", () => {
