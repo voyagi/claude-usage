@@ -340,17 +340,21 @@ export function TrendsTab({ data }: TrendsTabProps) {
 											fontWeight: 600,
 										}}
 									>
-										{data.showCost ? "Cost" : "Tokens"}
+										{/* Without cost this column would repeat the Total
+										    column beside it: both are the same token sum. */}
+										{data.showCost ? "Cost" : "Avg/Msg"}
 									</th>
-									<th
-										style={{
-											padding: "8px",
-											textAlign: "right",
-											fontWeight: 600,
-										}}
-									>
-										Avg/Msg
-									</th>
+									{data.showCost && (
+										<th
+											style={{
+												padding: "8px",
+												textAlign: "right",
+												fontWeight: 600,
+											}}
+										>
+											Avg/Msg
+										</th>
+									)}
 								</tr>
 							</thead>
 							<tbody>
@@ -399,23 +403,27 @@ export function TrendsTab({ data }: TrendsTabProps) {
 										>
 											{data.showCost
 												? formatCurrency(point.totalCost)
-												: formatCompact(pointTokens(point))}
-										</td>
-										<td
-											style={{
-												padding: "8px",
-												textAlign: "right",
-												color: "var(--vscode-descriptionForeground)",
-											}}
-										>
-											{point.messageCount === 0
-												? "-"
-												: data.showCost
-													? formatCurrency(point.totalCost / point.messageCount)
+												: point.messageCount === 0
+													? "-"
 													: formatCompact(
 															pointTokens(point) / point.messageCount,
 														)}
 										</td>
+										{data.showCost && (
+											<td
+												style={{
+													padding: "8px",
+													textAlign: "right",
+													color: "var(--vscode-descriptionForeground)",
+												}}
+											>
+												{point.messageCount === 0
+													? "-"
+													: formatCurrency(
+															point.totalCost / point.messageCount,
+														)}
+											</td>
+										)}
 									</tr>
 								))}
 								<tr
@@ -445,22 +453,30 @@ export function TrendsTab({ data }: TrendsTabProps) {
 										{formatNumber(grandTotalTokens)}
 									</td>
 									<td style={{ padding: "8px", textAlign: "right" }}>
-										{data.showCost
-											? formatCurrency(totalCost)
-											: formatCompact(totalTokens)}
-									</td>
-									<td style={{ padding: "8px", textAlign: "right" }}>
 										{(() => {
 											const messages = data.trendData.reduce(
 												(s, p) => s + p.messageCount,
 												0,
 											);
-											if (messages === 0) return "-";
-											return data.showCost
-												? formatCurrency(totalCost / messages)
+											if (data.showCost) return formatCurrency(totalCost);
+											return messages === 0
+												? "-"
 												: formatCompact(totalTokens / messages);
 										})()}
 									</td>
+									{data.showCost && (
+										<td style={{ padding: "8px", textAlign: "right" }}>
+											{(() => {
+												const messages = data.trendData.reduce(
+													(s, p) => s + p.messageCount,
+													0,
+												);
+												return messages === 0
+													? "-"
+													: formatCurrency(totalCost / messages);
+											})()}
+										</td>
+									)}
 								</tr>
 							</tbody>
 						</table>

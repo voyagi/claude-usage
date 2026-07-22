@@ -80,6 +80,8 @@ function statusBarData(
 		totalCost: 0,
 		todayCost: 0,
 		monthCost: 0,
+		todayTokens: 0,
+		monthTokens: 0,
 		burnRate: 0,
 		rateLimits: {
 			session5h: limit("Session (5hr)"),
@@ -143,22 +145,44 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 		);
 	});
 
-	it("does not use the API path when the API gave no reset time", () => {
-		// Regression: api.sevenDay is truthy whenever a percentage parsed, but
-		// resets_at is separately nullable. Taking the reset from the local ISO
-		// week instead would divide an API utilization by a Monday boundary --
-		// red every Monday morning, blind every Sunday night.
-		const result = build(
+	it("shows no forecast at all when the API gave no reset time", () => {
+		// Regression in two layers. api.sevenDay is truthy whenever a percentage
+		// parsed, but resets_at is separately nullable, so the API path cannot
+		// run -- and falling back to the LOCAL forecast here puts the
+		// 373%-of-plan-cap artefact back on screen, in red, captioned "no live
+		// limit data", underneath a bar showing the API's exact percentage.
+		//
+		// Daily buckets are populated deliberately: with them empty the local
+		// forecast returns null for an unrelated reason and this assertion
+		// passes while testing nothing.
+		const buckets = emptyBuckets();
+		for (let i = 0; i < 7; i++) {
+			const day = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10);
+			buckets.daily.set(day, {
+				inputTokens: 0,
+				outputTokens: 480_000,
+				cacheCreationTokens: 0,
+				cacheReadTokens: 0,
+				totalCost: 0,
+				messageCount: 1,
+				firstMessage: null,
+				lastMessage: null,
+			});
+		}
+
+		const result = DashboardProvider.buildDashboardData(
+			buckets,
 			statusBarData(api({ sevenDay: { utilization: 0.65, resetsAt: null } }), {
-				currentTokens: 100,
+				currentTokens: 3_361_708,
 				estimatedLimit: 900_000,
-				resetTime: new Date(Date.now() + 0.4 * DAY_MS),
+				resetTime: new Date(Date.now() + 3 * DAY_MS),
 			}),
+			"max5",
 		);
 
-		// Either no forecast, or the local one -- but never an API projection
-		// built on a local calendar boundary.
-		expect(result.weeklyForecast?.isFromApi ?? false).toBe(false);
+		// Not merely "not from the API": nothing at all, because the only other
+		// source available here is the one known to be wrong.
+		expect(result.weeklyForecast).toBeNull();
 	});
 
 	it("falls back to the local estimate when there is no API data at all", () => {

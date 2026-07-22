@@ -229,11 +229,16 @@ export class StatusBarManager {
 		// Same rule as the dashboard: a per-token cost is an API-equivalent
 		// estimate, not a subscriber's bill, so it only appears when the account
 		// actually spends money.
-		// The token totals further down carry the same information without
-		// implying a bill, so there is nothing to substitute here.
+		// The **Tokens:** line further down is all-time, so dropping this one
+		// without a replacement would leave the tooltip with no per-period
+		// figure at all.
 		if (shouldShowCost(api)) {
 			tooltip.appendMarkdown(
 				`**Today:** ${formatCost(data.todayCost)} | **Month:** ${formatCost(data.monthCost)}\n\n`,
+			);
+		} else {
+			tooltip.appendMarkdown(
+				`**Today:** ${formatTokensExact(data.todayTokens)} | **Month:** ${formatTokensExact(data.monthTokens)} tokens\n\n`,
 			);
 		}
 

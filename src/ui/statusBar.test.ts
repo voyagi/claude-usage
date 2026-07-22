@@ -79,6 +79,8 @@ function makeStatusBarData(
 		totalCost: 5.0,
 		todayCost: 1.5,
 		monthCost: 30.0,
+		todayTokens: 25_000,
+		monthTokens: 500_000,
 		burnRate: 500,
 		rateLimits: {
 			session5h: makeRateLimitInfo("Session (5hr)", 40),
@@ -561,10 +563,13 @@ describe("StatusBarManager: tooltip content", () => {
 		// not a bill, so it must not appear next to real limit percentages.
 		manager.update(makeStatusBarData({ todayCost: 3.5, monthCost: 45.0 }));
 
-		expect(sessionItem.tooltip.value).not.toContain("**Today:**");
+		// No dollar figure...
 		expect(sessionItem.tooltip.value).not.toContain("$3.50");
-		// The token totals still carry the same information
-		expect(sessionItem.tooltip.value).toContain("Tokens:");
+		expect(sessionItem.tooltip.value).not.toContain("$45.00");
+		// ...but the per-period line survives in tokens. Dropping it entirely
+		// would leave the tooltip with only all-time totals.
+		expect(sessionItem.tooltip.value).toContain("**Today:** 25,000");
+		expect(sessionItem.tooltip.value).toContain("500,000 tokens");
 	});
 
 	it("includes cost in the tooltip once credits are enabled", () => {

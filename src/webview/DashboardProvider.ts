@@ -355,7 +355,11 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				api.sevenDay.utilization,
 				apiWeeklyResetDays,
 			);
-		} else {
+		} else if (!api?.sevenDay) {
+			// Only when there is NO API reading at all. Falling back here merely
+			// because `resets_at` was null would put the local 373%-of-plan-cap
+			// artefact back on screen -- in red, captioned "no live limit data",
+			// directly under a bar showing the API's exact percentage.
 			const daysUntilWeeklyReset = daysUntil(weekly.resetTime) ?? 0;
 			// Trailing 7-day average, not the short-window burn rate: that would
 			// be a misleading 24/7 extrapolation.

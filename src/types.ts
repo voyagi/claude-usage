@@ -298,6 +298,10 @@ export interface StatusBarData {
 	totalCost: number;
 	todayCost: number;
 	monthCost: number;
+	/** Today's tokens (all four kinds), shown where cost is hidden. */
+	todayTokens: number;
+	/** This month's tokens (all four kinds), shown where cost is hidden. */
+	monthTokens: number;
 	burnRate: number; // tokens per minute, 0 if no recent activity
 	rateLimits: RateLimitStatus;
 	apiUsage: ApiUsageData | null; // exact percentages from Anthropic API (when available)

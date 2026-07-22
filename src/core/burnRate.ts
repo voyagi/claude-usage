@@ -191,6 +191,17 @@ const WEEKLY_WINDOW_DAYS = 7;
 const MIN_ELAPSED_DAYS_FOR_FORECAST = 1;
 
 /**
+ * Utilization above which the elapsed-time guard is waived.
+ *
+ * The guard exists so a trivial amount of usage cannot be extrapolated into an
+ * alarm. Past half the weekly limit nothing about the usage is trivial: burning
+ * that much inside the first day is exactly the case worth warning about, and
+ * staying silent because the window is young would trade a false alarm for a
+ * missed one.
+ */
+const FORECAST_REGARDLESS_ABOVE_UTILIZATION = 0.5;
+
+/**
  * Forecast the weekly cap from the API's own utilization.
  *
  * Preferred over the local-token version whenever the API is reachable, because
@@ -220,11 +231,17 @@ export function forecastWeeklyCapFromUtilization(
 	// Too early in the window to extrapolate, or nothing used yet. The upper
 	// guard also covers a reset instant, clock skew, and a window that turns out
 	// not to be 7 days, all of which would otherwise divide by <= 0.
-	if (
-		elapsedDays < MIN_ELAPSED_DAYS_FOR_FORECAST ||
-		daysUntilReset <= 0 ||
-		utilization <= 0
-	) {
+	// Absolute requirements. elapsedDays > 0 is not negotiable by the heavy-usage
+	// escape hatch below: at zero elapsed the pace is a division by zero, which
+	// yields Infinity and a confident "0 days to the cap".
+	if (elapsedDays <= 0 || daysUntilReset <= 0 || utilization <= 0) {
+		return null;
+	}
+
+	const tooEarlyToExtrapolate =
+		elapsedDays < MIN_ELAPSED_DAYS_FOR_FORECAST &&
+		utilization < FORECAST_REGARDLESS_ABOVE_UTILIZATION;
+	if (tooEarlyToExtrapolate) {
 		return null;
 	}
 

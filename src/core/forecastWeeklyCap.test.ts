@@ -58,9 +58,23 @@ describe("forecastWeeklyCapFromUtilization", () => {
 		// swallows the whole first-day case too
 		const atBoundary = forecastWeeklyCapFromUtilization(0.2, 6);
 		expect(atBoundary).not.toBeNull();
-		// 20% in 1 day => 20%/day => remaining 80% lasts 4 days, reset in 6 => safe
+		// 20% in 1 day => 20%/day => remaining 80% lasts 4 days, and the reset is
+		// 6 days out, so the cap arrives first: this SHOULD warn
 		expect(atBoundary?.daysUntilCap).toBeCloseTo(4, 6);
 		expect(atBoundary?.willExceedBeforeReset).toBe(true);
+	});
+
+	it("still forecasts early in the window once usage is already heavy", () => {
+		// The elapsed guard exists so a trivial amount cannot be extrapolated
+		// into an alarm. Half the weekly limit burned in the first day is not
+		// trivial, and staying silent there would trade a false alarm for a
+		// missed one -- the more dangerous of the two.
+		const halfDayIn = forecastWeeklyCapFromUtilization(0.6, 7 - 0.5);
+		expect(halfDayIn).not.toBeNull();
+		expect(halfDayIn?.willExceedBeforeReset).toBe(true);
+
+		// And the trivial-usage case at the same elapsed time stays silent
+		expect(forecastWeeklyCapFromUtilization(0.05, 7 - 0.5)).toBeNull();
 	});
 
 	it("returns null at or past the reset instant", () => {

@@ -43,14 +43,20 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 
 	const projects = data.projects ?? [];
 
+	// Credits can be turned off while the table is sorted by Cost, which would
+	// leave it ordered by a column that is no longer rendered and no arrow to
+	// explain why.
+	const effectiveSortKey: SortKey =
+		!data.showCost && sortKey === "totalCost" ? "totalTokens" : sortKey;
+
 	const sorted = [...projects].sort((a, b) => {
 		let cmp: number;
-		if (sortKey === "project") {
+		if (effectiveSortKey === "project") {
 			cmp = a.project.localeCompare(b.project);
-		} else if (sortKey === "totalTokens") {
+		} else if (effectiveSortKey === "totalTokens") {
 			cmp = rowTotal(a) - rowTotal(b);
 		} else {
-			cmp = a[sortKey] - b[sortKey];
+			cmp = a[effectiveSortKey] - b[effectiveSortKey];
 		}
 		return sortAsc ? cmp : -cmp;
 	});
@@ -74,8 +80,10 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 		cursor: "pointer",
 		userSelect: "none",
 	};
+	// Keyed on the effective sort so the arrow always marks the column the rows
+	// are actually ordered by
 	const arrow = (key: SortKey) =>
-		sortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
+		effectiveSortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
 
 	return (
 		<div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>

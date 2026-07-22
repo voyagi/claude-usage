@@ -15,6 +15,7 @@ import {
 import { getStaleness } from "../api/usageCache.js";
 import { getPlanConfig } from "../pricing/plans.js";
 import type {
+	AggregatedUsage,
 	ApiUsageData,
 	PlanType,
 	RateLimitInfo,
@@ -240,12 +241,23 @@ export function buildStatusBarData(
 	const todayData = buckets.daily.get(today);
 	const monthData = buckets.monthly.get(thisMonth);
 
+	/** All four token kinds, matching what the dashboard's breakdown shows. */
+	const allTokens = (agg: AggregatedUsage | undefined): number =>
+		agg
+			? agg.inputTokens +
+				agg.outputTokens +
+				agg.cacheCreationTokens +
+				agg.cacheReadTokens
+			: 0;
+
 	return {
 		totalInputTokens,
 		totalOutputTokens,
 		totalCost,
 		todayCost: todayData?.totalCost ?? 0,
 		monthCost: monthData?.totalCost ?? 0,
+		todayTokens: allTokens(todayData),
+		monthTokens: allTokens(monthData),
 		burnRate:
 			burnRateOverride !== undefined
 				? burnRateOverride
