@@ -158,10 +158,72 @@ export function predictTimeUntilLimit(
  * under-served question "will I hit my weekly cap before it resets?".
  */
 export interface WeeklyCapForecast {
-	avgDailyTokens: number; // recent average daily output tokens
 	daysUntilCap: number; // days to exhaust the remaining weekly budget at that pace
 	daysUntilReset: number; // days until the weekly window resets
 	willExceedBeforeReset: boolean; // daysUntilCap < daysUntilReset
+	/**
+	 * Recent average daily output tokens. Only set for the local-estimate
+	 * forecast; null when the projection came from the API, where there is no
+	 * token figure to quote.
+	 */
+	avgDailyTokens: number | null;
+	/**
+	 * True when derived from the API's own utilization. A local forecast is a
+	 * guess against a community-estimated plan cap and must say so.
+	 */
+	isFromApi: boolean;
+}
+
+/** A weekly limit window is 7 days. */
+const WEEKLY_WINDOW_DAYS = 7;
+
+/**
+ * Forecast the weekly cap from the API's own utilization.
+ *
+ * Preferred over the local-token version whenever the API is reachable, because
+ * the two disagree badly: local output tokens are counted over an ISO calendar
+ * week and compared against a community-estimated plan cap, while the API
+ * reports a true percentage over its own rolling window. On a real account the
+ * local view read 373% of cap ("you will hit the cap within the hour") while the
+ * API read 65% with two days left -- the warning was pure artefact.
+ *
+ * Pace is the average across the elapsed part of the window, which is the only
+ * rate derivable from a single utilization reading. It therefore under-reacts to
+ * a burst that started recently.
+ *
+ * @param utilization Fraction of the weekly limit consumed (0-1)
+ * @param daysUntilReset Days until the weekly window resets
+ * @returns Forecast, or null when a pace cannot be derived yet
+ */
+export function forecastWeeklyCapFromUtilization(
+	utilization: number,
+	daysUntilReset: number,
+): WeeklyCapForecast | null {
+	if (Number.isNaN(utilization) || Number.isNaN(daysUntilReset)) {
+		return null;
+	}
+
+	const elapsedDays = WEEKLY_WINDOW_DAYS - daysUntilReset;
+	// Just-reset window: no elapsed time to average over, so no pace exists yet.
+	if (elapsedDays <= 0 || utilization <= 0) {
+		return null;
+	}
+
+	const usedPercent = Math.min(100, utilization * 100);
+	const percentPerDay = usedPercent / elapsedDays;
+	if (percentPerDay <= 0) {
+		return null;
+	}
+
+	const daysUntilCap = Math.min((100 - usedPercent) / percentPerDay, 999);
+
+	return {
+		daysUntilCap,
+		daysUntilReset,
+		willExceedBeforeReset: daysUntilCap < daysUntilReset,
+		avgDailyTokens: null,
+		isFromApi: true,
+	};
 }
 
 /**
@@ -202,5 +264,6 @@ export function forecastWeeklyCap(
 		daysUntilCap,
 		daysUntilReset,
 		willExceedBeforeReset: daysUntilCap < daysUntilReset,
+		isFromApi: false,
 	};
 }

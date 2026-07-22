@@ -14,7 +14,11 @@ import {
 import * as vscode from "vscode";
 import type { UsageAttribution } from "../aggregation/attribution.js";
 import { computeAttribution } from "../aggregation/attribution.js";
-import { forecastWeeklyCap } from "../core/burnRate.js";
+import type { WeeklyCapForecast } from "../core/burnRate.js";
+import {
+	forecastWeeklyCap,
+	forecastWeeklyCapFromUtilization,
+} from "../core/burnRate.js";
 import type {
 	AggregatedUsage,
 	RateLimitInfo,
@@ -65,6 +69,46 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	}
 
 	/**
+	 * Usage credits the account actually has, or null when it has none.
+	 *
+	 * The API describes these two ways and an account may report either: the
+	 * current `spend` object, and the older `extra_usage` one. Reading only
+	 * `spend` would hide bought credits from anyone still served the old shape.
+	 */
+	private static _buildSpendSummary(
+		api: StatusBarData["apiUsage"],
+	): SpendSummary | null {
+		const spend = api?.spend;
+		if (spend?.enabled === true) {
+			return {
+				used: spend.used,
+				limit: spend.limit,
+				percentage: spend.percent,
+				currency: spend.currency,
+			};
+		}
+
+		const extra = api?.extraUsage;
+		if (extra?.isEnabled === true) {
+			const used = extra.creditsUsed ?? 0;
+			const limit = extra.creditsTotal;
+			return {
+				used,
+				limit,
+				// Prefer a percentage derived from real amounts; utilization is
+				// already normalised to 0-1 by the API parser.
+				percentage:
+					limit !== null && limit > 0
+						? Math.min(100, (used / limit) * 100)
+						: (extra.utilization ?? 0) * 100,
+				currency: extra.currency ?? "USD",
+			};
+		}
+
+		return null;
+	}
+
+	/**
 	 * Transform internal TimeBuckets + StatusBarData into webview-safe DashboardData.
 	 * This is the core data transformation pipeline for the dashboard.
 	 */
@@ -88,6 +132,19 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		const todayCost = statusBarData.todayCost;
 		const monthCost = statusBarData.monthCost;
 		const totalCost = statusBarData.totalCost;
+
+		// Token equivalents, shown instead of cost on a subscription. All four
+		// token kinds, so this matches the Token Breakdown card below rather
+		// than quietly counting only output.
+		const sumTokens = (bucket: AggregatedUsage | undefined): number =>
+			bucket
+				? bucket.inputTokens +
+					bucket.outputTokens +
+					bucket.cacheCreationTokens +
+					bucket.cacheReadTokens
+				: 0;
+		const todayTokens = sumTokens(todayBucket);
+		const monthTokens = sumTokens(buckets.monthly.get(format(now, "yyyy-MM")));
 
 		// 3. Rate limits - use API data when available, fall back to JSONL estimates
 		const api = statusBarData.apiUsage;
@@ -153,17 +210,26 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			});
 		}
 
-		// Usage credits, shown only when the account actually has them enabled
-		const spendSource = api?.spend;
-		const spend: SpendSummary | null =
-			spendSource?.enabled === true
-				? {
-						used: spendSource.used,
-						limit: spendSource.limit,
-						percentage: spendSource.percent,
-						currency: spendSource.currency,
-					}
-				: null;
+		// Usage credits, shown only when the account actually has them enabled.
+		// Two API objects describe the same thing: `spend` (current) and
+		// `extra_usage` (older, still populated on some accounts). Prefer spend,
+		// fall back to extra_usage, so a user who bought credits sees them
+		// whichever shape their account reports.
+		const spend = DashboardProvider._buildSpendSummary(api);
+
+		// Dollar figures are an API-equivalent estimate, not what a subscriber
+		// pays: on a subscription the bill is flat and a "$8,906 month" is
+		// actively misleading. Show money only when money is actually in play,
+		// unless the user asks otherwise.
+		const costMode = vscode.workspace
+			.getConfiguration("claude-usage")
+			.get<"auto" | "always" | "never">("showCostEstimates", "auto");
+		const showCost =
+			costMode === "always"
+				? true
+				: costMode === "never"
+					? false
+					: spend !== null;
 
 		// 4. Session timing - use API reset time when available
 		let windowStart: string | null = null;
@@ -252,15 +318,15 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			}))
 			.sort((a, b) => b.totalCost - a.totalCost);
 
-		// 10. Weekly-cap forecast from recent daily output (trailing 7-day average).
-		// Uses daily consumption, not the short-window burn rate, so it isn't a
-		// misleading 24/7 extrapolation.
-		let last7DaysOutput = 0;
-		for (let i = 0; i < 7; i++) {
-			const day = format(subDays(now, i), "yyyy-MM-dd");
-			last7DaysOutput += buckets.daily.get(day)?.outputTokens ?? 0;
-		}
-		const avgDailyOutput = last7DaysOutput / 7;
+		// 10. Weekly-cap forecast.
+		//
+		// Prefer the API's own utilization. The local alternative counts output
+		// tokens over an ISO calendar week and compares them against a
+		// community-estimated plan cap, and the two do not describe the same
+		// thing: on a real account the local view read 373% of cap while the API
+		// read 65%, producing a red "you will hit the cap within the hour"
+		// warning next to a two-thirds-full bar. Only fall back to local when
+		// there is no API reading at all, and mark it as the guess it is.
 		const weeklyResetMs = weekly.resetTime
 			? new Date(weekly.resetTime).getTime() - now.getTime()
 			: 0;
@@ -268,12 +334,28 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			0,
 			weeklyResetMs / (24 * 60 * 60 * 1000),
 		);
-		const weeklyForecast = forecastWeeklyCap(
-			weekly.currentTokens,
-			weekly.estimatedLimit,
-			avgDailyOutput,
-			daysUntilWeeklyReset,
-		);
+
+		let weeklyForecast: WeeklyCapForecast | null = null;
+		if (api?.sevenDay) {
+			weeklyForecast = forecastWeeklyCapFromUtilization(
+				api.sevenDay.utilization,
+				daysUntilWeeklyReset,
+			);
+		} else {
+			// Trailing 7-day average, not the short-window burn rate: that would
+			// be a misleading 24/7 extrapolation.
+			let last7DaysOutput = 0;
+			for (let i = 0; i < 7; i++) {
+				const day = format(subDays(now, i), "yyyy-MM-dd");
+				last7DaysOutput += buckets.daily.get(day)?.outputTokens ?? 0;
+			}
+			weeklyForecast = forecastWeeklyCap(
+				weekly.currentTokens,
+				weekly.estimatedLimit,
+				last7DaysOutput / 7,
+				daysUntilWeeklyReset,
+			);
+		}
 
 		return {
 			inputTokens: statusBarData.totalInputTokens,
@@ -283,10 +365,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			todayCost,
 			monthCost,
 			totalCost,
+			todayTokens,
+			monthTokens,
 			session5h,
 			weekly,
 			scopedWeekly,
 			spend,
+			showCost,
 			apiStaleness: statusBarData.staleness,
 			windowStart,
 			windowExpiry,

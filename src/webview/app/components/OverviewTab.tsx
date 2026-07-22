@@ -2,7 +2,7 @@
  * Overview tab - the main landing page showing key metrics.
  * Displays token breakdown, rate limits, session timing, and burn rate.
  */
-import type { DashboardData } from "../types";
+import type { DashboardData, WeeklyCapForecast } from "../types";
 import { ContributingSection } from "./ContributingSection";
 import { ProgressBar } from "./ProgressBar";
 
@@ -18,10 +18,35 @@ function formatCost(cost: number): string {
 }
 
 /**
+ * Money in the currency the API reported, rather than assuming dollars.
+ */
+function formatMoney(amount: number, currency: string): string {
+	try {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency,
+		}).format(amount);
+	} catch {
+		// Unknown/absent currency code: show the number rather than throwing
+		return `${currency} ${amount.toFixed(2)}`;
+	}
+}
+
+/**
  * Format token count with commas
  */
 function formatTokens(tokens: number): string {
 	return new Intl.NumberFormat("en-US").format(Math.round(tokens));
+}
+
+/**
+ * Short token count for the metric tiles, where a full comma-separated number
+ * would wrap. 3.4M reads better than 3,361,708 at that size.
+ */
+function formatCompactTokens(tokens: number): string {
+	if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+	if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+	return String(Math.round(tokens));
 }
 
 /**
@@ -35,6 +60,33 @@ function formatDays(days: number): string {
 	}
 	const rounded = Math.round(days * 10) / 10;
 	return `${rounded} day${rounded === 1 ? "" : "s"}`;
+}
+
+/**
+ * Sentence for the weekly-cap forecast.
+ *
+ * An API-derived forecast projects the average pace across the elapsed part of
+ * the window, so it says "at your pace so far" rather than quoting a
+ * tokens/day figure that only exists for the local estimate. A local forecast
+ * is a guess against a community-estimated plan cap and says so, because when
+ * the two disagree the local one is usually the wrong one.
+ */
+function forecastText(forecast: WeeklyCapForecast): string {
+	const resets = `resets in ${formatDays(forecast.daysUntilReset)}`;
+
+	if (!forecast.isFromApi) {
+		const pace =
+			forecast.avgDailyTokens !== null
+				? `~${formatTokens(forecast.avgDailyTokens)} tokens/day`
+				: "your recent pace";
+		return forecast.willExceedBeforeReset
+			? `Estimated from local logs (no live limit data): at ${pace} you would reach the estimated cap in ~${formatDays(forecast.daysUntilCap)}, before it ${resets}.`
+			: `Estimated from local logs (no live limit data): ~${formatDays(forecast.daysUntilCap)} to the estimated cap at ${pace}; ${resets}.`;
+	}
+
+	return forecast.willExceedBeforeReset
+		? `⚠ At your pace so far this week you'd reach the weekly limit in ~${formatDays(forecast.daysUntilCap)}, before it ${resets}.`
+		: `On track: ~${formatDays(forecast.daysUntilCap)} to the weekly limit at your pace so far; ${resets}.`;
 }
 
 /**
@@ -96,16 +148,37 @@ export function OverviewTab({ data }: OverviewTabProps) {
 
 	return (
 		<div>
-			{/* Section 1: Key Metrics Summary */}
+			{/* Section 1: Key Metrics Summary.
+			    On a subscription the money figures are an API-equivalent estimate,
+			    not a bill, so tokens are shown instead unless credits are in play. */}
 			<div className="metrics-summary">
-				<div className="metric-card">
-					<div className="metric-value">{formatCost(data.todayCost)}</div>
-					<div className="metric-label">Today's Cost</div>
-				</div>
-				<div className="metric-card">
-					<div className="metric-value">{formatCost(data.monthCost)}</div>
-					<div className="metric-label">Month Cost</div>
-				</div>
+				{data.showCost ? (
+					<>
+						<div className="metric-card">
+							<div className="metric-value">{formatCost(data.todayCost)}</div>
+							<div className="metric-label">Today's Cost</div>
+						</div>
+						<div className="metric-card">
+							<div className="metric-value">{formatCost(data.monthCost)}</div>
+							<div className="metric-label">Month Cost</div>
+						</div>
+					</>
+				) : (
+					<>
+						<div className="metric-card">
+							<div className="metric-value">
+								{formatCompactTokens(data.todayTokens)}
+							</div>
+							<div className="metric-label">Today's Tokens</div>
+						</div>
+						<div className="metric-card">
+							<div className="metric-value">
+								{formatCompactTokens(data.monthTokens)}
+							</div>
+							<div className="metric-label">Month Tokens</div>
+						</div>
+					</>
+				)}
 				<div className="metric-card">
 					<div className="metric-value">{data.tokensPerMinute.toFixed(1)}</div>
 					<div className="metric-label">Tokens/Min</div>
@@ -117,7 +190,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 			</div>
 
 			{/* Custom pricing badge */}
-			{data.hasCustomPricing && (
+			{data.showCost && data.hasCustomPricing && (
 				<div
 					style={{
 						fontSize: "10px",
@@ -220,23 +293,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 								: "var(--vscode-descriptionForeground)",
 						}}
 					>
-						{data.weeklyForecast.willExceedBeforeReset
-							? `⚠ At ~${formatTokens(data.weeklyForecast.avgDailyTokens)} tokens/day you'll reach the weekly cap in ~${formatDays(data.weeklyForecast.daysUntilCap)} — before it resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`
-							: `On track: ~${formatDays(data.weeklyForecast.daysUntilCap)} to the weekly cap at your recent pace; resets in ${formatDays(data.weeklyForecast.daysUntilReset)}.`}
-					</div>
-				)}
-				{data.spend && (
-					<div
-						style={{
-							fontSize: "calc(var(--vscode-font-size) * 0.85)",
-							marginBottom: "10px",
-							color: "var(--vscode-descriptionForeground)",
-						}}
-					>
-						Usage credits: {data.spend.currency} {data.spend.used.toFixed(2)}
-						{data.spend.limit !== null
-							? ` of ${data.spend.limit.toFixed(2)} (${data.spend.percentage.toFixed(0)}%)`
-							: " used"}
+						{forecastText(data.weeklyForecast)}
 					</div>
 				)}
 				{data.scopedWeekly.map((limit) => (
@@ -252,6 +309,43 @@ export function OverviewTab({ data }: OverviewTabProps) {
 					/>
 				))}
 			</div>
+
+			{/* Section 3b: Usage credits. Only rendered when the account actually
+			    has extra usage enabled, so a pure subscription never sees it. */}
+			{data.spend && (
+				<div className="card">
+					<h3 className="card-title">Usage Credits</h3>
+					<div className="credits-row">
+						<span className="credits-used">
+							{formatMoney(data.spend.used, data.spend.currency)}
+						</span>
+						{data.spend.limit !== null && (
+							<span className="credits-limit">
+								of {formatMoney(data.spend.limit, data.spend.currency)}
+							</span>
+						)}
+					</div>
+					{data.spend.limit !== null && (
+						<div className="progress-bar">
+							<div
+								className={`progress-fill ${
+									data.spend.percentage >= 95
+										? "critical"
+										: data.spend.percentage >= 60
+											? "warning"
+											: "safe"
+								}`}
+								style={{ width: `${Math.min(data.spend.percentage, 100)}%` }}
+							/>
+						</div>
+					)}
+					<div className="attribution-caption">
+						{data.spend.limit !== null
+							? `${data.spend.percentage.toFixed(0)}% of your credit limit used. Credits cover usage past your plan limits.`
+							: "Credits cover usage past your plan limits."}
+					</div>
+				</div>
+			)}
 
 			{/* Section 4: Session Timing */}
 			<div className="card">

@@ -1,4 +1,67 @@
-import { forecastWeeklyCap } from "./burnRate";
+import {
+	forecastWeeklyCap,
+	forecastWeeklyCapFromUtilization,
+} from "./burnRate";
+
+describe("forecastWeeklyCapFromUtilization", () => {
+	it("projects from the pace across the elapsed part of the window", () => {
+		// 50% used with 3.5 days left => 3.5 days elapsed => 14.29%/day
+		// remaining 50% / 14.29 => 3.5 days
+		const f = forecastWeeklyCapFromUtilization(0.5, 3.5);
+		expect(f?.daysUntilCap).toBeCloseTo(3.5, 6);
+		expect(f?.isFromApi).toBe(true);
+		expect(f?.avgDailyTokens).toBeNull();
+	});
+
+	it("flags an overrun when the pace outruns the reset", () => {
+		// 80% used with 3.5 days left => 22.86%/day; remaining 20% => 0.875 days
+		const f = forecastWeeklyCapFromUtilization(0.8, 3.5);
+		expect(f?.willExceedBeforeReset).toBe(true);
+	});
+
+	it("reports on-track when the reset arrives first", () => {
+		// 20% used with 3.5 days left => 5.71%/day; remaining 80% => 14 days
+		const f = forecastWeeklyCapFromUtilization(0.2, 3.5);
+		expect(f?.willExceedBeforeReset).toBe(false);
+	});
+
+	it("does not warn on the real reading that produced a false alarm", () => {
+		// Regression: the dashboard showed "reach the weekly cap in ~1h" beside a
+		// 65% bar, because the forecast used local output tokens (3.36M over an
+		// ISO week) against the max5 plan default (900k) -- 373% of a cap that
+		// is not this account's. From the API's own numbers, 65% with 1.95 days
+		// left is 12.9%/day, so the remaining 35% lasts 2.7 days: no overrun.
+		const f = forecastWeeklyCapFromUtilization(0.65, 1.954);
+		expect(f?.daysUntilCap).toBeCloseTo(2.72, 1);
+		expect(f?.willExceedBeforeReset).toBe(false);
+	});
+
+	it("returns null before any of the window has elapsed", () => {
+		// A just-reset window has no elapsed time to average a pace over
+		expect(forecastWeeklyCapFromUtilization(0.5, 7)).toBeNull();
+		expect(forecastWeeklyCapFromUtilization(0.5, 8)).toBeNull();
+	});
+
+	it("returns null at zero utilization", () => {
+		expect(forecastWeeklyCapFromUtilization(0, 3)).toBeNull();
+	});
+
+	it("returns null on NaN input rather than rendering NaN days", () => {
+		expect(forecastWeeklyCapFromUtilization(Number.NaN, 3)).toBeNull();
+		expect(forecastWeeklyCapFromUtilization(0.5, Number.NaN)).toBeNull();
+	});
+
+	it("reports no time left once the limit is reached", () => {
+		const f = forecastWeeklyCapFromUtilization(1, 2);
+		expect(f?.daysUntilCap).toBe(0);
+		expect(f?.willExceedBeforeReset).toBe(true);
+	});
+
+	it("clamps utilization above 1 instead of projecting negative days", () => {
+		const f = forecastWeeklyCapFromUtilization(1.2, 2);
+		expect(f?.daysUntilCap).toBe(0);
+	});
+});
 
 describe("forecastWeeklyCap", () => {
 	it("projects days-until-cap from the remaining budget and daily pace", () => {
