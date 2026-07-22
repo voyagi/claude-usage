@@ -161,7 +161,7 @@
 					"enumDescriptions": [
 						"Show cost only when the account has usage credits enabled",
 						"Always show cost estimates",
-						"Never show cost estimates"
+						"Never show cost estimates. Purchased usage credits are still shown, since those are real money rather than an estimate"
 					],
 					"markdownDescription": "Whether to show dollar figures. On a subscription these are an *API-equivalent estimate*, not what you are billed, so `auto` hides them unless you actually have usage credits enabled and shows token totals instead.",
 					"scope": "window"

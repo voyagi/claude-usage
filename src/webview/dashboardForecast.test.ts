@@ -19,6 +19,7 @@ jest.mock(
 	{ virtual: true },
 );
 
+import { format, subDays } from "date-fns";
 import type {
 	AggregatedUsage,
 	ApiUsageData,
@@ -157,7 +158,11 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 		// passes while testing nothing.
 		const buckets = emptyBuckets();
 		for (let i = 0; i < 7; i++) {
-			const day = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10);
+			// Same derivation as the code under test. Hand-rolling a UTC key here
+			// silently misses one bucket whenever local time and UTC fall on
+			// different dates, which on UTC+2 means this fails between 00:30 and
+			// 01:30 and passes the other 22 hours.
+			const day = format(subDays(new Date(), i), "yyyy-MM-dd");
 			buckets.daily.set(day, {
 				inputTokens: 0,
 				outputTokens: 480_000,
@@ -191,7 +196,11 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 		// deleted outright.
 		const buckets = emptyBuckets();
 		for (let i = 0; i < 7; i++) {
-			const day = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10);
+			// Same derivation as the code under test. Hand-rolling a UTC key here
+			// silently misses one bucket whenever local time and UTC fall on
+			// different dates, which on UTC+2 means this fails between 00:30 and
+			// 01:30 and passes the other 22 hours.
+			const day = format(subDays(new Date(), i), "yyyy-MM-dd");
 			buckets.daily.set(day, {
 				inputTokens: 0,
 				outputTokens: 100_000,
