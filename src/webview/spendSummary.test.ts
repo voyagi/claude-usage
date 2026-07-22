@@ -74,12 +74,46 @@ describe("DashboardProvider credits summary", () => {
 			}),
 		);
 
-		expect(result).toEqual({
-			used: 12.34,
-			limit: 50,
-			percentage: 24,
-			currency: "USD",
-		});
+		// Percentage is derived from the real amounts, not the reported 24:
+		// parseSpend defaults `percent` to 0 when the payload omits it, which
+		// would render "$12.34 of $50" beside an empty bar.
+		expect(result).toMatchObject({ used: 12.34, limit: 50, currency: "USD" });
+		expect(result?.percentage).toBeCloseTo(24.68, 6);
+	});
+
+	it("derives the spend percentage rather than trusting a missing one", () => {
+		const result = buildSpendSummary(
+			api({
+				spend: {
+					used: 20,
+					limit: 50,
+					// parseSpend's default when the payload omits `percent`
+					percent: 0,
+					currency: "USD",
+					severity: "normal",
+					enabled: true,
+				},
+			}),
+		);
+
+		expect(result?.percentage).toBeCloseTo(40, 6);
+	});
+
+	it("clamps an over-limit spend balance to 100%", () => {
+		const result = buildSpendSummary(
+			api({
+				spend: {
+					used: 75,
+					limit: 50,
+					percent: 150,
+					currency: "USD",
+					severity: "normal",
+					enabled: true,
+				},
+			}),
+		);
+
+		expect(result?.percentage).toBe(100);
 	});
 
 	it("falls back to extra_usage when spend is absent", () => {

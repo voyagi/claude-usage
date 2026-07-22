@@ -33,6 +33,12 @@ jest.mock(
 				),
 			},
 			StatusBarAlignment: { Right: 2 },
+			// The tooltip asks whether to show cost, which reads settings
+			workspace: {
+				getConfiguration: () => ({
+					get: (_key: string, fallback: unknown) => fallback,
+				}),
+			},
 			MarkdownString: class {
 				value = "";
 				isTrusted = false;
@@ -548,10 +554,44 @@ describe("StatusBarManager: tooltip content", () => {
 		expect(sessionItem.tooltip.value).toContain("Burn Rate");
 	});
 
-	it("includes cost info in tooltip", () => {
+	it("omits cost from the tooltip on a subscription", () => {
 		const { manager, sessionItem } = createManager();
 
+		// No credits enabled: a per-token cost is an API-equivalent estimate,
+		// not a bill, so it must not appear next to real limit percentages.
 		manager.update(makeStatusBarData({ todayCost: 3.5, monthCost: 45.0 }));
+
+		expect(sessionItem.tooltip.value).not.toContain("**Today:**");
+		expect(sessionItem.tooltip.value).not.toContain("$3.50");
+		// The token totals still carry the same information
+		expect(sessionItem.tooltip.value).toContain("Tokens:");
+	});
+
+	it("includes cost in the tooltip once credits are enabled", () => {
+		const { manager, sessionItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				todayCost: 3.5,
+				monthCost: 45.0,
+				apiUsage: {
+					fiveHour: { utilization: 0.4, resetsAt: null },
+					sevenDay: { utilization: 0.25, resetsAt: null },
+					scopedWeekly: [],
+					rateLimitTier: "tier4",
+					extraUsage: null,
+					spend: {
+						used: 3.5,
+						limit: 50,
+						percent: 7,
+						currency: "USD",
+						severity: "normal",
+						enabled: true,
+					},
+					fetchedAt: new Date(),
+				},
+			}),
+		);
 
 		expect(sessionItem.tooltip.value).toContain("Today");
 		expect(sessionItem.tooltip.value).toContain("Month");

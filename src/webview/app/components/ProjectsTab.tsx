@@ -32,7 +32,9 @@ function rowTotal(p: ProjectUsage): number {
 }
 
 export function ProjectsTab({ data }: ProjectsTabProps) {
-	const [sortKey, setSortKey] = useState<SortKey>("totalCost");
+	// Default to tokens rather than cost: the cost column is hidden on a
+	// subscription, and sorting by a column nobody can see is disorienting.
+	const [sortKey, setSortKey] = useState<SortKey>("totalTokens");
 	const [sortAsc, setSortAsc] = useState(false);
 
 	if (!data) {
@@ -149,12 +151,14 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 								>
 									Total{arrow("totalTokens")}
 								</th>
-								<th
-									style={{ ...headerBase, textAlign: "right" }}
-									onClick={() => handleSort("totalCost")}
-								>
-									Cost{arrow("totalCost")}
-								</th>
+								{data.showCost && (
+									<th
+										style={{ ...headerBase, textAlign: "right" }}
+										onClick={() => handleSort("totalCost")}
+									>
+										Cost{arrow("totalCost")}
+									</th>
+								)}
 							</tr>
 						</thead>
 						<tbody>
@@ -193,15 +197,17 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 									>
 										{formatNumber(rowTotal(p))}
 									</td>
-									<td
-										style={{
-											padding: "8px",
-											textAlign: "right",
-											fontWeight: 600,
-										}}
-									>
-										{formatCurrency(p.totalCost)}
-									</td>
+									{data.showCost && (
+										<td
+											style={{
+												padding: "8px",
+												textAlign: "right",
+												fontWeight: 600,
+											}}
+										>
+											{formatCurrency(p.totalCost)}
+										</td>
+									)}
 								</tr>
 							))}
 							<tr
@@ -219,9 +225,11 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 								<td style={{ padding: "8px", textAlign: "right" }}>
 									{formatNumber(grandTokens)}
 								</td>
-								<td style={{ padding: "8px", textAlign: "right" }}>
-									{formatCurrency(grandCost)}
-								</td>
+								{data.showCost && (
+									<td style={{ padding: "8px", textAlign: "right" }}>
+										{formatCurrency(grandCost)}
+									</td>
+								)}
 							</tr>
 						</tbody>
 					</table>

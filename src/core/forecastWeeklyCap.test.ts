@@ -42,6 +42,32 @@ describe("forecastWeeklyCapFromUtilization", () => {
 		expect(forecastWeeklyCapFromUtilization(0.5, 8)).toBeNull();
 	});
 
+	it("stays silent early in the window instead of alarming on a tiny sample", () => {
+		// Regression: the firing rule reduces to used% > 100 * elapsed / 7, which
+		// is scale-free, so a short elapsed time makes a trivial amount of usage
+		// project an overrun. Half an hour in, 1% used extrapolates to 48%/day.
+		// Arithmetically true, practically meaningless -- one large request right
+		// after a reset must not raise an alarm.
+		expect(forecastWeeklyCapFromUtilization(0.01, 7 - 0.02)).toBeNull(); // 30 min in
+		expect(forecastWeeklyCapFromUtilization(0.03, 7 - 0.083)).toBeNull(); // 2 h in
+		expect(forecastWeeklyCapFromUtilization(0.05, 7 - 0.25)).toBeNull(); // 6 h in
+	});
+
+	it("starts forecasting once a full day of the window has elapsed", () => {
+		// The boundary itself must produce a forecast, or the guard silently
+		// swallows the whole first-day case too
+		const atBoundary = forecastWeeklyCapFromUtilization(0.2, 6);
+		expect(atBoundary).not.toBeNull();
+		// 20% in 1 day => 20%/day => remaining 80% lasts 4 days, reset in 6 => safe
+		expect(atBoundary?.daysUntilCap).toBeCloseTo(4, 6);
+		expect(atBoundary?.willExceedBeforeReset).toBe(true);
+	});
+
+	it("returns null at or past the reset instant", () => {
+		expect(forecastWeeklyCapFromUtilization(0.5, 0)).toBeNull();
+		expect(forecastWeeklyCapFromUtilization(0.5, -1)).toBeNull();
+	});
+
 	it("returns null at zero utilization", () => {
 		expect(forecastWeeklyCapFromUtilization(0, 3)).toBeNull();
 	});

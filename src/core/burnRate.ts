@@ -178,6 +178,19 @@ export interface WeeklyCapForecast {
 const WEEKLY_WINDOW_DAYS = 7;
 
 /**
+ * How much of the window must have elapsed before a pace is worth extrapolating.
+ *
+ * The firing rule reduces to `used% > 100 * elapsed / 7`, which is scale-free:
+ * the less time has elapsed, the less usage it takes to project an overrun. Half
+ * an hour into a window, 1% used extrapolates to 48%/day and predicts the cap in
+ * two days. That is arithmetically true and practically meaningless -- one large
+ * request right after a reset should not raise an alarm. Below this threshold no
+ * forecast is offered at all, which is the honest answer rather than a confident
+ * one from a sample too short to mean anything.
+ */
+const MIN_ELAPSED_DAYS_FOR_FORECAST = 1;
+
+/**
  * Forecast the weekly cap from the API's own utilization.
  *
  * Preferred over the local-token version whenever the API is reachable, because
@@ -204,8 +217,14 @@ export function forecastWeeklyCapFromUtilization(
 	}
 
 	const elapsedDays = WEEKLY_WINDOW_DAYS - daysUntilReset;
-	// Just-reset window: no elapsed time to average over, so no pace exists yet.
-	if (elapsedDays <= 0 || utilization <= 0) {
+	// Too early in the window to extrapolate, or nothing used yet. The upper
+	// guard also covers a reset instant, clock skew, and a window that turns out
+	// not to be 7 days, all of which would otherwise divide by <= 0.
+	if (
+		elapsedDays < MIN_ELAPSED_DAYS_FOR_FORECAST ||
+		daysUntilReset <= 0 ||
+		utilization <= 0
+	) {
 		return null;
 	}
 

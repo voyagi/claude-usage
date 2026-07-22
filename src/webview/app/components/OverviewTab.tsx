@@ -84,9 +84,14 @@ function forecastText(forecast: WeeklyCapForecast): string {
 			: `Estimated from local logs (no live limit data): ~${formatDays(forecast.daysUntilCap)} to the estimated cap at ${pace}; ${resets}.`;
 	}
 
+	// Deliberately not "On track". The pace is the average across the whole
+	// elapsed window, so it under-reacts to a burst that started recently: at
+	// 80% with half a day left it would still compute several days of headroom.
+	// Stating both numbers informs without asserting safety the average cannot
+	// support.
 	return forecast.willExceedBeforeReset
-		? `⚠ At your pace so far this week you'd reach the weekly limit in ~${formatDays(forecast.daysUntilCap)}, before it ${resets}.`
-		: `On track: ~${formatDays(forecast.daysUntilCap)} to the weekly limit at your pace so far; ${resets}.`;
+		? `⚠ At your average pace this week you'd reach the weekly limit in ~${formatDays(forecast.daysUntilCap)}, before it ${resets}.`
+		: `At your average pace this week: ~${formatDays(forecast.daysUntilCap)} of headroom, and it ${resets}.`;
 }
 
 /**

@@ -78,12 +78,26 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 	private static _buildSpendSummary(
 		api: StatusBarData["apiUsage"],
 	): SpendSummary | null {
+		/** Share of the credit limit used, preferring real amounts over a
+		 * reported percentage: `parseSpend` defaults `percent` to 0 when the
+		 * payload omits it, which would render "$20 of $50" as an empty bar. */
+		const share = (
+			used: number,
+			limit: number | null,
+			reportedPercent: number,
+		): number => {
+			if (limit !== null && limit > 0) {
+				return Math.min(100, Math.max(0, (used / limit) * 100));
+			}
+			return Math.min(100, Math.max(0, reportedPercent));
+		};
+
 		const spend = api?.spend;
 		if (spend?.enabled === true) {
 			return {
 				used: spend.used,
 				limit: spend.limit,
-				percentage: spend.percent,
+				percentage: share(spend.used, spend.limit, spend.percent),
 				currency: spend.currency,
 			};
 		}
@@ -95,12 +109,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			return {
 				used,
 				limit,
-				// Prefer a percentage derived from real amounts; utilization is
-				// already normalised to 0-1 by the API parser.
-				percentage:
-					limit !== null && limit > 0
-						? Math.min(100, (used / limit) * 100)
-						: (extra.utilization ?? 0) * 100,
+				// utilization is already normalised to 0-1 by the API parser
+				percentage: share(used, limit, (extra.utilization ?? 0) * 100),
 				currency: extra.currency ?? "USD",
 			};
 		}
@@ -327,21 +337,26 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		// read 65%, producing a red "you will hit the cap within the hour"
 		// warning next to a two-thirds-full bar. Only fall back to local when
 		// there is no API reading at all, and mark it as the guess it is.
-		const weeklyResetMs = weekly.resetTime
-			? new Date(weekly.resetTime).getTime() - now.getTime()
-			: 0;
-		const daysUntilWeeklyReset = Math.max(
-			0,
-			weeklyResetMs / (24 * 60 * 60 * 1000),
-		);
+		const daysUntil = (iso: string | null | undefined): number | null => {
+			if (!iso) return null;
+			const ms = new Date(iso).getTime();
+			if (Number.isNaN(ms)) return null;
+			return Math.max(0, (ms - now.getTime()) / (24 * 60 * 60 * 1000));
+		};
 
 		let weeklyForecast: WeeklyCapForecast | null = null;
-		if (api?.sevenDay) {
+		// The API projection needs the API's OWN reset time, not `weekly.resetTime`:
+		// that falls back to the local ISO calendar week when resets_at is null,
+		// which would divide an API utilization by a Monday-morning boundary and
+		// fire red every Monday while going blind every Sunday night.
+		const apiWeeklyResetDays = daysUntil(api?.sevenDay?.resetsAt);
+		if (api?.sevenDay && apiWeeklyResetDays !== null) {
 			weeklyForecast = forecastWeeklyCapFromUtilization(
 				api.sevenDay.utilization,
-				daysUntilWeeklyReset,
+				apiWeeklyResetDays,
 			);
 		} else {
+			const daysUntilWeeklyReset = daysUntil(weekly.resetTime) ?? 0;
 			// Trailing 7-day average, not the short-window burn rate: that would
 			// be a misleading 24/7 extrapolation.
 			let last7DaysOutput = 0;

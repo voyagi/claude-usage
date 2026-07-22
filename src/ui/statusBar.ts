@@ -23,6 +23,20 @@ import {
 // Distinct text colors for each rate limit (readable on dark status bar)
 const SESSION_COLOR = "#4EC9B0"; // teal
 const WEEKLY_COLOR = "#DCDCAA"; // yellow
+/**
+ * Whether to show dollar figures, matching the dashboard rule: on a
+ * subscription a per-token cost is an API-equivalent estimate, not a bill, so
+ * it only appears when the account actually has usage credits enabled.
+ */
+function shouldShowCost(api: StatusBarData["apiUsage"]): boolean {
+	const mode = vscode.workspace
+		.getConfiguration("claude-usage")
+		.get<"auto" | "always" | "never">("showCostEstimates", "auto");
+	if (mode === "always") return true;
+	if (mode === "never") return false;
+	return api?.spend?.enabled === true || api?.extraUsage?.isEnabled === true;
+}
+
 const SCOPED_COLOR = "#C586C0"; // purple
 const STALE_COLOR = "#808080"; // gray for dim/stale data
 const CRITICAL_COLOR = "#555555"; // very dim for critical staleness
@@ -212,9 +226,16 @@ export class StatusBarManager {
 		tooltip.supportHtml = false;
 
 		tooltip.appendMarkdown("**Claude Usage Monitor**\n\n");
-		tooltip.appendMarkdown(
-			`**Today:** ${formatCost(data.todayCost)} | **Month:** ${formatCost(data.monthCost)}\n\n`,
-		);
+		// Same rule as the dashboard: a per-token cost is an API-equivalent
+		// estimate, not a subscriber's bill, so it only appears when the account
+		// actually spends money.
+		// The token totals further down carry the same information without
+		// implying a bill, so there is nothing to substitute here.
+		if (shouldShowCost(api)) {
+			tooltip.appendMarkdown(
+				`**Today:** ${formatCost(data.todayCost)} | **Month:** ${formatCost(data.monthCost)}\n\n`,
+			);
+		}
 
 		if (api) {
 			tooltip.appendMarkdown("**Rate Limits**\n\n");

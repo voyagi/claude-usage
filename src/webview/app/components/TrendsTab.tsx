@@ -26,6 +26,27 @@ function formatCurrency(value: number): string {
 	return `$${value.toFixed(2)}`;
 }
 
+/**
+ * Short token count, used wherever cost would otherwise sit. A subscription is
+ * billed flat, so a dollar figure there is an API-equivalent estimate rather
+ * than anything owed.
+ */
+function formatCompact(tokens: number): string {
+	if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+	if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+	return String(Math.round(tokens));
+}
+
+/** All four token kinds for a trend point. */
+function pointTokens(point: TrendDataPoint): number {
+	return (
+		point.inputTokens +
+		point.outputTokens +
+		point.cacheCreationTokens +
+		point.cacheReadTokens
+	);
+}
+
 export function TrendsTab({ data }: TrendsTabProps) {
 	const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("daily");
 	const [showDetails, setShowDetails] = useState(false);
@@ -89,6 +110,12 @@ export function TrendsTab({ data }: TrendsTabProps) {
 	);
 	const avgCost =
 		data.trendData.length > 0 ? totalCost / data.trendData.length : 0;
+	const totalTokens = data.trendData.reduce(
+		(sum, point) => sum + pointTokens(point),
+		0,
+	);
+	const avgTokens =
+		data.trendData.length > 0 ? totalTokens / data.trendData.length : 0;
 
 	// Calculate total tokens for data table
 	const calculateRowTotal = (point: TrendDataPoint): number => {
@@ -166,7 +193,7 @@ export function TrendsTab({ data }: TrendsTabProps) {
 							color: "var(--vscode-descriptionForeground)",
 						}}
 					>
-						Total Cost
+						{data.showCost ? "Total Cost" : "Total Tokens"}
 					</div>
 					<div
 						style={{
@@ -175,7 +202,9 @@ export function TrendsTab({ data }: TrendsTabProps) {
 							marginTop: "4px",
 						}}
 					>
-						{formatCurrency(totalCost)}
+						{data.showCost
+							? formatCurrency(totalCost)
+							: formatCompact(totalTokens)}
 					</div>
 				</div>
 				<div
@@ -206,7 +235,7 @@ export function TrendsTab({ data }: TrendsTabProps) {
 							marginTop: "4px",
 						}}
 					>
-						{formatCurrency(avgCost)}
+						{data.showCost ? formatCurrency(avgCost) : formatCompact(avgTokens)}
 					</div>
 				</div>
 			</div>
@@ -311,7 +340,7 @@ export function TrendsTab({ data }: TrendsTabProps) {
 											fontWeight: 600,
 										}}
 									>
-										Cost
+										{data.showCost ? "Cost" : "Tokens"}
 									</th>
 									<th
 										style={{
@@ -368,7 +397,9 @@ export function TrendsTab({ data }: TrendsTabProps) {
 												fontWeight: 600,
 											}}
 										>
-											{formatCurrency(point.totalCost)}
+											{data.showCost
+												? formatCurrency(point.totalCost)
+												: formatCompact(pointTokens(point))}
 										</td>
 										<td
 											style={{
@@ -377,9 +408,13 @@ export function TrendsTab({ data }: TrendsTabProps) {
 												color: "var(--vscode-descriptionForeground)",
 											}}
 										>
-											{point.messageCount > 0
-												? formatCurrency(point.totalCost / point.messageCount)
-												: "-"}
+											{point.messageCount === 0
+												? "-"
+												: data.showCost
+													? formatCurrency(point.totalCost / point.messageCount)
+													: formatCompact(
+															pointTokens(point) / point.messageCount,
+														)}
 										</td>
 									</tr>
 								))}
@@ -410,18 +445,21 @@ export function TrendsTab({ data }: TrendsTabProps) {
 										{formatNumber(grandTotalTokens)}
 									</td>
 									<td style={{ padding: "8px", textAlign: "right" }}>
-										{formatCurrency(totalCost)}
+										{data.showCost
+											? formatCurrency(totalCost)
+											: formatCompact(totalTokens)}
 									</td>
 									<td style={{ padding: "8px", textAlign: "right" }}>
-										{data.trendData.reduce((s, p) => s + p.messageCount, 0) > 0
-											? formatCurrency(
-													totalCost /
-														data.trendData.reduce(
-															(s, p) => s + p.messageCount,
-															0,
-														),
-												)
-											: "-"}
+										{(() => {
+											const messages = data.trendData.reduce(
+												(s, p) => s + p.messageCount,
+												0,
+											);
+											if (messages === 0) return "-";
+											return data.showCost
+												? formatCurrency(totalCost / messages)
+												: formatCompact(totalTokens / messages);
+										})()}
 									</td>
 								</tr>
 							</tbody>
@@ -518,7 +556,7 @@ export function TrendsTab({ data }: TrendsTabProps) {
 											fontWeight: 600,
 										}}
 									>
-										Cost
+										{data.showCost ? "Cost" : "Total"}
 									</th>
 								</tr>
 							</thead>
@@ -569,7 +607,14 @@ export function TrendsTab({ data }: TrendsTabProps) {
 													fontWeight: 600,
 												}}
 											>
-												{formatCurrency(msg.cost)}
+												{data.showCost
+													? formatCurrency(msg.cost)
+													: formatCompact(
+															msg.inputTokens +
+																msg.outputTokens +
+																msg.cacheCreationTokens +
+																msg.cacheReadTokens,
+														)}
 											</td>
 										</tr>
 									);
