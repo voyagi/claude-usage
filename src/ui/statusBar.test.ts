@@ -598,6 +598,63 @@ describe("StatusBarManager: tooltip content", () => {
 		expect(sessionItem.tooltip.value).toContain("$1.50");
 	});
 
+	it("re-renders when only the token totals change", () => {
+		// The tokens line is the ONLY per-period figure the tooltip shows when
+		// cost is hidden, so it has to be in the signature. Percentages, costs
+		// and burn rate are held identical here.
+		const { manager, sessionItem } = createManager();
+		manager.update(makeStatusBarData({ todayTokens: 25_000 }));
+		expect(sessionItem.tooltip.value).toContain("25,000");
+
+		manager.update(makeStatusBarData({ todayTokens: 90_000 }));
+		expect(sessionItem.tooltip.value).toContain("90,000");
+	});
+
+	it("re-renders when only the month cost changes", () => {
+		const { manager, sessionItem } = createManager();
+		const withCredits = (monthCost: number) =>
+			makeStatusBarData({
+				monthCost,
+				apiUsage: {
+					fiveHour: { utilization: 0.4, resetsAt: null },
+					sevenDay: { utilization: 0.25, resetsAt: null },
+					scopedWeekly: [],
+					rateLimitTier: "tier4",
+					extraUsage: null,
+					spend: {
+						used: 1,
+						limit: 50,
+						percent: 2,
+						currency: "USD",
+						severity: "normal",
+						enabled: true,
+					},
+					fetchedAt: new Date(),
+				},
+			});
+
+		manager.update(withCredits(45.0));
+		expect(sessionItem.tooltip.value).toContain("$45.00");
+
+		manager.update(withCredits(60.0));
+		expect(sessionItem.tooltip.value).toContain("$60.00");
+	});
+
+	it("recovers from the refreshing spinner on an unchanged update", () => {
+		// showRefreshing overwrites the items outside the render path. Without
+		// invalidating the signature, the next update with identical values
+		// takes the early return and the bar stays stranded on the spinner.
+		const { manager, sessionItem, weeklyItem } = createManager();
+		manager.update(makeStatusBarData());
+
+		manager.showRefreshing();
+		expect(sessionItem.text).toContain("Refreshing");
+
+		manager.update(makeStatusBarData());
+		expect(sessionItem.text).not.toContain("Refreshing");
+		expect(weeklyItem.show).toHaveBeenCalled();
+	});
+
 	it("includes cost in the tooltip once credits are enabled", () => {
 		const { manager, sessionItem } = createManager();
 

@@ -101,27 +101,41 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 				limit: spend.limit,
 				percentage: share(spend.used, spend.limit, spend.percent),
 				currency: spend.currency,
+				isDerived: false,
 			};
 		}
 
 		const extra = api?.extraUsage;
 		if (extra?.isEnabled === true) {
 			const limit = extra.creditsTotal;
-			// Some payloads report a limit and a utilization but no used amount.
-			// Defaulting that to 0 would make share() derive 0/limit and throw
-			// away the utilization the parser did preserve, rendering "$0 of $N"
-			// beside an empty bar on an account with real spend.
-			const used =
-				extra.creditsUsed ??
-				(limit !== null && extra.utilization !== null
-					? limit * extra.utilization
-					: 0);
+			// utilization is already normalised to 0-1 by the API parser
+			const reportedPercent = (extra.utilization ?? 0) * 100;
+
+			// Some payloads report a utilization but no used amount. Reading that
+			// as 0 would both render "$0.00" on an account with real spend and,
+			// where a limit exists, make share() derive 0/limit and discard the
+			// utilization the parser preserved. Derive the amount where the limit
+			// allows it; where it does not, say nothing rather than say zero.
+			if (extra.creditsUsed === null) {
+				const derived =
+					limit !== null && extra.utilization !== null
+						? limit * extra.utilization
+						: null;
+				return {
+					used: derived,
+					limit,
+					percentage: share(derived ?? 0, limit, reportedPercent),
+					currency: extra.currency ?? "USD",
+					isDerived: derived !== null,
+				};
+			}
+
 			return {
-				used,
+				used: extra.creditsUsed,
 				limit,
-				// utilization is already normalised to 0-1 by the API parser
-				percentage: share(used, limit, (extra.utilization ?? 0) * 100),
+				percentage: share(extra.creditsUsed, limit, reportedPercent),
 				currency: extra.currency ?? "USD",
+				isDerived: false,
 			};
 		}
 

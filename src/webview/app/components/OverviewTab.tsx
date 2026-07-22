@@ -321,10 +321,15 @@ export function OverviewTab({ data }: OverviewTabProps) {
 				<div className="card">
 					<h3 className="card-title">Usage Credits</h3>
 					<div className="credits-row">
+						{/* No amount when the API reported only a percentage: "$0.00"
+						    would claim an empty balance on an account with real spend.
+						    A derived amount is marked, not passed off as exact. */}
 						<span className="credits-used">
-							{formatMoney(data.spend.used, data.spend.currency)}
+							{data.spend.used === null
+								? `${data.spend.percentage.toFixed(0)}%`
+								: `${data.spend.isDerived ? "~" : ""}${formatMoney(data.spend.used, data.spend.currency)}`}
 						</span>
-						{data.spend.limit !== null && (
+						{data.spend.used !== null && data.spend.limit !== null && (
 							<span className="credits-limit">
 								of {formatMoney(data.spend.limit, data.spend.currency)}
 							</span>

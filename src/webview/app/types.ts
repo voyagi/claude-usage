@@ -107,10 +107,21 @@ export type StalenessLevel =
 
 /** Usage-credit spend, in major currency units (serialization-safe) */
 export interface SpendSummary {
-	used: number;
+	/**
+	 * Amount spent, or null when the API reported only a percentage and there
+	 * is no limit to derive an amount from. Rendering 0 there would claim a
+	 * balance of zero on an account with real spend.
+	 */
+	used: number | null;
 	limit: number | null;
 	percentage: number;
 	currency: string;
+	/**
+	 * True when `used` was derived from the limit and a reported percentage
+	 * rather than given directly, so the UI can avoid presenting a computed
+	 * figure as an exact one.
+	 */
+	isDerived: boolean;
 }
 
 /**

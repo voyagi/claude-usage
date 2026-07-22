@@ -10,17 +10,13 @@
 jest.mock("vscode", () => ({}), { virtual: true });
 
 import type { ApiUsageData, StatusBarData } from "../types.js";
+import type { SpendSummary } from "./app/types.js";
 import { DashboardProvider } from "./DashboardProvider.js";
 
 /** The private static under test, reached without widening the public API. */
 const buildSpendSummary = (
 	DashboardProvider as unknown as {
-		_buildSpendSummary: (api: StatusBarData["apiUsage"]) => {
-			used: number;
-			limit: number | null;
-			percentage: number;
-			currency: string;
-		} | null;
+		_buildSpendSummary: (api: StatusBarData["apiUsage"]) => SpendSummary | null;
 	}
 )._buildSpendSummary;
 
@@ -219,6 +215,57 @@ describe("DashboardProvider credits summary", () => {
 		expect(result?.percentage).toBeCloseTo(40, 6);
 		// No currency reported: assume dollars rather than render "null 5.00"
 		expect(result?.currency).toBe("USD");
+	});
+
+	it("reports no amount when there is neither a used figure nor a limit", () => {
+		// One branch over from the derived-amount case: with no limit there is
+		// nothing to derive from, and rendering 0 would claim an empty balance
+		// on an account that has spent something.
+		const result = buildSpendSummary(
+			api({
+				extraUsage: {
+					isEnabled: true,
+					creditsUsed: null,
+					creditsTotal: null,
+					utilization: 0.4,
+					currency: "USD",
+					disabledReason: null,
+				},
+			}),
+		);
+
+		expect(result?.used).toBeNull();
+		expect(result?.percentage).toBeCloseTo(40, 6);
+	});
+
+	it("marks a derived amount as derived, and a reported one as not", () => {
+		const derived = buildSpendSummary(
+			api({
+				extraUsage: {
+					isEnabled: true,
+					creditsUsed: null,
+					creditsTotal: 200,
+					utilization: 0.35,
+					currency: "USD",
+					disabledReason: null,
+				},
+			}),
+		);
+		expect(derived?.isDerived).toBe(true);
+
+		const reported = buildSpendSummary(
+			api({
+				spend: {
+					used: 12.34,
+					limit: 50,
+					percent: 24,
+					currency: "USD",
+					severity: "normal",
+					enabled: true,
+				},
+			}),
+		);
+		expect(reported?.isDerived).toBe(false);
 	});
 
 	it("does not divide by zero on a zero credit total", () => {
