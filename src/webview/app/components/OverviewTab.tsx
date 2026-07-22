@@ -329,7 +329,10 @@ export function OverviewTab({ data }: OverviewTabProps) {
 								? `${data.spend.percentage.toFixed(0)}%`
 								: `${data.spend.isDerived ? "~" : ""}${formatMoney(data.spend.used, data.spend.currency)}`}
 						</span>
-						{data.spend.used !== null && data.spend.limit !== null && (
+						{/* Gated on the limit alone. Also requiring an amount would
+						    hide the only element naming the limit in the case where
+						    a limit exists but no amount could be derived. */}
+						{data.spend.limit !== null && (
 							<span className="credits-limit">
 								of {formatMoney(data.spend.limit, data.spend.currency)}
 							</span>

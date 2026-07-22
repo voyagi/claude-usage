@@ -598,7 +598,7 @@ describe("StatusBarManager: tooltip content", () => {
 		expect(sessionItem.tooltip.value).toContain("$1.50");
 	});
 
-	it("re-renders when only the token totals change", () => {
+	it("re-renders when only today's tokens change", () => {
 		// The tokens line is the ONLY per-period figure the tooltip shows when
 		// cost is hidden, so it has to be in the signature. Percentages, costs
 		// and burn rate are held identical here.
@@ -608,6 +608,17 @@ describe("StatusBarManager: tooltip content", () => {
 
 		manager.update(makeStatusBarData({ todayTokens: 90_000 }));
 		expect(sessionItem.tooltip.value).toContain("90,000");
+	});
+
+	it("re-renders when only the month's tokens change", () => {
+		// Separately pinned: moving only todayTokens leaves monthTokens free to
+		// fall out of the signature unnoticed.
+		const { manager, sessionItem } = createManager();
+		manager.update(makeStatusBarData({ monthTokens: 500_000 }));
+		expect(sessionItem.tooltip.value).toContain("500,000");
+
+		manager.update(makeStatusBarData({ monthTokens: 750_000 }));
+		expect(sessionItem.tooltip.value).toContain("750,000");
 	});
 
 	it("re-renders when only the month cost changes", () => {
@@ -640,19 +651,39 @@ describe("StatusBarManager: tooltip content", () => {
 		expect(sessionItem.tooltip.value).toContain("$60.00");
 	});
 
-	it("recovers from the refreshing spinner on an unchanged update", () => {
-		// showRefreshing overwrites the items outside the render path. Without
-		// invalidating the signature, the next update with identical values
-		// takes the early return and the bar stays stranded on the spinner.
+	// All three overwrite the items outside the render path. Without
+	// invalidating the signature, the next update carrying identical values
+	// takes the early return and the bar stays stranded on whatever they wrote.
+	it.each([
+		["showRefreshing", "Refreshing"],
+		["showNoData", "No data"],
+	])("recovers from %s on an unchanged update", (method, stranded) => {
 		const { manager, sessionItem, weeklyItem } = createManager();
 		manager.update(makeStatusBarData());
+		const showsBefore = weeklyItem.show.mock.calls.length;
 
-		manager.showRefreshing();
-		expect(sessionItem.text).toContain("Refreshing");
+		(manager as unknown as Record<string, () => void>)[method]();
+		expect(sessionItem.text).toContain(stranded);
 
 		manager.update(makeStatusBarData());
-		expect(sessionItem.text).not.toContain("Refreshing");
-		expect(weeklyItem.show).toHaveBeenCalled();
+		expect(sessionItem.text).not.toContain(stranded);
+		// A fresh show() call, not merely "was ever called" -- the mock already
+		// has one from the first update, so the looser assertion cannot fail.
+		expect(weeklyItem.show.mock.calls.length).toBeGreaterThan(showsBefore);
+	});
+
+	it("recovers from an error message on an unchanged update", () => {
+		const { manager, sessionItem } = createManager();
+		manager.update(makeStatusBarData());
+
+		manager.showError("Something went wrong");
+		expect(sessionItem.text).toContain("Error");
+
+		manager.update(makeStatusBarData());
+		expect(sessionItem.text).not.toContain("Error");
+
+		// showError arms a 5s timer; dispose clears it so it cannot leak
+		manager.dispose();
 	});
 
 	it("includes cost in the tooltip once credits are enabled", () => {
