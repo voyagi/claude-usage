@@ -114,7 +114,12 @@ export interface SpendSummary {
 	 */
 	used: number | null;
 	limit: number | null;
-	percentage: number;
+	/**
+	 * Share of the limit used, or null when the API reported neither an amount
+	 * nor a utilization. Zero would be a claim about the account; null is the
+	 * truth, which is that nothing was reported.
+	 */
+	percentage: number | null;
 	currency: string;
 	/**
 	 * True when `used` was derived from the limit and a reported percentage

@@ -508,15 +508,42 @@ describe("StatusBarManager: toggle", () => {
 		// A scoped model must be known, or the scoped item stays hidden by design
 		manager.update(makeStatusBarData());
 
-		manager.toggle();
-		expect(sessionItem.hide).toHaveBeenCalled();
-		expect(weeklyItem.hide).toHaveBeenCalled();
-		expect(scopedItem.hide).toHaveBeenCalled();
+		// Counts, not "was ever called": the constructor already hid these and
+		// update() already showed them, so toHaveBeenCalled() is satisfied before
+		// toggle() runs and cannot fail even if toggle touched nothing.
+		const before = {
+			sessionHide: sessionItem.hide.mock.calls.length,
+			weeklyHide: weeklyItem.hide.mock.calls.length,
+			scopedHide: scopedItem.hide.mock.calls.length,
+		};
 
 		manager.toggle();
-		expect(sessionItem.show).toHaveBeenCalled();
-		expect(weeklyItem.show).toHaveBeenCalled();
-		expect(scopedItem.show).toHaveBeenCalled();
+		expect(sessionItem.hide.mock.calls.length).toBeGreaterThan(
+			before.sessionHide,
+		);
+		expect(weeklyItem.hide.mock.calls.length).toBeGreaterThan(
+			before.weeklyHide,
+		);
+		expect(scopedItem.hide.mock.calls.length).toBeGreaterThan(
+			before.scopedHide,
+		);
+
+		const afterHide = {
+			sessionShow: sessionItem.show.mock.calls.length,
+			weeklyShow: weeklyItem.show.mock.calls.length,
+			scopedShow: scopedItem.show.mock.calls.length,
+		};
+
+		manager.toggle();
+		expect(sessionItem.show.mock.calls.length).toBeGreaterThan(
+			afterHide.sessionShow,
+		);
+		expect(weeklyItem.show.mock.calls.length).toBeGreaterThan(
+			afterHide.weeklyShow,
+		);
+		expect(scopedItem.show.mock.calls.length).toBeGreaterThan(
+			afterHide.scopedShow,
+		);
 	});
 
 	it("does not resurrect the scoped item when no scoped model is known", () => {
@@ -682,7 +709,9 @@ describe("StatusBarManager: tooltip content", () => {
 		manager.update(makeStatusBarData());
 		expect(sessionItem.text).not.toContain("Error");
 
-		// showError arms a 5s timer; dispose clears it so it cannot leak
+		// The update() above already cleared the 5s timer showError armed, so
+		// this dispose() is belt-and-braces rather than the thing preventing a
+		// leak. Kept so the test holds if that ordering ever changes.
 		manager.dispose();
 	});
 

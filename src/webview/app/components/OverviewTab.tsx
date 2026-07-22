@@ -325,9 +325,11 @@ export function OverviewTab({ data }: OverviewTabProps) {
 						    would claim an empty balance on an account with real spend.
 						    A derived amount is marked, not passed off as exact. */}
 						<span className="credits-used">
-							{data.spend.used === null
-								? `${data.spend.percentage.toFixed(0)}%`
-								: `${data.spend.isDerived ? "~" : ""}${formatMoney(data.spend.used, data.spend.currency)}`}
+							{data.spend.used !== null
+								? `${data.spend.isDerived ? "~" : ""}${formatMoney(data.spend.used, data.spend.currency)}`
+								: data.spend.percentage !== null
+									? `${data.spend.percentage.toFixed(0)}%`
+									: "—"}
 						</span>
 						{/* Gated on the limit alone. Also requiring an amount would
 						    hide the only element naming the limit in the case where
@@ -338,7 +340,10 @@ export function OverviewTab({ data }: OverviewTabProps) {
 							</span>
 						)}
 					</div>
-					{data.spend.limit !== null && (
+					{/* No bar and no share when the API reported no usage figure at
+					    all: an empty bar reads as "nothing spent", which is a claim
+					    about the account rather than a report of what it said. */}
+					{data.spend.limit !== null && data.spend.percentage !== null && (
 						<div className="progress-bar">
 							<div
 								className={`progress-fill ${
@@ -353,7 +358,7 @@ export function OverviewTab({ data }: OverviewTabProps) {
 						</div>
 					)}
 					<div className="attribution-caption">
-						{data.spend.limit !== null
+						{data.spend.limit !== null && data.spend.percentage !== null
 							? `${data.spend.percentage.toFixed(0)}% of your credit limit used. Credits cover usage past your plan limits.`
 							: "Credits cover usage past your plan limits."}
 					</div>

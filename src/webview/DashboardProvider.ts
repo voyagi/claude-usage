@@ -117,10 +117,20 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			// utilization the parser preserved. Derive the amount where the limit
 			// allows it; where it does not, say nothing rather than say zero.
 			if (extra.creditsUsed === null) {
-				const derived =
-					limit !== null && extra.utilization !== null
-						? limit * extra.utilization
-						: null;
+				// Neither an amount nor a utilization: the API told us credits
+				// exist and nothing else. Reporting 0% would be a claim about the
+				// account rather than a report of what it said.
+				if (extra.utilization === null) {
+					return {
+						used: null,
+						limit,
+						percentage: null,
+						currency: extra.currency ?? "USD",
+						isDerived: false,
+					};
+				}
+
+				const derived = limit !== null ? limit * extra.utilization : null;
 				return {
 					used: derived,
 					limit,

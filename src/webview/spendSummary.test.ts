@@ -238,6 +238,30 @@ describe("DashboardProvider credits summary", () => {
 		expect(result?.percentage).toBeCloseTo(40, 6);
 	});
 
+	it("reports nothing when the API gave neither an amount nor a utilization", () => {
+		// The API said credits exist and nothing else. A 0% here would render an
+		// empty bar and "0% of your credit limit used" -- a claim about the
+		// account rather than a report of what it said.
+		const result = buildSpendSummary(
+			api({
+				extraUsage: {
+					isEnabled: true,
+					creditsUsed: null,
+					creditsTotal: 50,
+					utilization: null,
+					currency: "USD",
+					disabledReason: null,
+				},
+			}),
+		);
+
+		expect(result).not.toBeNull();
+		expect(result?.used).toBeNull();
+		expect(result?.percentage).toBeNull();
+		// The limit is still known and worth showing
+		expect(result?.limit).toBe(50);
+	});
+
 	it("marks a derived amount as derived, and a reported one as not", () => {
 		const derived = buildSpendSummary(
 			api({
