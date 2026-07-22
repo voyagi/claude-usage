@@ -33,6 +33,12 @@ jest.mock(
 				),
 			},
 			StatusBarAlignment: { Right: 2 },
+			// The tooltip asks whether to show cost, which reads settings
+			workspace: {
+				getConfiguration: () => ({
+					get: (_key: string, fallback: unknown) => fallback,
+				}),
+			},
 			MarkdownString: class {
 				value = "";
 				isTrusted = false;
@@ -73,6 +79,8 @@ function makeStatusBarData(
 		totalCost: 5.0,
 		todayCost: 1.5,
 		monthCost: 30.0,
+		todayTokens: 25_000,
+		monthTokens: 500_000,
 		burnRate: 500,
 		rateLimits: {
 			session5h: makeRateLimitInfo("Session (5hr)", 40),
@@ -500,15 +508,42 @@ describe("StatusBarManager: toggle", () => {
 		// A scoped model must be known, or the scoped item stays hidden by design
 		manager.update(makeStatusBarData());
 
-		manager.toggle();
-		expect(sessionItem.hide).toHaveBeenCalled();
-		expect(weeklyItem.hide).toHaveBeenCalled();
-		expect(scopedItem.hide).toHaveBeenCalled();
+		// Counts, not "was ever called": the constructor already hid these and
+		// update() already showed them, so toHaveBeenCalled() is satisfied before
+		// toggle() runs and cannot fail even if toggle touched nothing.
+		const before = {
+			sessionHide: sessionItem.hide.mock.calls.length,
+			weeklyHide: weeklyItem.hide.mock.calls.length,
+			scopedHide: scopedItem.hide.mock.calls.length,
+		};
 
 		manager.toggle();
-		expect(sessionItem.show).toHaveBeenCalled();
-		expect(weeklyItem.show).toHaveBeenCalled();
-		expect(scopedItem.show).toHaveBeenCalled();
+		expect(sessionItem.hide.mock.calls.length).toBeGreaterThan(
+			before.sessionHide,
+		);
+		expect(weeklyItem.hide.mock.calls.length).toBeGreaterThan(
+			before.weeklyHide,
+		);
+		expect(scopedItem.hide.mock.calls.length).toBeGreaterThan(
+			before.scopedHide,
+		);
+
+		const afterHide = {
+			sessionShow: sessionItem.show.mock.calls.length,
+			weeklyShow: weeklyItem.show.mock.calls.length,
+			scopedShow: scopedItem.show.mock.calls.length,
+		};
+
+		manager.toggle();
+		expect(sessionItem.show.mock.calls.length).toBeGreaterThan(
+			afterHide.sessionShow,
+		);
+		expect(weeklyItem.show.mock.calls.length).toBeGreaterThan(
+			afterHide.weeklyShow,
+		);
+		expect(scopedItem.show.mock.calls.length).toBeGreaterThan(
+			afterHide.scopedShow,
+		);
 	});
 
 	it("does not resurrect the scoped item when no scoped model is known", () => {
@@ -548,10 +583,163 @@ describe("StatusBarManager: tooltip content", () => {
 		expect(sessionItem.tooltip.value).toContain("Burn Rate");
 	});
 
-	it("includes cost info in tooltip", () => {
+	it("omits cost from the tooltip on a subscription", () => {
 		const { manager, sessionItem } = createManager();
 
+		// No credits enabled: a per-token cost is an API-equivalent estimate,
+		// not a bill, so it must not appear next to real limit percentages.
 		manager.update(makeStatusBarData({ todayCost: 3.5, monthCost: 45.0 }));
+
+		// No dollar figure...
+		expect(sessionItem.tooltip.value).not.toContain("$3.50");
+		expect(sessionItem.tooltip.value).not.toContain("$45.00");
+		// ...but the per-period line survives in tokens. Dropping it entirely
+		// would leave the tooltip with only all-time totals.
+		expect(sessionItem.tooltip.value).toContain("**Today:** 25,000");
+		expect(sessionItem.tooltip.value).toContain("500,000 tokens");
+	});
+
+	it("re-renders when only the cost-visibility decision changes", () => {
+		const { manager, sessionItem } = createManager();
+
+		// Identical limit percentages and costs; the ONLY difference is that
+		// credits become enabled. The render signature has to notice, or the
+		// tooltip keeps showing tokens until some unrelated number moves.
+		const withoutCredits = makeStatusBarData();
+		manager.update(withoutCredits);
+		expect(sessionItem.tooltip.value).not.toContain("$1.50");
+
+		const apiWithCredits = {
+			...(withoutCredits.apiUsage as NonNullable<StatusBarData["apiUsage"]>),
+			spend: {
+				used: 1.5,
+				limit: 50,
+				percent: 3,
+				currency: "USD",
+				severity: "normal",
+				enabled: true,
+			},
+		};
+		manager.update(makeStatusBarData({ apiUsage: apiWithCredits }));
+
+		expect(sessionItem.tooltip.value).toContain("$1.50");
+	});
+
+	it("re-renders when only today's tokens change", () => {
+		// The tokens line is the ONLY per-period figure the tooltip shows when
+		// cost is hidden, so it has to be in the signature. Percentages, costs
+		// and burn rate are held identical here.
+		const { manager, sessionItem } = createManager();
+		manager.update(makeStatusBarData({ todayTokens: 25_000 }));
+		expect(sessionItem.tooltip.value).toContain("25,000");
+
+		manager.update(makeStatusBarData({ todayTokens: 90_000 }));
+		expect(sessionItem.tooltip.value).toContain("90,000");
+	});
+
+	it("re-renders when only the month's tokens change", () => {
+		// Separately pinned: moving only todayTokens leaves monthTokens free to
+		// fall out of the signature unnoticed.
+		const { manager, sessionItem } = createManager();
+		manager.update(makeStatusBarData({ monthTokens: 500_000 }));
+		expect(sessionItem.tooltip.value).toContain("500,000");
+
+		manager.update(makeStatusBarData({ monthTokens: 750_000 }));
+		expect(sessionItem.tooltip.value).toContain("750,000");
+	});
+
+	it("re-renders when only the month cost changes", () => {
+		const { manager, sessionItem } = createManager();
+		const withCredits = (monthCost: number) =>
+			makeStatusBarData({
+				monthCost,
+				apiUsage: {
+					fiveHour: { utilization: 0.4, resetsAt: null },
+					sevenDay: { utilization: 0.25, resetsAt: null },
+					scopedWeekly: [],
+					rateLimitTier: "tier4",
+					extraUsage: null,
+					spend: {
+						used: 1,
+						limit: 50,
+						percent: 2,
+						currency: "USD",
+						severity: "normal",
+						enabled: true,
+					},
+					fetchedAt: new Date(),
+				},
+			});
+
+		manager.update(withCredits(45.0));
+		expect(sessionItem.tooltip.value).toContain("$45.00");
+
+		manager.update(withCredits(60.0));
+		expect(sessionItem.tooltip.value).toContain("$60.00");
+	});
+
+	// All three overwrite the items outside the render path. Without
+	// invalidating the signature, the next update carrying identical values
+	// takes the early return and the bar stays stranded on whatever they wrote.
+	it.each([
+		["showRefreshing", "Refreshing"],
+		["showNoData", "No data"],
+	])("recovers from %s on an unchanged update", (method, stranded) => {
+		const { manager, sessionItem, weeklyItem } = createManager();
+		manager.update(makeStatusBarData());
+		const showsBefore = weeklyItem.show.mock.calls.length;
+
+		(manager as unknown as Record<string, () => void>)[method]();
+		expect(sessionItem.text).toContain(stranded);
+
+		manager.update(makeStatusBarData());
+		expect(sessionItem.text).not.toContain(stranded);
+		// A fresh show() call, not merely "was ever called" -- the mock already
+		// has one from the first update, so the looser assertion cannot fail.
+		expect(weeklyItem.show.mock.calls.length).toBeGreaterThan(showsBefore);
+	});
+
+	it("recovers from an error message on an unchanged update", () => {
+		const { manager, sessionItem } = createManager();
+		manager.update(makeStatusBarData());
+
+		manager.showError("Something went wrong");
+		expect(sessionItem.text).toContain("Error");
+
+		manager.update(makeStatusBarData());
+		expect(sessionItem.text).not.toContain("Error");
+
+		// The update() above already cleared the 5s timer showError armed, so
+		// this dispose() is belt-and-braces rather than the thing preventing a
+		// leak. Kept so the test holds if that ordering ever changes.
+		manager.dispose();
+	});
+
+	it("includes cost in the tooltip once credits are enabled", () => {
+		const { manager, sessionItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				todayCost: 3.5,
+				monthCost: 45.0,
+				apiUsage: {
+					fiveHour: { utilization: 0.4, resetsAt: null },
+					sevenDay: { utilization: 0.25, resetsAt: null },
+					scopedWeekly: [],
+					rateLimitTier: "tier4",
+					extraUsage: null,
+					spend: {
+						used: 3.5,
+						limit: 50,
+						percent: 7,
+						currency: "USD",
+						severity: "normal",
+						enabled: true,
+					},
+					fetchedAt: new Date(),
+				},
+			}),
+		);
 
 		expect(sessionItem.tooltip.value).toContain("Today");
 		expect(sessionItem.tooltip.value).toContain("Month");

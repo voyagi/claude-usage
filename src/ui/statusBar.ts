@@ -6,6 +6,7 @@
  */
 
 import * as vscode from "vscode";
+import { shouldShowCost } from "../config/costVisibility.js";
 import { predictTimeUntilLimit } from "../core/burnRate.js";
 import type { AuthState, StatusBarData } from "../types.js";
 import {
@@ -126,9 +127,19 @@ export class StatusBarManager {
 		// Two-letter prefix from the model name, e.g. "Fable" -> "Fa:"
 		const scopedPrefix = scopedLabel ? scopedLabel.slice(0, 2) : "";
 
-		// Skip redundant re-renders via signature hash
+		// Skip redundant re-renders via signature hash.
+		//
+		// Every value that can CHANGE what is displayed belongs here, including
+		// the cost-visibility decision: otherwise flipping showCostEstimates, or
+		// credits being detected for the first time, changes nothing on screen
+		// until some unrelated percentage happens to move. Deliberately absent:
+		// `lastUpdated` and `filesProcessed`, which move constantly and would
+		// defeat the dedupe entirely. Known consequence of that trade: the
+		// tooltip's minute-precision countdown and staleness age can lag the
+		// signature's hour-precision one by up to an hour.
 		const staleness = data.staleness;
-		const signature = `${sessionPct}|${weeklyPct}|${scopedLabel ?? "-"}:${scopedPct}|${staleness}|${sCd}|${wCd}|${soCd}|${data.todayCost.toFixed(2)}|${Math.round(data.burnRate)}`;
+		const showCost = shouldShowCost(api);
+		const signature = `${sessionPct}|${weeklyPct}|${scopedLabel ?? "-"}:${scopedPct}|${staleness}|${sCd}|${wCd}|${soCd}|${showCost}|${data.todayCost.toFixed(2)}|${data.monthCost.toFixed(2)}|${data.todayTokens}|${data.monthTokens}|${Math.round(data.burnRate)}`;
 		if (signature === this.lastSignature) return;
 		this.lastSignature = signature;
 
@@ -212,9 +223,21 @@ export class StatusBarManager {
 		tooltip.supportHtml = false;
 
 		tooltip.appendMarkdown("**Claude Usage Monitor**\n\n");
-		tooltip.appendMarkdown(
-			`**Today:** ${formatCost(data.todayCost)} | **Month:** ${formatCost(data.monthCost)}\n\n`,
-		);
+		// Same rule as the dashboard: a per-token cost is an API-equivalent
+		// estimate, not a subscriber's bill, so it only appears when the account
+		// actually spends money.
+		// The **Tokens:** line further down is all-time, so dropping this one
+		// without a replacement would leave the tooltip with no per-period
+		// figure at all.
+		if (shouldShowCost(api)) {
+			tooltip.appendMarkdown(
+				`**Today:** ${formatCost(data.todayCost)} | **Month:** ${formatCost(data.monthCost)}\n\n`,
+			);
+		} else {
+			tooltip.appendMarkdown(
+				`**Today:** ${formatTokensExact(data.todayTokens)} | **Month:** ${formatTokensExact(data.monthTokens)} tokens\n\n`,
+			);
+		}
 
 		if (api) {
 			tooltip.appendMarkdown("**Rate Limits**\n\n");
@@ -350,11 +373,23 @@ export class StatusBarManager {
 		this.lastSignature = "";
 	}
 
+	/**
+	 * These three overwrite the items outside the normal render path, so each
+	 * has to invalidate the signature. Without that, the next update() carrying
+	 * unchanged values takes the early return and the bar stays stranded on a
+	 * spinner or an error with the weekly and scoped items hidden -- reachable
+	 * from any settings change, which routes through refresh -> showRefreshing.
+	 */
+	private invalidateRender(): void {
+		this.lastSignature = "";
+	}
+
 	showRefreshing(): void {
 		this.sessionItem.text = "$(sync~spin) Refreshing...";
 		this.sessionItem.backgroundColor = undefined;
 		this.weeklyItem.hide();
 		this.scopedItem.hide();
+		this.invalidateRender();
 	}
 
 	showError(message: string): void {
@@ -362,6 +397,7 @@ export class StatusBarManager {
 		this.sessionItem.tooltip = message;
 		this.weeklyItem.hide();
 		this.scopedItem.hide();
+		this.invalidateRender();
 
 		this.errorTimer = setTimeout(() => {
 			this.showNoData();
@@ -376,6 +412,7 @@ export class StatusBarManager {
 		this.sessionItem.show();
 		this.weeklyItem.hide();
 		this.scopedItem.hide();
+		this.invalidateRender();
 	}
 
 	toggle(): void {

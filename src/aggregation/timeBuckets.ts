@@ -15,6 +15,19 @@ import type {
 } from "../types";
 
 /**
+ * Key for the daily bucket containing a given moment.
+ *
+ * Every reader and writer of `buckets.daily` must derive this the same way, so
+ * it lives here rather than being spelled out at each site. It is LOCAL-date
+ * based, and a site that hand-rolls a UTC key instead silently misses a day
+ * whenever the two calendars disagree -- which is a window as wide as the UTC
+ * offset, once per day, and invisible to a UTC-running CI.
+ */
+export function dailyBucketKey(when: Date): string {
+	return format(startOfDay(when), "yyyy-MM-dd");
+}
+
+/**
  * Aggregate TokenUsage records into time buckets
  * Groups records by session, calendar day, ISO week, and calendar month
  * Uses local timezone for calendar boundaries (matches user expectations)
@@ -42,8 +55,7 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		addToAggregation(buckets.session.get(sessionKey)!, record);
 
 		// Daily bucket: key = YYYY-MM-DD (local timezone)
-		const dayStart = startOfDay(record.timestamp);
-		const dayKey = format(dayStart, "yyyy-MM-dd");
+		const dayKey = dailyBucketKey(record.timestamp);
 		if (!buckets.daily.has(dayKey)) {
 			buckets.daily.set(dayKey, createEmptyAggregatedUsage());
 		}

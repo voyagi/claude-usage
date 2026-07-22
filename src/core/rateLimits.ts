@@ -12,9 +12,11 @@ import {
 	startOfWeek,
 	subHours,
 } from "date-fns";
+import { dailyBucketKey } from "../aggregation/timeBuckets.js";
 import { getStaleness } from "../api/usageCache.js";
 import { getPlanConfig } from "../pricing/plans.js";
 import type {
+	AggregatedUsage,
 	ApiUsageData,
 	PlanType,
 	RateLimitInfo,
@@ -223,7 +225,7 @@ export function buildStatusBarData(
 	lastKnownScopedModel?: string | null,
 ): StatusBarData {
 	const now = new Date();
-	const today = format(now, "yyyy-MM-dd");
+	const today = dailyBucketKey(now);
 	const thisMonth = format(now, "yyyy-MM");
 
 	// Aggregate totals from all daily buckets
@@ -240,12 +242,23 @@ export function buildStatusBarData(
 	const todayData = buckets.daily.get(today);
 	const monthData = buckets.monthly.get(thisMonth);
 
+	/** All four token kinds, matching what the dashboard's breakdown shows. */
+	const allTokens = (agg: AggregatedUsage | undefined): number =>
+		agg
+			? agg.inputTokens +
+				agg.outputTokens +
+				agg.cacheCreationTokens +
+				agg.cacheReadTokens
+			: 0;
+
 	return {
 		totalInputTokens,
 		totalOutputTokens,
 		totalCost,
 		todayCost: todayData?.totalCost ?? 0,
 		monthCost: monthData?.totalCost ?? 0,
+		todayTokens: allTokens(todayData),
+		monthTokens: allTokens(monthData),
 		burnRate:
 			burnRateOverride !== undefined
 				? burnRateOverride

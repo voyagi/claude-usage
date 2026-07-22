@@ -32,7 +32,9 @@ function rowTotal(p: ProjectUsage): number {
 }
 
 export function ProjectsTab({ data }: ProjectsTabProps) {
-	const [sortKey, setSortKey] = useState<SortKey>("totalCost");
+	// Default to tokens rather than cost: the cost column is hidden on a
+	// subscription, and sorting by a column nobody can see is disorienting.
+	const [sortKey, setSortKey] = useState<SortKey>("totalTokens");
 	const [sortAsc, setSortAsc] = useState(false);
 
 	if (!data) {
@@ -41,20 +43,29 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 
 	const projects = data.projects ?? [];
 
+	// Credits can be turned off while the table is sorted by Cost, which would
+	// leave it ordered by a column that is no longer rendered and no arrow to
+	// explain why.
+	const effectiveSortKey: SortKey =
+		!data.showCost && sortKey === "totalCost" ? "totalTokens" : sortKey;
+
 	const sorted = [...projects].sort((a, b) => {
 		let cmp: number;
-		if (sortKey === "project") {
+		if (effectiveSortKey === "project") {
 			cmp = a.project.localeCompare(b.project);
-		} else if (sortKey === "totalTokens") {
+		} else if (effectiveSortKey === "totalTokens") {
 			cmp = rowTotal(a) - rowTotal(b);
 		} else {
-			cmp = a[sortKey] - b[sortKey];
+			cmp = a[effectiveSortKey] - b[effectiveSortKey];
 		}
 		return sortAsc ? cmp : -cmp;
 	});
 
 	const handleSort = (key: SortKey) => {
-		if (key === sortKey) {
+		// Compare against the EFFECTIVE key: once it has diverged from sortKey,
+		// the first click on the column actually showing the arrow would
+		// otherwise be swallowed as a no-op.
+		if (key === effectiveSortKey) {
 			setSortAsc(!sortAsc);
 		} else {
 			setSortKey(key);
@@ -72,8 +83,10 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 		cursor: "pointer",
 		userSelect: "none",
 	};
+	// Keyed on the effective sort so the arrow always marks the column the rows
+	// are actually ordered by
 	const arrow = (key: SortKey) =>
-		sortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
+		effectiveSortKey === key ? (sortAsc ? " ▲" : " ▼") : "";
 
 	return (
 		<div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -149,12 +162,14 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 								>
 									Total{arrow("totalTokens")}
 								</th>
-								<th
-									style={{ ...headerBase, textAlign: "right" }}
-									onClick={() => handleSort("totalCost")}
-								>
-									Cost{arrow("totalCost")}
-								</th>
+								{data.showCost && (
+									<th
+										style={{ ...headerBase, textAlign: "right" }}
+										onClick={() => handleSort("totalCost")}
+									>
+										Cost{arrow("totalCost")}
+									</th>
+								)}
 							</tr>
 						</thead>
 						<tbody>
@@ -193,15 +208,17 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 									>
 										{formatNumber(rowTotal(p))}
 									</td>
-									<td
-										style={{
-											padding: "8px",
-											textAlign: "right",
-											fontWeight: 600,
-										}}
-									>
-										{formatCurrency(p.totalCost)}
-									</td>
+									{data.showCost && (
+										<td
+											style={{
+												padding: "8px",
+												textAlign: "right",
+												fontWeight: 600,
+											}}
+										>
+											{formatCurrency(p.totalCost)}
+										</td>
+									)}
 								</tr>
 							))}
 							<tr
@@ -219,9 +236,11 @@ export function ProjectsTab({ data }: ProjectsTabProps) {
 								<td style={{ padding: "8px", textAlign: "right" }}>
 									{formatNumber(grandTokens)}
 								</td>
-								<td style={{ padding: "8px", textAlign: "right" }}>
-									{formatCurrency(grandCost)}
-								</td>
+								{data.showCost && (
+									<td style={{ padding: "8px", textAlign: "right" }}>
+										{formatCurrency(grandCost)}
+									</td>
+								)}
 							</tr>
 						</tbody>
 					</table>

@@ -107,10 +107,26 @@ export type StalenessLevel =
 
 /** Usage-credit spend, in major currency units (serialization-safe) */
 export interface SpendSummary {
-	used: number;
+	/**
+	 * Amount spent, or null when the API reported only a percentage and there
+	 * is no limit to derive an amount from. Rendering 0 there would claim a
+	 * balance of zero on an account with real spend.
+	 */
+	used: number | null;
 	limit: number | null;
-	percentage: number;
+	/**
+	 * Share of the limit used, or null when the API reported neither an amount
+	 * nor a utilization. Zero would be a claim about the account; null is the
+	 * truth, which is that nothing was reported.
+	 */
+	percentage: number | null;
 	currency: string;
+	/**
+	 * True when `used` was derived from the limit and a reported percentage
+	 * rather than given directly, so the UI can avoid presenting a computed
+	 * figure as an exact one.
+	 */
+	isDerived: boolean;
 }
 
 /**
@@ -130,10 +146,13 @@ export interface ProjectUsage {
  * Predictive weekly-cap forecast (serialization-safe; plain numbers/bool).
  */
 export interface WeeklyCapForecast {
-	avgDailyTokens: number;
 	daysUntilCap: number;
 	daysUntilReset: number;
 	willExceedBeforeReset: boolean;
+	/** Only set when the forecast came from local token estimates. */
+	avgDailyTokens: number | null;
+	/** True when projected from the API's own utilization rather than a guess. */
+	isFromApi: boolean;
 }
 
 /**
@@ -151,6 +170,10 @@ export interface DashboardData {
 	todayCost: number;
 	monthCost: number;
 	totalCost: number;
+
+	// Token totals, shown in place of cost on a subscription
+	todayTokens: number;
+	monthTokens: number;
 
 	// Rate limits with detailed info
 	session5h: RateLimitData;
@@ -177,6 +200,16 @@ export interface DashboardData {
 	 * has extra usage enabled.
 	 */
 	spend: SpendSummary | null;
+
+	/**
+	 * Whether to show dollar figures at all.
+	 *
+	 * On a subscription the bill is flat, so a per-token cost is an
+	 * API-equivalent estimate rather than anything the user pays. Showing it as
+	 * "Month Cost" reads as a bill. Defaults to showing money only when the
+	 * account actually spends money (credits enabled).
+	 */
+	showCost: boolean;
 
 	/**
 	 * How old the API figures are. A row sourced from a stale cache is exact but

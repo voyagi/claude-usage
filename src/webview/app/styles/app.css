@@ -400,6 +400,27 @@ body {
 	font-style: italic;
 }
 
+/* ========== Usage Credits ========== */
+.credits-row {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+
+.credits-used {
+	font-size: 20px;
+	font-weight: 700;
+	color: var(--vscode-panelTitle-activeForeground);
+	font-variant-numeric: tabular-nums;
+}
+
+.credits-limit {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	font-variant-numeric: tabular-nums;
+}
+
 /* ========== What's Contributing ========== */
 .attribution-toggle {
 	margin-bottom: 10px;
