@@ -100,6 +100,12 @@ describe("UsageStore version gate", () => {
 		expect(loaded?.buckets.weekly.get(key)?.outputTokens).toBe(500);
 		expect(loaded?.buckets.weekly.get(key)?.messageCount).toBe(1);
 		expect(loaded?.buckets.daily.size).toBe(1);
+
+		// And the Date revival, which is the whole reason the fake round-trips
+		// through JSON: timestamps cross that boundary as ISO strings, so a
+		// deserializer that forgot to rebuild them would hand back a string
+		// typed as a Date and every date operation downstream would fail.
+		expect(loaded?.buckets.session.get("s1")?.lastMessage).toBeInstanceOf(Date);
 	});
 
 	it("refuses version 1, whose weekly buckets merged two calendar weeks", async () => {
