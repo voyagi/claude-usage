@@ -11,7 +11,7 @@
 // empty module stub is enough to let the import chain resolve under Jest.
 jest.mock("vscode", () => ({}), { virtual: true });
 
-import { format, startOfWeek } from "date-fns";
+import { weeklyBucketKey } from "../aggregation/timeBuckets.js";
 import type { AggregatedUsage, ApiUsageData, TimeBuckets } from "../types.js";
 import {
 	buildStatusBarData,
@@ -54,8 +54,12 @@ function bucketsWithModelWeekly(
 
 /** The week key calculateRateLimits will compute for "now" */
 function currentWeekKey(): string {
-	// Mirrors calculateRateLimits: startOfWeek(Monday) formatted "yyyy-'W'II"
-	return format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-'W'II");
+	// The shared helper, not a restatement of it. Mirroring the format string
+	// here passed only because the two agree outside the turn of the year --
+	// during the days where they diverge this fixture would key its buckets
+	// somewhere calculateRateLimits never looks, and the test would fail for a
+	// reason that has nothing to do with rate limits.
+	return weeklyBucketKey(new Date());
 }
 
 describe("modelMatchesScopeLabel", () => {

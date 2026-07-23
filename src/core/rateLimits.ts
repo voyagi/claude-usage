@@ -12,7 +12,7 @@ import {
 	startOfWeek,
 	subHours,
 } from "date-fns";
-import { dailyBucketKey } from "../aggregation/timeBuckets.js";
+import { dailyBucketKey, weeklyBucketKey } from "../aggregation/timeBuckets.js";
 import { getStaleness } from "../api/usageCache.js";
 import { getPlanConfig } from "../pricing/plans.js";
 import type {
@@ -95,7 +95,7 @@ export function calculateRateLimits(
 
 	// Weekly limit: Sum output tokens from current ISO week
 	const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
-	const weekKey = format(weekStart, "yyyy-'W'II");
+	const weekKey = weeklyBucketKey(now);
 	const weekData = buckets.weekly.get(weekKey);
 	const weeklyTokens = weekData?.outputTokens ?? 0;
 
@@ -119,7 +119,7 @@ export function calculateRateLimits(
 	if (scopedModelLabel) {
 		let scopedTokens = 0;
 		for (const [key, agg] of buckets.modelWeekly.entries()) {
-			// Key format: "YYYY-WII:model-name"
+			// Key format: "RRRR-WII:model-name" (see weeklyBucketKey)
 			if (!key.startsWith(`${weekKey}:`)) continue;
 			const model = key.slice(weekKey.length + 1);
 			if (modelMatchesScopeLabel(model, scopedModelLabel)) {

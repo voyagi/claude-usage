@@ -64,6 +64,22 @@ function failResult(error: FetchErrorReason = "network"): FetchResult {
 // ── getStaleness ─────────────────────────────────────────────────────
 
 describe("BREAKIT: getStaleness", () => {
+	// Frozen for the whole tree, not just the Mutation Detectors below.
+	// getStaleness reads Date.now() itself, so every fixture built from
+	// Date.now() races it: the 1ms cases fired about once in six suite runs,
+	// and the 1s cases in this block survive only because elapsed time happens
+	// to push them deeper into the band they assert, which is luck rather than
+	// design. Every test here is a synchronous pure-function call, so freezing
+	// costs nothing.
+	beforeEach(() => {
+		jest.useFakeTimers({ doNotFake: ["performance"] });
+		jest.setSystemTime(new Date("2026-07-23T12:00:00.000Z"));
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
 	describe("Boundary Assault", () => {
 		it("returns 'unavailable' for null (no API data)", () => {
 			expect(getStaleness(null)).toBe("unavailable");
@@ -125,6 +141,10 @@ describe("BREAKIT: getStaleness", () => {
 	});
 
 	describe("Mutation Detectors", () => {
+		// These pin the exact millisecond each staleness band starts, so the
+		// margins are 1ms by design and only hold under the frozen clock
+		// installed for this whole describe tree above.
+
 		// If someone changes < to <= at the 30m boundary
 		it("boundary: 30m minus 1ms is fresh, 30m is normal", () => {
 			const justUnder = new Date(Date.now() - 30 * 60_000 + 1);
@@ -142,17 +162,17 @@ describe("BREAKIT: getStaleness", () => {
 		});
 
 		// If someone changes < to <= at the 120m boundary
-		it("boundary: 120m minus 100ms is dim, 120m is stale", () => {
-			const justUnder = new Date(Date.now() - 120 * 60_000 + 100);
-			const atBoundary = new Date(Date.now() - 120 * 60_000 - 100);
+		it("boundary: 120m minus 1ms is dim, 120m is stale", () => {
+			const justUnder = new Date(Date.now() - 120 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 120 * 60_000);
 			expect(getStaleness(justUnder)).toBe("dim");
 			expect(getStaleness(atBoundary)).toBe("stale");
 		});
 
 		// If someone changes < to <= at the 240m boundary
-		it("boundary: 240m minus 100ms is stale, 240m is critical", () => {
-			const justUnder = new Date(Date.now() - 240 * 60_000 + 100);
-			const atBoundary = new Date(Date.now() - 240 * 60_000 - 100);
+		it("boundary: 240m minus 1ms is stale, 240m is critical", () => {
+			const justUnder = new Date(Date.now() - 240 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 240 * 60_000);
 			expect(getStaleness(justUnder)).toBe("stale");
 			expect(getStaleness(atBoundary)).toBe("critical");
 		});
