@@ -64,6 +64,22 @@ function failResult(error: FetchErrorReason = "network"): FetchResult {
 // ── getStaleness ─────────────────────────────────────────────────────
 
 describe("BREAKIT: getStaleness", () => {
+	// Frozen for the whole tree, not just the Mutation Detectors below.
+	// getStaleness reads Date.now() itself, so every fixture built from
+	// Date.now() races it: the 1ms cases fired about once in six suite runs,
+	// and the 1s cases in this block survive only because elapsed time happens
+	// to push them deeper into the band they assert, which is luck rather than
+	// design. Every test here is a synchronous pure-function call, so freezing
+	// costs nothing.
+	beforeEach(() => {
+		jest.useFakeTimers({ doNotFake: ["performance"] });
+		jest.setSystemTime(new Date("2026-07-23T12:00:00.000Z"));
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
 	describe("Boundary Assault", () => {
 		it("returns 'unavailable' for null (no API data)", () => {
 			expect(getStaleness(null)).toBe("unavailable");
@@ -126,20 +142,8 @@ describe("BREAKIT: getStaleness", () => {
 
 	describe("Mutation Detectors", () => {
 		// These pin the exact millisecond each staleness band starts, so the
-		// margins are 1ms by design. getStaleness reads Date.now() itself, so
-		// against a live clock any millisecond elapsing between building the
-		// fixture and the assertion pushes the age over the boundary and the
-		// test fails -- observed roughly once in six full-suite runs, enough to
-		// block a push at random. Freezing the clock keeps the boundary exact
-		// and makes the elapsed time zero.
-		beforeEach(() => {
-			jest.useFakeTimers({ doNotFake: ["performance"] });
-			jest.setSystemTime(new Date("2026-07-23T12:00:00.000Z"));
-		});
-
-		afterEach(() => {
-			jest.useRealTimers();
-		});
+		// margins are 1ms by design and only hold under the frozen clock
+		// installed for this whole describe tree above.
 
 		// If someone changes < to <= at the 30m boundary
 		it("boundary: 30m minus 1ms is fresh, 30m is normal", () => {
