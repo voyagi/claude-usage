@@ -125,6 +125,22 @@ describe("BREAKIT: getStaleness", () => {
 	});
 
 	describe("Mutation Detectors", () => {
+		// These pin the exact millisecond each staleness band starts, so the
+		// margins are 1ms by design. getStaleness reads Date.now() itself, so
+		// against a live clock any millisecond elapsing between building the
+		// fixture and the assertion pushes the age over the boundary and the
+		// test fails -- observed roughly once in six full-suite runs, enough to
+		// block a push at random. Freezing the clock keeps the boundary exact
+		// and makes the elapsed time zero.
+		beforeEach(() => {
+			jest.useFakeTimers({ doNotFake: ["performance"] });
+			jest.setSystemTime(new Date("2026-07-23T12:00:00.000Z"));
+		});
+
+		afterEach(() => {
+			jest.useRealTimers();
+		});
+
 		// If someone changes < to <= at the 30m boundary
 		it("boundary: 30m minus 1ms is fresh, 30m is normal", () => {
 			const justUnder = new Date(Date.now() - 30 * 60_000 + 1);
@@ -142,17 +158,17 @@ describe("BREAKIT: getStaleness", () => {
 		});
 
 		// If someone changes < to <= at the 120m boundary
-		it("boundary: 120m minus 100ms is dim, 120m is stale", () => {
-			const justUnder = new Date(Date.now() - 120 * 60_000 + 100);
-			const atBoundary = new Date(Date.now() - 120 * 60_000 - 100);
+		it("boundary: 120m minus 1ms is dim, 120m is stale", () => {
+			const justUnder = new Date(Date.now() - 120 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 120 * 60_000);
 			expect(getStaleness(justUnder)).toBe("dim");
 			expect(getStaleness(atBoundary)).toBe("stale");
 		});
 
 		// If someone changes < to <= at the 240m boundary
-		it("boundary: 240m minus 100ms is stale, 240m is critical", () => {
-			const justUnder = new Date(Date.now() - 240 * 60_000 + 100);
-			const atBoundary = new Date(Date.now() - 240 * 60_000 - 100);
+		it("boundary: 240m minus 1ms is stale, 240m is critical", () => {
+			const justUnder = new Date(Date.now() - 240 * 60_000 + 1);
+			const atBoundary = new Date(Date.now() - 240 * 60_000);
 			expect(getStaleness(justUnder)).toBe("stale");
 			expect(getStaleness(atBoundary)).toBe("critical");
 		});
