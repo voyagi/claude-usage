@@ -33,7 +33,7 @@ import {
 	getBillableTokenCount,
 	getTotalTokens,
 } from "./parser/tokenCounter";
-import type { AggregatedUsage, TimeBuckets, TokenUsage } from "./types";
+import type { TimeBuckets, TokenUsage } from "./types";
 import {
 	formatBarGraph,
 	formatBurnRate,

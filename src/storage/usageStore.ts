@@ -13,6 +13,20 @@ import { Logger } from "../utils/logger.js";
 const logger = Logger.create("UsageStore");
 
 /**
+ * Schema version for persisted buckets. Loading anything else discards it and
+ * forces a reparse, which is the migration mechanism -- the buckets are derived
+ * data, so rebuilding them is always safe and always cheaper than writing a
+ * transform.
+ *
+ * 1 -> 2: weekly keys were built from the calendar year plus the ISO week
+ * number, so ISO 2025-W01 was stored under "2024-W01" alongside ISO 2024-W01
+ * and the two weeks' tokens were summed. Version-2 keys use the ISO week-year,
+ * and any version-1 state is dropped rather than migrated: its weekly buckets
+ * cannot be split back apart, because the collision already merged them.
+ */
+const STATE_VERSION = 2;
+
+/**
  * UsageStore wraps VS Code globalState for typed persistence
  * Handles serialization/deserialization of TimeBuckets (Map to array conversion)
  * Supports schema versioning for future migrations
@@ -35,7 +49,7 @@ export class UsageStore {
 		stats: { filesProcessed: number; linesSkipped: number },
 	): Promise<void> {
 		const state: PersistedState = {
-			version: 1,
+			version: STATE_VERSION,
 			lastParseTimestamp: new Date().toISOString(),
 			totalFilesProcessed: stats.filesProcessed,
 			totalLinesSkipped: stats.linesSkipped,
@@ -64,9 +78,9 @@ export class UsageStore {
 		}
 
 		// Version check - force reparse on schema changes
-		if (state.version !== 1) {
+		if (state.version !== STATE_VERSION) {
 			logger.warn(
-				`Persisted state version mismatch (expected 1, got ${state.version}). Forcing reparse.`,
+				`Persisted state version mismatch (expected ${STATE_VERSION}, got ${state.version}). Forcing reparse.`,
 			);
 			return null;
 		}

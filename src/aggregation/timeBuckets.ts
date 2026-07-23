@@ -28,6 +28,23 @@ export function dailyBucketKey(when: Date): string {
 }
 
 /**
+ * Key for the weekly bucket containing a given moment.
+ *
+ * `RRRR` is the ISO week-numbering year, not `yyyy` (the calendar year). Pairing
+ * a calendar year with an ISO week number is not merely inconsistent, it
+ * collides: the Monday of ISO 2025-W01 falls on 2024-12-30, whose calendar year
+ * is 2024, so it formats as "2024-W01" -- the same key ISO 2024-W01 already
+ * owns. Two weeks 52 apart then share one bucket, and since calculateRateLimits
+ * reads that key, the weekly usage bar reports a year-old week's tokens on top
+ * of the current one. Verified over 2022-2027: `yyyy` produces exactly one such
+ * collision and disagrees with an ISO-derived reader on 14 days; `RRRR`
+ * produces none and agrees everywhere.
+ */
+export function weeklyBucketKey(when: Date): string {
+	return format(startOfWeek(when, { weekStartsOn: 1 }), "RRRR-'W'II");
+}
+
+/**
  * Aggregate TokenUsage records into time buckets
  * Groups records by session, calendar day, ISO week, and calendar month
  * Uses local timezone for calendar boundaries (matches user expectations)
@@ -61,9 +78,8 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		}
 		addToAggregation(buckets.daily.get(dayKey)!, record);
 
-		// Weekly bucket: key = YYYY-'W'II (ISO week, Monday start)
-		const weekStart = startOfWeek(record.timestamp, { weekStartsOn: 1 });
-		const weekKey = format(weekStart, "yyyy-'W'II");
+		// Weekly bucket: key = RRRR-'W'II (ISO week-year + ISO week, Monday start)
+		const weekKey = weeklyBucketKey(record.timestamp);
 		if (!buckets.weekly.has(weekKey)) {
 			buckets.weekly.set(weekKey, createEmptyAggregatedUsage());
 		}
