@@ -26,16 +26,25 @@ import { aggregateUsage } from "../aggregation/timeBuckets.js";
 import type { PersistedState, TokenUsage } from "../types.js";
 import { UsageStore } from "./usageStore.js";
 
-/** Minimal globalState stand-in that records what was written. */
+/**
+ * globalState stand-in.
+ *
+ * Values are round-tripped through JSON on write, because that is what VS Code
+ * actually does: storing the object by reference would let a Date survive as a
+ * Date and a Map survive as a Map, hiding exactly the serialization mistakes
+ * this store exists to get right.
+ */
 function fakeContext(initial?: unknown) {
 	const store = new Map<string, unknown>();
-	if (initial !== undefined) store.set("claudeUsage", initial);
+	const persist = (value: unknown): unknown =>
+		JSON.parse(JSON.stringify(value));
+	if (initial !== undefined) store.set("claudeUsage", persist(initial));
 	return {
 		globalState: {
 			get: <T>(key: string): T | undefined => store.get(key) as T | undefined,
 			update: async (key: string, value: unknown): Promise<void> => {
 				if (value === undefined) store.delete(key);
-				else store.set(key, value);
+				else store.set(key, persist(value));
 			},
 		},
 		_store: store,
@@ -84,6 +93,13 @@ describe("UsageStore version gate", () => {
 		expect([...(loaded?.buckets.weekly.keys() ?? [])]).toEqual([
 			...buckets.weekly.keys(),
 		]);
+
+		// The payload too, not just the key list: a deserializer that preserved
+		// every key while zeroing its contents would otherwise pass this.
+		const [key] = buckets.weekly.keys();
+		expect(loaded?.buckets.weekly.get(key)?.outputTokens).toBe(500);
+		expect(loaded?.buckets.weekly.get(key)?.messageCount).toBe(1);
+		expect(loaded?.buckets.daily.size).toBe(1);
 	});
 
 	it("refuses version 1, whose weekly buckets merged two calendar weeks", async () => {

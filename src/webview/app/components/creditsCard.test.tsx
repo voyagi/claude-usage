@@ -77,19 +77,30 @@ function render(spend: SpendSummary | null): string | null {
 	const html = renderToStaticMarkup(
 		<OverviewTab data={dashboardData(spend)} />,
 	);
-	// The card's own heading, not its wrapper markup: keying the slice on a
-	// class name would make every test here fail-open the day someone adds a
-	// modifier class, and the absence test pass for the wrong reason.
+	// Both boundaries key on card HEADINGS, never on wrapper markup. Keying
+	// either end on `class="card"` fails open: a modifier class on the card
+	// AFTER this one makes the terminator miss, the slice runs to end of
+	// document, and every assertion below silently starts inspecting the whole
+	// tab -- which is exactly what scoping exists to prevent.
 	const heading = '<h3 class="card-title">Usage Credits</h3>';
 	const headingAt = html.indexOf(heading);
 	if (headingAt === -1) {
-		// Genuinely not rendered. Distinguished from "present but unmatchable"
-		// by the sanity check below, which proves the slice still works.
+		// Genuinely not rendered. A slice that has merely stopped matching
+		// cannot reach here unnoticed, because every other test goes through
+		// card(), which throws rather than reporting absence.
 		return null;
 	}
+
 	const start = html.lastIndexOf("<div", headingAt);
-	const next = html.indexOf('<div class="card">', headingAt);
-	return next === -1 ? html.slice(start) : html.slice(start, next);
+	// The next card begins at its own heading; walk back to that card's
+	// opening tag so this slice stops before it.
+	const nextHeading = html.indexOf(
+		'<h3 class="card-title"',
+		headingAt + heading.length,
+	);
+	const end =
+		nextHeading === -1 ? html.length : html.lastIndexOf("<div", nextHeading);
+	return html.slice(start, end);
 }
 
 /** Fails loudly if the slice stops finding a card that IS being rendered. */
