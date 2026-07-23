@@ -85,7 +85,7 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		}
 		addToAggregation(buckets.weekly.get(weekKey)!, record);
 
-		// Model-specific weekly bucket: key = "YYYY-'W'II:model-name"
+		// Model-specific weekly bucket: key = "RRRR-'W'II:model-name"
 		const modelWeekKey = `${weekKey}:${record.model}`;
 		if (!buckets.modelWeekly.has(modelWeekKey)) {
 			buckets.modelWeekly.set(modelWeekKey, createEmptyAggregatedUsage());

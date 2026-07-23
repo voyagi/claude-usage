@@ -118,10 +118,18 @@ export class UsageStore {
 
 	/**
 	 * Get timestamp of last parse without full deserialization
-	 * @returns ISO timestamp or null if no data
+	 *
+	 * Version-checked like loadUsageData: a timestamp taken from state this
+	 * build would refuse to load describes buckets that no longer exist, and
+	 * reporting it would date data the extension is about to rebuild.
+	 *
+	 * @returns ISO timestamp or null if no data or the data is a stale version
 	 */
 	getLastParseTimestamp(): string | null {
 		const state = this.context.globalState.get<PersistedState>(this.storageKey);
-		return state?.lastParseTimestamp ?? null;
+		if (!state || state.version !== STATE_VERSION) {
+			return null;
+		}
+		return state.lastParseTimestamp ?? null;
 	}
 }

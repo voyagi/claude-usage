@@ -73,27 +73,42 @@ function dashboardData(spend: SpendSummary | null): DashboardData {
  * on markup that has nothing to do with credits, and pass for the wrong reason
  * if the card were removed.
  */
-function render(spend: SpendSummary | null): string {
+function render(spend: SpendSummary | null): string | null {
 	const html = renderToStaticMarkup(
 		<OverviewTab data={dashboardData(spend)} />,
 	);
-	const start = html.indexOf(
-		'<div class="card"><h3 class="card-title">Usage Credits',
-	);
-	if (start === -1) return "";
-	// Cards are siblings, so the next one begins where this one ends
-	const next = html.indexOf('<div class="card">', start + 1);
+	// The card's own heading, not its wrapper markup: keying the slice on a
+	// class name would make every test here fail-open the day someone adds a
+	// modifier class, and the absence test pass for the wrong reason.
+	const heading = '<h3 class="card-title">Usage Credits</h3>';
+	const headingAt = html.indexOf(heading);
+	if (headingAt === -1) {
+		// Genuinely not rendered. Distinguished from "present but unmatchable"
+		// by the sanity check below, which proves the slice still works.
+		return null;
+	}
+	const start = html.lastIndexOf("<div", headingAt);
+	const next = html.indexOf('<div class="card">', headingAt);
 	return next === -1 ? html.slice(start) : html.slice(start, next);
+}
+
+/** Fails loudly if the slice stops finding a card that IS being rendered. */
+function card(spend: SpendSummary): string {
+	const html = render(spend);
+	if (html === null) throw new Error("credits card not found in rendered tab");
+	return html;
 }
 
 describe("Usage Credits card", () => {
 	it("is absent entirely on a subscription with no credits", () => {
-		// render() returns "" when the card is not in the tab at all
-		expect(render(null)).toBe("");
+		// null means the heading is nowhere in the tab. Every other test in this
+		// file calls card(), which throws rather than returning null, so a
+		// broken slice cannot masquerade as absence here.
+		expect(render(null)).toBeNull();
 	});
 
 	it("shows a reported amount against its limit", () => {
-		const html = render({
+		const html = card({
 			used: 12.34,
 			limit: 50,
 			percentage: 24.68,
@@ -108,7 +123,7 @@ describe("Usage Credits card", () => {
 	});
 
 	it("marks a derived amount rather than presenting it as exact", () => {
-		const html = render({
+		const html = card({
 			used: 70,
 			limit: 200,
 			percentage: 35,
@@ -121,7 +136,7 @@ describe("Usage Credits card", () => {
 
 	it("shows the percentage alone when there is no amount to state", () => {
 		// utilization known, no limit to derive an amount from
-		const html = render({
+		const html = card({
 			used: null,
 			limit: null,
 			percentage: 40,
@@ -137,7 +152,7 @@ describe("Usage Credits card", () => {
 	it("says nothing at all when the API reported no usage figure", () => {
 		// The case that survived three review rounds: credits enabled, neither
 		// an amount nor a utilization. A zero here is a claim about the account.
-		const html = render({
+		const html = card({
 			used: null,
 			limit: 50,
 			percentage: null,
@@ -156,7 +171,7 @@ describe("Usage Credits card", () => {
 	});
 
 	it("renders the bar only when a share is actually known", () => {
-		const known = render({
+		const known = card({
 			used: 45,
 			limit: 50,
 			percentage: 90,
@@ -165,7 +180,7 @@ describe("Usage Credits card", () => {
 		});
 		expect(known).toContain("progress-fill");
 
-		const unknown = render({
+		const unknown = card({
 			used: null,
 			limit: 50,
 			percentage: null,
@@ -175,8 +190,27 @@ describe("Usage Credits card", () => {
 		expect(unknown).not.toContain("progress-fill");
 	});
 
+	it("draws no bar when there is no limit to draw it against", () => {
+		// The other half of the bar gate. Its partner (percentage !== null) is
+		// enforced by the type checker, since Math.min rejects a nullable, but
+		// this half compiles fine when removed -- so it needs a test.
+		const html = card({
+			used: 30,
+			limit: null,
+			percentage: 60,
+			currency: "USD",
+			isDerived: false,
+		});
+
+		// The amount is known and shown; there is simply nothing to draw it
+		// against, and no limit to name.
+		expect(html).toContain("$30.00");
+		expect(html).not.toContain("progress-fill");
+		expect(html).not.toContain("of $");
+	});
+
 	it("uses the currency the API reported", () => {
-		const html = render({
+		const html = card({
 			used: 10,
 			limit: 100,
 			percentage: 10,

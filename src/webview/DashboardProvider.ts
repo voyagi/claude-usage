@@ -692,7 +692,8 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 					return dailyBucketKey(r.timestamp) === period;
 				case "weekly":
 					// Same derivation as the writer. Hand-rolling it here is what
-					// let this disagree with the bucket keys on 14 days a year,
+					// let this disagree with the bucket keys around the turn of the
+					// year -- 14 days across 2022-2027, none at all in some years --
 					// returning an empty drill-down for those weeks.
 					return weeklyBucketKey(r.timestamp) === period;
 				case "monthly":

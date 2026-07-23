@@ -119,7 +119,7 @@ export function calculateRateLimits(
 	if (scopedModelLabel) {
 		let scopedTokens = 0;
 		for (const [key, agg] of buckets.modelWeekly.entries()) {
-			// Key format: "YYYY-WII:model-name"
+			// Key format: "RRRR-WII:model-name" (see weeklyBucketKey)
 			if (!key.startsWith(`${weekKey}:`)) continue;
 			const model = key.slice(weekKey.length + 1);
 			if (modelMatchesScopeLabel(model, scopedModelLabel)) {
