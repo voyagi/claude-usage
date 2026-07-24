@@ -48,7 +48,21 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const ANCHOR_AGREEMENT_TOLERANCE_MS = 60_000;
 
 /**
- * Wrap a warning sink so an identical message is stated once, not repeatedly.
+ * Somewhere a warning can be sent, optionally with a key that decides whether
+ * it counts as a repeat of the last one.
+ *
+ * The key exists because the message cannot serve as one. A message that quotes
+ * server timestamps is different on every poll even when the condition it
+ * reports has not changed by a microsecond, so deduplicating on message text
+ * silently never deduplicates. A plain logger satisfies this type and ignores
+ * the second argument.
+ */
+export interface WarningSink {
+	warn(message: string, dedupeKey?: string): void;
+}
+
+/**
+ * Wrap a sink so a repeat of the same condition is stated once, not endlessly.
  *
  * For a condition that is permanent rather than transient. A malformed
  * timestamp is a server bug whose warning stops when the server is fixed, so
@@ -59,18 +73,24 @@ const ANCHOR_AGREEMENT_TOLERANCE_MS = 60_000;
  * how long a warning repeats rather than how erratically it fires: a warning
  * nobody can act on teaches its channel to be ignored.
  *
- * Latching on the message rather than a flag is what keeps it honest. If the
- * instants change, the message changes, and the new state of affairs is said
- * out loud instead of being swallowed by a latch that already fired.
+ * What counts as "the same" is the caller's `dedupeKey`, falling back to the
+ * message only when none is given. Keying on the message was the first attempt
+ * here and it did not work: the message embeds raw `resets_at` strings, whose
+ * sub-second field is stamped per response, so every poll produced a new message
+ * and nothing was ever suppressed. The tests passed because their fixtures fed
+ * literal strings the API never emits. A latch that cannot fire is worse than no
+ * latch, because the code says the volume problem is handled.
+ *
+ * Only consecutive repeats are suppressed, so a condition that clears and
+ * returns is stated again, and a genuinely different one is never swallowed.
  */
-export function latchRepeats(sink: { warn: (message: string) => void }): {
-	warn: (message: string) => void;
-} {
+export function latchRepeats(sink: WarningSink): WarningSink {
 	let previous: string | null = null;
 	return {
-		warn(message: string) {
-			if (message === previous) return;
-			previous = message;
+		warn(message: string, dedupeKey?: string) {
+			const key = dedupeKey ?? message;
+			if (key === previous) return;
+			previous = key;
 			sink.warn(message);
 		},
 	};
@@ -104,16 +124,16 @@ export function pickWeeklyAnchor(
 		sevenDay?: { resetsAt: string | null } | null;
 		scopedWeekly?: { resetsAt: string | null }[];
 	},
-	logger?: { warn: (message: string) => void },
+	logger?: WarningSink,
 ): string | null {
 	const weekly = usage.sevenDay?.resetsAt ?? null;
 	const scoped =
 		usage.scopedWeekly?.find((window) => window.resetsAt)?.resetsAt ?? null;
 
 	if (logger && weekly && scoped) {
-		const apart = Math.abs(
-			new Date(weekly).getTime() - new Date(scoped).getTime(),
-		);
+		const weeklyMs = new Date(weekly).getTime();
+		const scopedMs = new Date(scoped).getTime();
+		const apart = Math.abs(weeklyMs - scopedMs);
 		// An unreadable value makes `apart` NaN, and every NaN comparison is
 		// false, so it declines to complain on its own. That is the outcome we
 		// want and it needs no guard: the parse boundary has already named the
@@ -124,8 +144,20 @@ export function pickWeeklyAnchor(
 		// outcome. A guard that cannot fire reads as protection and provides
 		// none, which is the pattern this file exists to keep out.
 		if (apart > ANCHOR_AGREEMENT_TOLERANCE_MS) {
+			// The message quotes the raw instants because that is what a reader
+			// needs, but it cannot double as the repeat key: the sub-second field
+			// is stamped per response, so the text differs on every poll while the
+			// condition is unchanged, and a latch keyed on it never fires. The key
+			// buckets both instants at the same resolution as the tolerance, which
+			// is by construction coarser than the jitter and finer than any real
+			// move. A pair sitting within a millisecond of a bucket edge can flip
+			// buckets and produce one extra warning; that direction is the safe
+			// one, since the failure being reported is silence.
+			const bucket = (ms: number) =>
+				Math.round(ms / ANCHOR_AGREEMENT_TOLERANCE_MS);
 			logger.warn(
 				`The weekly and scoped limits report different reset times (${weekly} vs ${scoped}). This build assumes they share one account-wide anchor, so weekly usage totals and countdowns may now be measured over the wrong days. Please report this.`,
+				`anchor-disagreement:${bucket(weeklyMs)}|${bucket(scopedMs)}`,
 			);
 		}
 	}

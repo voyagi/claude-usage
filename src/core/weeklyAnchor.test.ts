@@ -191,6 +191,52 @@ describe("pickWeeklyAnchor: the shared-anchor tripwire", () => {
 		expect(logger.warn).not.toHaveBeenCalled();
 	});
 
+	it("states one unchanged divergence once across repeated polls", () => {
+		// The test that was missing, and whose absence let a latch ship that could
+		// never fire. Each poll re-stamps the sub-second field, so the message text
+		// differs every time while the condition is identical to the second. A
+		// latch keyed on the message therefore suppressed nothing in production and
+		// suppressed everything in a fixture built from literal strings.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+
+		for (const stamp of ["383291", "591004", "712880"]) {
+			pickWeeklyAnchor(
+				{
+					sevenDay: { resetsAt: `2026-07-24T08:00:00.${stamp}+00:00` },
+					scopedWeekly: [{ resetsAt: `2026-07-31T08:00:00.${stamp}+00:00` }],
+				},
+				latched,
+			);
+		}
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("speaks again when the divergence itself moves", () => {
+		// The other half: bucketing must not be so coarse that a real change is
+		// swallowed. A move of a whole day is what an actual split would look like.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			latched,
+		);
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: "2026-08-01T08:00:00.111222+00:00" }],
+			},
+			latched,
+		);
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+	});
+
 	it("still returns the anchor it picked when it complains", () => {
 		// The tripwire reports; it does not change the answer. Suppressing the
 		// anchor on disagreement would trade a possibly-wrong instant for the
