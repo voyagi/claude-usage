@@ -713,3 +713,55 @@ describe("usageApi: parseUsagePayload - limits[] shape", () => {
 		expect(data.scopedWeekly[0].label).toBe("Cowork");
 	});
 });
+
+describe("parseUsagePayload: an unreadable resets_at", () => {
+	/** A payload whose session limit carries a reset in the given form. */
+	function payloadWithReset(resets_at: unknown) {
+		return {
+			limits: [{ kind: "session", group: "session", percent: 17, resets_at }],
+		};
+	}
+
+	it("drops a reset it cannot read, rather than passing it on", () => {
+		const data = parseUsagePayload(payloadWithReset("not-a-date"));
+		expect(data.fiveHour?.utilization).toBe(0.17);
+		expect(data.fiveHour?.resetsAt).toBeNull();
+	});
+
+	it("says so, because a blank countdown is otherwise a normal state", () => {
+		// Display code renders a null reset as "no countdown", which this change
+		// set made the ordinary case. So a timestamp format change would empty
+		// every countdown on every surface and look exactly like working
+		// correctly. This warning is the only thing that would distinguish them.
+		const logger = makeLogger();
+		parseUsagePayload(payloadWithReset("not-a-date"), logger);
+
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		// Naming the offending value is the point: a format change is only
+		// actionable if the log says what arrived.
+		expect((logger.warn as jest.Mock).mock.calls[0][0]).toContain("not-a-date");
+	});
+
+	it("stays quiet about a reset the API legitimately omitted", () => {
+		// The scoped weekly limit reports null at zero usage on every poll. If
+		// that warned, the signal would be noise from the first minute.
+		const logger = makeLogger();
+		const data = parseUsagePayload(payloadWithReset(null), logger);
+
+		expect(data.fiveHour?.resetsAt).toBeNull();
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("keeps a reset it can read, untouched", () => {
+		const logger = makeLogger();
+		const data = parseUsagePayload(
+			payloadWithReset("2026-07-31T08:00:00.585182+00:00"),
+			logger,
+		);
+
+		// Stored verbatim, not normalized: this string is also the weekly anchor,
+		// and re-serializing it would quietly change what gets persisted.
+		expect(data.fiveHour?.resetsAt).toBe("2026-07-31T08:00:00.585182+00:00");
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+});

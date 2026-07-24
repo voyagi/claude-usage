@@ -206,16 +206,44 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 /**
+ * Normalize `resets_at`, dropping an unparseable value to null and saying so.
+ *
+ * `resets_at` is typed `string | null`, which asserts the server's JSON rather
+ * than checking it. Display code treats a null as "no countdown to show", and
+ * that is now a NORMAL state rather than an error one, so an unparseable value
+ * arriving silently would blank every countdown on every bar and card with no
+ * signal at all -- indistinguishable from working correctly. This is the layer
+ * where a server format change is actually diagnosable, so the complaint
+ * belongs here; the guard in `resetInstant` stays as the backstop.
+ */
+function parseResetsAt(
+	raw: string | null | undefined,
+	logger?: Logger,
+): string | null {
+	if (raw == null) return null;
+	if (Number.isNaN(new Date(raw).getTime())) {
+		logger?.warn(
+			`Usage API sent a resets_at this build cannot read (${JSON.stringify(raw)}). Treating it as absent, so countdowns will be blank. Please report this -- the timestamp format has changed.`,
+		);
+		return null;
+	}
+	return raw;
+}
+
+/**
  * Parse a legacy top-level window (five_hour, seven_day, seven_day_sonnet, ...)
  */
-function parseWindow(raw: RawWindow | null): ApiRateLimitWindow | null {
+function parseWindow(
+	raw: RawWindow | null,
+	logger?: Logger,
+): ApiRateLimitWindow | null {
 	if (!raw || !isFiniteNumber(raw.utilization)) {
 		return null;
 	}
 	// API returns percentages as integers (0-100), always normalize to 0-1 fraction
 	return {
 		utilization: raw.utilization / 100,
-		resetsAt: raw.resets_at ?? null,
+		resetsAt: parseResetsAt(raw.resets_at, logger),
 	};
 }
 
@@ -223,13 +251,16 @@ function parseWindow(raw: RawWindow | null): ApiRateLimitWindow | null {
  * Parse one entry of the `limits[]` array into a window.
  * Returns null when the entry carries no usable percentage.
  */
-function parseLimit(raw: RawLimit | null): ApiRateLimitWindow | null {
+function parseLimit(
+	raw: RawLimit | null,
+	logger?: Logger,
+): ApiRateLimitWindow | null {
 	if (!raw || !isFiniteNumber(raw.percent)) {
 		return null;
 	}
 	return {
 		utilization: raw.percent / 100,
-		resetsAt: raw.resets_at ?? null,
+		resetsAt: parseResetsAt(raw.resets_at, logger),
 		severity: raw.severity ?? "normal",
 		isActive: raw.is_active === true,
 	};
@@ -334,7 +365,10 @@ function parseSpend(raw: Record<string, unknown> | null): SpendInfo | null {
  *
  * Exported for testing.
  */
-export function parseUsagePayload(json: unknown): ApiUsageData {
+export function parseUsagePayload(
+	json: unknown,
+	logger?: Logger,
+): ApiUsageData {
 	const root = (json ?? {}) as Record<string, unknown>;
 	const limits: RawLimit[] = Array.isArray(root.limits)
 		? (root.limits as RawLimit[]).filter(
@@ -351,17 +385,17 @@ export function parseUsagePayload(json: unknown): ApiUsageData {
 	);
 
 	const fiveHour =
-		parseLimit(sessionLimit ?? null) ??
-		parseWindow(root.five_hour as RawWindow | null);
+		parseLimit(sessionLimit ?? null, logger) ??
+		parseWindow(root.five_hour as RawWindow | null, logger);
 	const sevenDay =
-		parseLimit(weeklyAllLimit ?? null) ??
-		parseWindow(root.seven_day as RawWindow | null);
+		parseLimit(weeklyAllLimit ?? null, logger) ??
+		parseWindow(root.seven_day as RawWindow | null, logger);
 
 	// Scoped weekly limits: the API decides which model is scoped and labels it.
 	const scopedWeekly: ApiScopedWindow[] = [];
 	for (const limit of limits) {
 		if (limit.kind !== "weekly_scoped") continue;
-		const window = parseLimit(limit);
+		const window = parseLimit(limit, logger);
 		const label = scopeLabel(limit);
 		if (!window || !label) continue;
 		scopedWeekly.push({ ...window, label });
@@ -373,7 +407,7 @@ export function parseUsagePayload(json: unknown): ApiUsageData {
 			["seven_day_sonnet", "Sonnet"],
 			["seven_day_opus", "Opus"],
 		] as const) {
-			const window = parseWindow(root[key] as RawWindow | null);
+			const window = parseWindow(root[key] as RawWindow | null, logger);
 			if (window) scopedWeekly.push({ ...window, label });
 		}
 	}
@@ -444,7 +478,7 @@ export async function fetchApiUsage(logger: Logger): Promise<FetchResult> {
 					}
 					try {
 						const json = JSON.parse(data);
-						resolve({ ok: true, data: parseUsagePayload(json) });
+						resolve({ ok: true, data: parseUsagePayload(json, logger) });
 					} catch (parseError) {
 						logger.warn(`Failed to parse usage API response: ${parseError}`);
 						resolve({ ok: false, error: "server_error" });

@@ -236,7 +236,14 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 					currentTokens: local?.currentTokens ?? 0,
 					estimatedLimit: local?.estimatedLimit ?? 0,
 					percentage: Math.round(window.utilization * 100),
-					resetTime: window.resetsAt,
+					// The fourth reader, and the one that took longest to notice.
+					// `local: null` keeps today's semantics exactly, since the API
+					// window always exists inside this loop -- the fallback arm is
+					// unreachable here. Passing the raw string through meant a
+					// malformed reset rendered as the literal text "Resets: NaNm"
+					// on this card while every other surface degraded quietly.
+					resetTime:
+						resetInstant(window, { local: null })?.toISOString() ?? null,
 					isHit: window.utilization >= 1.0,
 					isEstimated: false,
 				});

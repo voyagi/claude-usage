@@ -283,6 +283,43 @@ describe("buildDashboardData: reset times are never invented", () => {
 		expect(result.timeRemainingMinutes).toBeNull();
 	});
 
+	it("emits no scoped reset the dashboard cannot render", () => {
+		// The fourth reader. It passed resets_at through raw, so a malformed one
+		// reached the card and rendered as the literal text "Resets: NaNm" while
+		// every other surface degraded quietly to no countdown. One input, two
+		// different failure modes.
+		const result = build(
+			statusBarData(
+				api({
+					scopedWeekly: [
+						{ label: "Fable", utilization: 0.6, resetsAt: "not-a-date" },
+					],
+				}),
+			),
+		);
+
+		expect(result.scopedWeekly).toHaveLength(1);
+		expect(result.scopedWeekly[0].resetTime).toBeNull();
+	});
+
+	it("keeps a scoped reset the API states properly", () => {
+		const result = build(
+			statusBarData(
+				api({
+					scopedWeekly: [
+						{
+							label: "Fable",
+							utilization: 0.6,
+							resetsAt: "2026-07-31T08:00:00.585182+00:00",
+						},
+					],
+				}),
+			),
+		);
+
+		expect(result.scopedWeekly[0].resetTime).toBe("2026-07-31T08:00:00.585Z");
+	});
+
 	it("still emits the local reset when there is no API window at all", () => {
 		// The negative half: with nothing from the API the local estimate is all
 		// there is, and it is labelled as an estimate.
