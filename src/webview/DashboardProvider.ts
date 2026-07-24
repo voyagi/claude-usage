@@ -15,6 +15,7 @@ import {
 	forecastWeeklyCap,
 	forecastWeeklyCapFromUtilization,
 } from "../core/burnRate.js";
+import { resetInstant } from "../core/resetInstant.js";
 import type {
 	AggregatedUsage,
 	RateLimitInfo,
@@ -197,13 +198,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			percentage: apiWindow
 				? Math.round(apiWindow.utilization * 100)
 				: info.percentage,
-			// An API window's own reset stands even when it is null, which is a
-			// statement that no window is running rather than a missing value.
-			// Reaching past it to the local estimate would emit a guessed instant
-			// under `isEstimated: false`, i.e. a guess labelled authoritative.
-			resetTime: apiWindow
-				? apiWindow.resetsAt
-				: (info.resetTime?.toISOString() ?? null),
+			// Reaching past an API window that reported no reset would emit a
+			// guessed instant under `isEstimated: false`, i.e. a guess wearing the
+			// label of an authoritative reading. See resetInstant for why null is
+			// carried through rather than filled.
+			resetTime:
+				resetInstant(apiWindow, { local: info.resetTime })?.toISOString() ??
+				null,
 			isHit: apiWindow ? apiWindow.utilization >= 1.0 : info.isHit,
 			// Without an API window this percentage is local tokens over a plan
 			// default, which is a guess and must be labelled as one.
@@ -270,16 +271,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		let windowExpiry: string | null = null;
 		let timeRemainingMinutes: number | null = null;
 
-		// Same rule as convertRateLimit above, and it has to be repeated here
-		// because this card derives three more fields from the instant. Reaching
-		// past an API window that reported no reset would rebuild the whole
+		// The same shared rule. This card derives three further fields from the
+		// instant, so filling it from the local estimate would rebuild the whole
 		// "Current Window" panel -- start, expiry and minutes remaining -- around
-		// a locally guessed time, beside a session bar that correctly shows none.
-		const sessionResetSource = api?.fiveHour
-			? api.fiveHour.resetsAt
-				? new Date(api.fiveHour.resetsAt)
-				: null
-			: statusBarData.rateLimits.session5h.resetTime;
+		// a guessed time, beside a session bar correctly showing none.
+		const sessionResetSource = resetInstant(api?.fiveHour ?? null, {
+			local: statusBarData.rateLimits.session5h.resetTime,
+		});
 
 		if (sessionResetSource) {
 			const resetTime = sessionResetSource;
