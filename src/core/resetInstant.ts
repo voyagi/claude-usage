@@ -38,7 +38,18 @@ export function resetInstant(
 	fallback: { local: Date | null },
 ): Date | null {
 	if (apiWindow) {
-		return apiWindow.resetsAt ? new Date(apiWindow.resetsAt) : null;
+		if (!apiWindow.resetsAt) return null;
+		// `resets_at` is typed `string | null`, but that is an assertion about
+		// server JSON rather than a check of it: the parser does `raw.resets_at
+		// ?? null` and the value round-trips through an on-disk cache. An
+		// unparseable one yields an Invalid Date, and a caller that formats it
+		// throws RangeError out of the middle of building the dashboard --
+		// upstream of the usage save, so persisted totals would quietly stop
+		// updating while the status bar rendered NaN and looked merely odd.
+		// Unparseable maps to the same "nothing honest to show" this function
+		// already returns for a null.
+		const parsed = new Date(apiWindow.resetsAt);
+		return Number.isNaN(parsed.getTime()) ? null : parsed;
 	}
 	return fallback.local;
 }

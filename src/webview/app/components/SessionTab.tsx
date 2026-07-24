@@ -120,7 +120,7 @@ export function SessionTab({ data }: SessionTabProps) {
 								    API declined to date. */}
 								{data.timeRemainingMinutes !== null
 									? formatDuration(300 - data.timeRemainingMinutes)
-									: "—"}
+									: "n/a"}
 							</div>
 						</div>
 
