@@ -28,6 +28,26 @@
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * How far apart the two weekly resets may sit before they are a disagreement.
+ *
+ * Not zero, and not a round number picked for comfort. In the captured payload
+ * the all-model limit resets at `...T08:00:00.383291+00:00` and the scoped one
+ * at `...T08:00:00.383503+00:00`: the same instant, stamped 212 microseconds
+ * apart as the response was assembled. Comparing the strings would therefore
+ * report a disagreement on every poll. Comparing the parsed instants hides that
+ * particular pair, since `Date` keeps only milliseconds and both land on .383 --
+ * but only by luck of where they fell. Two stamps 212 microseconds apart
+ * straddle a millisecond boundary roughly a fifth of the time, so a zero
+ * tolerance would fire intermittently, which is worse than firing always: an
+ * intermittent warning reads as a glitch and gets ignored on the day it is real.
+ *
+ * A minute is far above that jitter and far below anything meaningful. If
+ * Anthropic ever gives the scoped limit an anchor of its own, it will differ by
+ * hours or days, not by fractions of a second.
+ */
+const ANCHOR_AGREEMENT_TOLERANCE_MS = 60_000;
+
+/**
  * The reset instant to anchor the account's weekly cycle to, or null.
  *
  * The all-model weekly window is the natural source and wins whenever it states
@@ -40,16 +60,43 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  * Filling that gap matters because the alternative is not "no anchor". It is
  * the Monday calendar week, which is the wrong phase by construction and is the
  * defect this module exists to remove.
+ *
+ * That shared anchor is the single assumption the whole feature rests on, and
+ * it rests on one observation. Both windows usually carry a reset, so whenever
+ * they do this compares them and complains if they have parted company. That
+ * turns the assumption from unverified into monitored: the failure it guards
+ * against is silent by nature, because a wrong-but-plausible anchor produces a
+ * countdown that looks entirely normal and a usage total measured over the
+ * wrong days. Passing no logger simply skips the check, which keeps the
+ * function usable as a pure helper.
  */
-export function pickWeeklyAnchor(usage: {
-	sevenDay?: { resetsAt: string | null } | null;
-	scopedWeekly?: { resetsAt: string | null }[];
-}): string | null {
-	return (
-		usage.sevenDay?.resetsAt ??
-		usage.scopedWeekly?.find((window) => window.resetsAt)?.resetsAt ??
-		null
-	);
+export function pickWeeklyAnchor(
+	usage: {
+		sevenDay?: { resetsAt: string | null } | null;
+		scopedWeekly?: { resetsAt: string | null }[];
+	},
+	logger?: { warn: (message: string) => void },
+): string | null {
+	const weekly = usage.sevenDay?.resetsAt ?? null;
+	const scoped =
+		usage.scopedWeekly?.find((window) => window.resetsAt)?.resetsAt ?? null;
+
+	if (logger && weekly && scoped) {
+		const apart = Math.abs(
+			new Date(weekly).getTime() - new Date(scoped).getTime(),
+		);
+		// NaN when either value is unreadable, which is not this check's business
+		// -- the parse boundary already warned about that, and comparing against
+		// NaN here would either stay silent by luck or report a second, confusing
+		// complaint about the same bad value.
+		if (Number.isFinite(apart) && apart > ANCHOR_AGREEMENT_TOLERANCE_MS) {
+			logger.warn(
+				`The weekly and scoped limits report different reset times (${weekly} vs ${scoped}). This build assumes they share one account-wide anchor, so weekly usage totals and countdowns may now be measured over the wrong days. Please report this.`,
+			);
+		}
+	}
+
+	return weekly ?? scoped;
 }
 
 /** The weekly window containing a given moment. */

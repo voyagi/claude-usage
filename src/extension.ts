@@ -205,7 +205,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	 * design and is the defect this change set exists to remove.
 	 */
 	function rememberWeeklyAnchor(data: ApiUsageData): void {
-		const resetsAt = pickWeeklyAnchor(data);
+		// The logger is what arms the shared-anchor tripwire inside. This is the
+		// right place for it: it runs on every fresh reading, from the poll and
+		// from the cache alike, so a divergence is noticed wherever it arrives.
+		const resetsAt = pickWeeklyAnchor(data, logger);
 		if (!resetsAt || resetsAt === lastKnownWeeklyAnchor) return;
 		if (Number.isNaN(new Date(resetsAt).getTime())) {
 			logger.warn(

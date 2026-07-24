@@ -51,6 +51,170 @@ describe("pickWeeklyAnchor", () => {
 	});
 });
 
+/**
+ * The shared anchor is the one assumption the whole feature rests on, and it
+ * rests on a single captured payload. These pin the tripwire that would tell us
+ * if it ever stopped holding, and -- just as importantly -- that it stays quiet
+ * the rest of the time.
+ */
+describe("pickWeeklyAnchor: the shared-anchor tripwire", () => {
+	function spyLogger() {
+		return { warn: jest.fn() };
+	}
+
+	it("stays quiet on the exact instants a real payload carries", () => {
+		// Verbatim from the captured response: the same instant, stamped 212
+		// microseconds apart as the response is assembled. Comparing the strings
+		// would fire here on every poll. This pair happens to survive a zero
+		// tolerance too, because Date keeps only milliseconds and both land on
+		// .383 -- see the next test for the half of the jitter that does not.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.383291+00:00" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T08:00:00.383503+00:00" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet when that same jitter straddles a millisecond", () => {
+		// The other side of the coin, and the reason the tolerance is not zero.
+		// Two stamps this far apart land in different milliseconds roughly a fifth
+		// of the time, so a zero tolerance would complain intermittently. An
+		// intermittent warning is worse than a constant one: it reads as a glitch,
+		// and gets waved away on the day it finally means something.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.383900+00:00" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T08:00:00.384112+00:00" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet a whole second apart, still far below anything meaningful", () => {
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.000Z" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T08:00:01.000Z" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("complains when the two limits are genuinely on different cycles", () => {
+		// What a real divergence would look like: a separate anchor, days out.
+		// Silent by nature without this, because the countdown it produces looks
+		// perfectly ordinary and only the days it measures over are wrong.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		// Both values named: a divergence is only actionable if the report says
+		// which two instants parted company.
+		const message = logger.warn.mock.calls[0][0];
+		expect(message).toContain(ANCHOR_JUL_24);
+		expect(message).toContain(ANCHOR_JUL_31);
+	});
+
+	it("complains about an hour's difference, well inside a single cycle", () => {
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.000Z" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T09:00:00.000Z" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("says nothing when only one window carries a reset", () => {
+		// Nothing to compare. This is the ordinary state at zero scoped usage, and
+		// warning here would make the signal noise from the first poll.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{ sevenDay: { resetsAt: ANCHOR_JUL_24 }, scopedWeekly: [] },
+			logger,
+		);
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: null },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("leaves an unreadable value to the parse boundary that already warned", () => {
+		// Comparing against NaN would either stay silent by luck or raise a second,
+		// confusing complaint about a value the parse layer has already named.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "not-a-date" },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("still returns the anchor it picked when it complains", () => {
+		// The tripwire reports; it does not change the answer. Suppressing the
+		// anchor on disagreement would trade a possibly-wrong instant for the
+		// certainly-wrong Monday fallback.
+		const logger = spyLogger();
+
+		const picked = pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(picked).toBe(ANCHOR_JUL_24);
+	});
+
+	it("skips the comparison entirely when given no logger", () => {
+		// Keeps the function usable as a pure helper, and is why every existing
+		// caller in the tests above needs no change.
+		expect(() =>
+			pickWeeklyAnchor({
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			}),
+		).not.toThrow();
+	});
+});
+
 describe("projectWeeklyCycle", () => {
 	it("returns null without an anchor, rather than guessing one", () => {
 		const now = new Date("2026-07-24T09:47:00Z");
