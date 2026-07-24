@@ -45,6 +45,108 @@ export function weeklyBucketKey(when: Date): string {
 }
 
 /**
+ * Key for the hourly bucket containing a given moment, in LOCAL time.
+ *
+ * Extracted for the reason given on the two above: this format was written
+ * here as a literal and read back in `calculateRateLimits` by concatenating
+ * ":00:00" onto it, so the writer and the reader agreed only by coincidence.
+ */
+export function hourlyBucketKey(when: Date): string {
+	return format(when, "yyyy-MM-dd'T'HH");
+}
+
+/**
+ * The local instant an hourly key starts at, or null if the key is malformed.
+ *
+ * The key carries no zone, so this parses as local time, matching the local
+ * `format` that produced it. A UTC-based reader would drift by the offset.
+ */
+export function parseHourlyBucketKey(key: string): Date | null {
+	const parsed = new Date(`${key}:00:00`);
+	return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/** Key for the per-model hourly bucket. Mirrors the modelWeekly convention. */
+export function modelHourlyBucketKey(when: Date, model: string): string {
+	return `${hourlyBucketKey(when)}:${model}`;
+}
+
+/**
+ * Split a modelHourly key back into its hour and model halves.
+ *
+ * The hour key contains no colon, so the first one is always the separator.
+ * Model ids may contain anything after it, including further colons.
+ */
+function splitModelHourlyKey(
+	key: string,
+): { hourKey: string; model: string } | null {
+	const separator = key.indexOf(":");
+	if (separator === -1) return null;
+	return { hourKey: key.slice(0, separator), model: key.slice(separator + 1) };
+}
+
+/**
+ * Whether an hourly bucket overlaps the half-open window [from, to).
+ *
+ * Buckets are whole local hours, so a window edge landing inside an hour cannot
+ * split it, and the whole hour counts. That over-counts by at most one hour of
+ * usage at each edge, which is the deliberate direction: this feeds a limit
+ * warning, and warning early is recoverable where warning late is not.
+ *
+ * The over-count is the normal case rather than an edge case. Real reset
+ * instants carry sub-second precision (`...T08:00:00.383291Z`), so the boundary
+ * hour is partially covered even in a whole-hour timezone, and the whole hour
+ * is counted regardless.
+ */
+function hourOverlapsWindow(hourKey: string, from: Date, to: Date): boolean {
+	const hourStart = parseHourlyBucketKey(hourKey);
+	if (!hourStart) return false;
+	const hourEnd = hourStart.getTime() + 60 * 60 * 1000;
+	return hourEnd > from.getTime() && hourStart.getTime() < to.getTime();
+}
+
+/**
+ * Output tokens recorded in [from, to), summed from hourly buckets.
+ *
+ * This is how a usage window that does not align to a calendar boundary gets
+ * measured. Anthropic resets the weekly limit on a fixed instant assigned to
+ * the account (Friday 08:00 UTC on the account this was built against), which
+ * no ISO week bucket can express.
+ */
+export function sumOutputTokensInWindow(
+	hourly: Map<string, AggregatedUsage>,
+	from: Date,
+	to: Date,
+): number {
+	let total = 0;
+	for (const [hourKey, agg] of hourly.entries()) {
+		if (hourOverlapsWindow(hourKey, from, to)) total += agg.outputTokens;
+	}
+	return total;
+}
+
+/**
+ * Output tokens in [from, to) for the models `modelMatches` accepts.
+ *
+ * The predicate is supplied by the caller because matching a scope label to a
+ * model id is rate-limit knowledge, not bucket knowledge.
+ */
+export function sumModelOutputTokensInWindow(
+	modelHourly: Map<string, AggregatedUsage>,
+	from: Date,
+	to: Date,
+	modelMatches: (model: string) => boolean,
+): number {
+	let total = 0;
+	for (const [key, agg] of modelHourly.entries()) {
+		const split = splitModelHourlyKey(key);
+		if (!split || !modelMatches(split.model)) continue;
+		if (hourOverlapsWindow(split.hourKey, from, to)) total += agg.outputTokens;
+	}
+	return total;
+}
+
+/**
  * Aggregate TokenUsage records into time buckets
  * Groups records by session, calendar day, ISO week, and calendar month
  * Uses local timezone for calendar boundaries (matches user expectations)
@@ -60,6 +162,7 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		monthly: new Map(),
 		modelWeekly: new Map(),
 		hourly: new Map(),
+		modelHourly: new Map(),
 		project: new Map(),
 	};
 
@@ -101,11 +204,19 @@ export function aggregateUsage(records: TokenUsage[]): TimeBuckets {
 		addToAggregation(buckets.monthly.get(monthKey)!, record);
 
 		// Hourly bucket: key = YYYY-MM-DDTHH (for sliding window calculations)
-		const hourKey = format(record.timestamp, "yyyy-MM-dd'T'HH");
+		const hourKey = hourlyBucketKey(record.timestamp);
 		if (!buckets.hourly.has(hourKey)) {
 			buckets.hourly.set(hourKey, createEmptyAggregatedUsage());
 		}
 		addToAggregation(buckets.hourly.get(hourKey)!, record);
+
+		// Per-model hourly bucket: lets a model-scoped limit be measured over the
+		// account's real reset cycle, which modelWeekly's ISO week cannot express.
+		const modelHourKey = `${hourKey}:${record.model}`;
+		if (!buckets.modelHourly!.has(modelHourKey)) {
+			buckets.modelHourly!.set(modelHourKey, createEmptyAggregatedUsage());
+		}
+		addToAggregation(buckets.modelHourly!.get(modelHourKey)!, record);
 
 		// Per-project bucket: key = friendly project name (basename of cwd)
 		const projectKey = record.projectName || "unknown";
@@ -140,6 +251,9 @@ export function mergeTimeBuckets(a: TimeBuckets, b: TimeBuckets): TimeBuckets {
 		monthly: deepCopyMap(a.monthly),
 		modelWeekly: deepCopyMap(a.modelWeekly),
 		hourly: deepCopyMap(a.hourly),
+		modelHourly: deepCopyMap(
+			a.modelHourly ?? new Map<string, AggregatedUsage>(),
+		),
 		project: deepCopyMap(a.project ?? new Map<string, AggregatedUsage>()),
 	};
 
@@ -189,6 +303,12 @@ export function mergeTimeBuckets(a: TimeBuckets, b: TimeBuckets): TimeBuckets {
 	mergeBucket(merged.monthly, b.monthly);
 	mergeBucket(merged.modelWeekly, b.modelWeekly);
 	mergeBucket(merged.hourly, b.hourly);
+	if (merged.modelHourly) {
+		mergeBucket(
+			merged.modelHourly,
+			b.modelHourly ?? new Map<string, AggregatedUsage>(),
+		);
+	}
 	if (merged.project) {
 		mergeBucket(
 			merged.project,
@@ -244,6 +364,9 @@ export function serializeTimeBuckets(
 		monthly: Array.from(buckets.monthly.entries()),
 		modelWeekly: Array.from(buckets.modelWeekly.entries()),
 		hourly: Array.from(buckets.hourly.entries()),
+		modelHourly: Array.from(
+			(buckets.modelHourly ?? new Map<string, AggregatedUsage>()).entries(),
+		),
 		project: Array.from(
 			(buckets.project ?? new Map<string, AggregatedUsage>()).entries(),
 		),
@@ -288,6 +411,12 @@ export function deserializeTimeBuckets(
 		),
 		hourly: new Map(
 			(serialized.hourly ?? []).map(([key, agg]) => [key, deserializeAgg(agg)]),
+		),
+		modelHourly: new Map(
+			(serialized.modelHourly ?? []).map(([key, agg]) => [
+				key,
+				deserializeAgg(agg),
+			]),
 		),
 		project: new Map(
 			(serialized.project ?? []).map(([key, agg]) => [

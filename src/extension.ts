@@ -60,6 +60,13 @@ let cachedApiUsage: ApiUsageData | null = null;
  * offline. Anthropic changes which model is scoped, so it is never hardcoded.
  */
 let lastKnownScopedModel: string | null = null;
+/**
+ * A weekly reset instant the API supplied, ISO. Anthropic assigns each account
+ * a fixed weekly reset and holds it there, so one reading anchors every later
+ * cycle. Persisted because the alternative while offline is a calendar week,
+ * which has the right length and the wrong phase.
+ */
+let lastKnownWeeklyAnchor: string | null = null;
 let pollingTimer: PollingTimer | null = null;
 let usageCache: UsageCache | null = null;
 const AUTH_DEAD_NOTIFY_COOLDOWN_MS = 5 * 60_000; // 5 minutes
@@ -153,6 +160,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	lastKnownScopedModel =
 		context.globalState.get<string>("lastKnownScopedModel") ?? null;
 
+	// Same reason: without an anchor the weekly window falls back to a calendar
+	// week, so a cold start offline would show a reset on the wrong day.
+	lastKnownWeeklyAnchor =
+		context.globalState.get<string>("lastKnownWeeklyAnchor") ?? null;
+
 	/** Remember the scoped model whenever the API names a new one */
 	function rememberScopedModel(data: ApiUsageData): void {
 		const label = data.scopedWeekly[0]?.label;
@@ -164,6 +176,27 @@ export async function activate(context: vscode.ExtensionContext) {
 				logger.error(`Failed to persist scoped model name: ${err}`);
 			});
 		logger.info(`Weekly scoped limit now applies to: ${label}`);
+	}
+
+	/**
+	 * Remember the weekly reset instant whenever the API states one.
+	 *
+	 * Always overwrite rather than keeping the first: re-anchoring on every
+	 * reading is what keeps the exact-seven-day projection honest, since any
+	 * drift can then only survive until the next successful poll. The API omits
+	 * this on a limit with no usage yet, and an omission is not a correction, so
+	 * a null leaves the stored anchor standing.
+	 */
+	function rememberWeeklyAnchor(data: ApiUsageData): void {
+		const resetsAt = data.sevenDay?.resetsAt;
+		if (!resetsAt || resetsAt === lastKnownWeeklyAnchor) return;
+		lastKnownWeeklyAnchor = resetsAt;
+		context.globalState
+			.update("lastKnownWeeklyAnchor", resetsAt)
+			.then(undefined, (err) => {
+				logger.error(`Failed to persist weekly reset anchor: ${err}`);
+			});
+		logger.info(`Weekly limit resets at: ${resetsAt}`);
 	}
 
 	// Handle rate limit events from SessionWatcher
@@ -255,7 +288,10 @@ export async function activate(context: vscode.ExtensionContext) {
 				lastBurnRate,
 				getEffectiveLimits(),
 				cachedApiUsage,
-				lastKnownScopedModel,
+				{
+					scopedModel: lastKnownScopedModel,
+					weeklyAnchor: lastKnownWeeklyAnchor,
+				},
 			);
 			statusBar.update(data);
 
@@ -308,7 +344,10 @@ export async function activate(context: vscode.ExtensionContext) {
 			lastBurnRate,
 			getEffectiveLimits(),
 			cachedApiUsage,
-			lastKnownScopedModel,
+			{
+				scopedModel: lastKnownScopedModel,
+				weeklyAnchor: lastKnownWeeklyAnchor,
+			},
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -333,6 +372,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			cachedApiUsage.scopedWeekly = [];
 		}
 		rememberScopedModel(cachedApiUsage);
+		rememberWeeklyAnchor(cachedApiUsage);
 		// If cached data is old (>5 min), assume we're rate-limited until
 		// the first poll proves otherwise. Prevents brief grey flash on startup.
 		const cacheAgeMs = Date.now() - new Date(existingCache.writtenAt).getTime();
@@ -350,6 +390,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		(apiData) => {
 			cachedApiUsage = apiData;
 			rememberScopedModel(apiData);
+			rememberWeeklyAnchor(apiData);
 			statusBar.setRateLimited(false);
 
 			// Auto-detect tier from API response
@@ -420,6 +461,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			cachedApiUsage.scopedWeekly = [];
 		}
 		rememberScopedModel(cachedApiUsage);
+		rememberWeeklyAnchor(cachedApiUsage);
 		logger.info("Updated API data from shared cache (other window wrote)");
 		refreshStatusBar();
 	});
@@ -721,7 +763,10 @@ async function performInitialParse(
 			lastBurnRate,
 			getEffectiveLimits(),
 			cachedApiUsage,
-			lastKnownScopedModel,
+			{
+				scopedModel: lastKnownScopedModel,
+				weeklyAnchor: lastKnownWeeklyAnchor,
+			},
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -822,7 +867,10 @@ async function performInitialParse(
 		lastBurnRate,
 		getEffectiveLimits(),
 		cachedApiUsage,
-		lastKnownScopedModel,
+		{
+			scopedModel: lastKnownScopedModel,
+			weeklyAnchor: lastKnownWeeklyAnchor,
+		},
 	);
 	statusBar.update(data);
 

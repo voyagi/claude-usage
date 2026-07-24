@@ -8,7 +8,7 @@
 import * as vscode from "vscode";
 import { shouldShowCost } from "../config/costVisibility.js";
 import { predictTimeUntilLimit } from "../core/burnRate.js";
-import type { AuthState, StatusBarData } from "../types.js";
+import type { ApiRateLimitWindow, AuthState, StatusBarData } from "../types.js";
 import {
 	formatBarGraph,
 	formatBurnRate,
@@ -27,6 +27,37 @@ const WEEKLY_COLOR = "#DCDCAA"; // yellow
 const SCOPED_COLOR = "#C586C0"; // purple
 const STALE_COLOR = "#808080"; // gray for dim/stale data
 const CRITICAL_COLOR = "#555555"; // very dim for critical staleness
+
+/**
+ * When a bar's countdown comes from the API and when it may come from local data.
+ *
+ * If the API answered for a window, its answer is the answer INCLUDING a null
+ * `resets_at`. What is actually observed is narrow: across the captured
+ * payloads the field is populated on every limit carrying usage and null on the
+ * one sitting at zero. Why the server omits it is not established, so this does
+ * not claim the window is unstarted -- only that we decline to supply a value
+ * the API did not. Falling through to the local estimate there is what put a
+ * fabricated countdown -- the next Monday midnight, over four days early --
+ * beside an API-sourced "0%", with no way for a reader to tell the two apart.
+ *
+ * The cost of that choice is real and accepted: at zero usage the bar shows no
+ * countdown even though the cycle almost certainly still turns over on the
+ * account's weekly anchor. Showing nothing withholds a likely-true figure;
+ * showing the old fallback asserted a demonstrably false one.
+ *
+ * The local estimate is still used when the API produced no window at all,
+ * because then the percentage beside it is local too and the pair is at least
+ * consistent with itself.
+ */
+function resetInstant(
+	apiWindow: ApiRateLimitWindow | null,
+	fallback: { local: Date | null },
+): Date | null {
+	if (apiWindow) {
+		return apiWindow.resetsAt ? new Date(apiWindow.resetsAt) : null;
+	}
+	return fallback.local;
+}
 
 export class StatusBarManager {
 	private sessionItem: vscode.StatusBarItem;
@@ -109,15 +140,15 @@ export class StatusBarManager {
 			? Math.round(scopedApi.utilization * 100)
 			: (scopedLocal?.percentage ?? 0);
 
-		const sessionReset = api?.fiveHour?.resetsAt
-			? new Date(api.fiveHour.resetsAt)
-			: data.rateLimits.session5h.resetTime;
-		const weeklyReset = api?.sevenDay?.resetsAt
-			? new Date(api.sevenDay.resetsAt)
-			: data.rateLimits.weekly.resetTime;
-		const scopedReset = scopedApi?.resetsAt
-			? new Date(scopedApi.resetsAt)
-			: (scopedLocal?.resetTime ?? null);
+		const sessionReset = resetInstant(api?.fiveHour ?? null, {
+			local: data.rateLimits.session5h.resetTime,
+		});
+		const weeklyReset = resetInstant(api?.sevenDay ?? null, {
+			local: data.rateLimits.weekly.resetTime,
+		});
+		const scopedReset = resetInstant(scopedApi, {
+			local: scopedLocal?.resetTime ?? null,
+		});
 
 		// Build text for each item
 		const sCd = formatCooldownCompact(sessionReset);

@@ -75,6 +75,7 @@ function api(overrides: Partial<ApiUsageData> = {}): ApiUsageData {
 function statusBarData(
 	apiUsage: ApiUsageData | null,
 	weeklyOverrides: Partial<RateLimitInfo> = {},
+	sessionOverrides: Partial<RateLimitInfo> = {},
 ): StatusBarData {
 	return {
 		totalInputTokens: 0,
@@ -86,7 +87,7 @@ function statusBarData(
 		monthTokens: 0,
 		burnRate: 0,
 		rateLimits: {
-			session5h: limit("Session (5hr)"),
+			session5h: limit("Session (5hr)", sessionOverrides),
 			weekly: limit("Weekly", weeklyOverrides),
 			weeklyScoped: null,
 			worstPercentage: 0,
@@ -241,6 +242,55 @@ describe("buildDashboardData: weekly forecast wiring", () => {
 		);
 
 		expect(result.weeklyForecast).toBeNull();
+	});
+});
+
+describe("buildDashboardData: reset times are never invented", () => {
+	it("emits no reset when the API window reports none", () => {
+		// `resets_at: null` on a window the API DID answer for is a statement
+		// that no window is running, not a gap to fill. Filling it from the local
+		// estimate published a guessed instant under isEstimated: false, which is
+		// a guess wearing the label of an authoritative reading.
+		const result = build(
+			statusBarData(api({ sevenDay: { utilization: 0.03, resetsAt: null } }), {
+				resetTime: new Date(Date.now() + 3 * DAY_MS),
+			}),
+		);
+
+		expect(result.weekly.resetTime).toBeNull();
+		expect(result.weekly.isEstimated).toBe(false);
+	});
+
+	it("builds no session window card from a reset the API did not give", () => {
+		// This site derives three more fields from the instant, so missing it
+		// leaves a "Current Window" panel with a start, an expiry and a minutes
+		// figure all computed from a local guess, beside a session bar correctly
+		// showing none. The bar and the panel would contradict each other in one
+		// payload.
+		// The local session reset has to be set for this to discriminate: with it
+		// null the buggy and fixed paths both yield null and the test proves
+		// nothing.
+		const result = build(
+			statusBarData(
+				api({ fiveHour: { utilization: 0.13, resetsAt: null } }),
+				{},
+				{ resetTime: new Date(Date.now() + 2 * 60 * 60 * 1000) },
+			),
+		);
+
+		expect(result.windowExpiry).toBeNull();
+		expect(result.windowStart).toBeNull();
+		expect(result.timeRemainingMinutes).toBeNull();
+	});
+
+	it("still emits the local reset when there is no API window at all", () => {
+		// The negative half: with nothing from the API the local estimate is all
+		// there is, and it is labelled as an estimate.
+		const localReset = new Date(Date.now() + 3 * DAY_MS);
+		const result = build(statusBarData(api(), { resetTime: localReset }));
+
+		expect(result.weekly.resetTime).toBe(localReset.toISOString());
+		expect(result.weekly.isEstimated).toBe(true);
 	});
 });
 
