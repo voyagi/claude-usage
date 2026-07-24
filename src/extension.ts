@@ -19,6 +19,7 @@ import {
 } from "./core/burnRate.js";
 import { buildStatusBarData } from "./core/rateLimits.js";
 import { mapTierStringToPlanType } from "./core/tierDetection.js";
+import { pickWeeklyAnchor } from "./core/weeklyAnchor.js";
 import type { RateLimitEvent } from "./parser/incrementalParser.js";
 import { parseAllSessions } from "./parser/jsonlParser.js";
 import { refineLimitEstimate } from "./parser/rateLimitDetector.js";
@@ -192,9 +193,19 @@ export async function activate(context: vscode.ExtensionContext) {
 	 * being one poll's data and becomes durable state that survives restarts and
 	 * is trusted precisely when the API cannot be reached. An unusable reading is
 	 * not a correction either, so it must not clobber a good stored anchor.
+	 *
+	 * A scoped weekly window is accepted as a source when the all-model one
+	 * states nothing. The captured payloads show both weekly limits carrying the
+	 * same instant, and `calculateRateLimits` already relies on that by reporting
+	 * the account anchor as the scoped limit's reset, so this only reads the
+	 * shared anchor in the other direction. The all-model window still wins
+	 * whenever it has a value, so the scoped one fills a gap rather than
+	 * competing. What makes the gap worth filling: the alternative there is not
+	 * "no anchor", it is the Monday calendar week, which is the wrong phase by
+	 * design and is the defect this change set exists to remove.
 	 */
 	function rememberWeeklyAnchor(data: ApiUsageData): void {
-		const resetsAt = data.sevenDay?.resetsAt;
+		const resetsAt = pickWeeklyAnchor(data);
 		if (!resetsAt || resetsAt === lastKnownWeeklyAnchor) return;
 		if (Number.isNaN(new Date(resetsAt).getTime())) {
 			logger.warn(

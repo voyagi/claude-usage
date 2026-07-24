@@ -742,6 +742,24 @@ describe("parseUsagePayload: an unreadable resets_at", () => {
 		expect((logger.warn as jest.Mock).mock.calls[0][0]).toContain("not-a-date");
 	});
 
+	it("drops a reset that is not a string at all", () => {
+		// The declared `string | null` is the server's promise, not a check of it.
+		// `new Date(1)` is perfectly valid, so a numeric resets_at would pass a
+		// parse-only guard, survive as a number through a field typed string, and
+		// be persisted as the weekly anchor -- putting the cycle in 1970.
+		const data = parseUsagePayload(payloadWithReset(1));
+		expect(data.fiveHour?.utilization).toBe(0.17);
+		expect(data.fiveHour?.resetsAt).toBeNull();
+	});
+
+	it("drops the other shapes untyped JSON can carry", () => {
+		for (const shape of [0, true, {}, [], { iso: "2026-07-31T08:00:00Z" }]) {
+			expect(
+				parseUsagePayload(payloadWithReset(shape)).fiveHour?.resetsAt,
+			).toBe(null);
+		}
+	});
+
 	it("stays quiet about a reset the API legitimately omitted", () => {
 		// The scoped weekly limit reports null at zero usage on every poll. If
 		// that warned, the signal would be noise from the first minute.

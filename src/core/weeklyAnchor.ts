@@ -27,6 +27,31 @@
  */
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * The reset instant to anchor the account's weekly cycle to, or null.
+ *
+ * The all-model weekly window is the natural source and wins whenever it states
+ * anything. A scoped weekly window is accepted only to fill a gap: the captured
+ * payloads show both weekly limits carrying the same instant, and
+ * `calculateRateLimits` already depends on that by reporting the account anchor
+ * as the scoped limit's reset, so this reads the shared anchor in the other
+ * direction rather than assuming something new.
+ *
+ * Filling that gap matters because the alternative is not "no anchor". It is
+ * the Monday calendar week, which is the wrong phase by construction and is the
+ * defect this module exists to remove.
+ */
+export function pickWeeklyAnchor(usage: {
+	sevenDay?: { resetsAt: string | null } | null;
+	scopedWeekly?: { resetsAt: string | null }[];
+}): string | null {
+	return (
+		usage.sevenDay?.resetsAt ??
+		usage.scopedWeekly?.find((window) => window.resetsAt)?.resetsAt ??
+		null
+	);
+}
+
 /** The weekly window containing a given moment. */
 export interface WeeklyCycle {
 	/** Start of the cycle now in progress (inclusive). */

@@ -216,12 +216,17 @@ function isFiniteNumber(value: unknown): value is number {
  * where a server format change is actually diagnosable, so the complaint
  * belongs here; the guard in `resetInstant` stays as the backstop.
  */
-export function parseResetsAt(
-	raw: string | null | undefined,
-	logger?: Logger,
-): string | null {
+export function parseResetsAt(raw: unknown, logger?: Logger): string | null {
 	if (raw == null) return null;
-	if (Number.isNaN(new Date(raw).getTime())) {
+	// `unknown`, not `string | null | undefined`, and the typeof check is the
+	// point rather than ceremony. The declared type is the server's promise, and
+	// this function exists because that promise is not kept: a numeric
+	// `resets_at` would satisfy `new Date(1)` happily, survive as a number
+	// through a field typed `string`, and be persisted as the weekly anchor --
+	// putting the cycle in 1970 and every countdown with it. Checking only the
+	// unreadable-string case would have been the same mistake this whole change
+	// exists to fix, one type down.
+	if (typeof raw !== "string" || Number.isNaN(new Date(raw).getTime())) {
 		logger?.warn(
 			`Usage API sent a resets_at this build cannot read (${JSON.stringify(raw)}). Treating it as absent, so countdowns will be blank. Please report this -- the timestamp format has changed.`,
 		);

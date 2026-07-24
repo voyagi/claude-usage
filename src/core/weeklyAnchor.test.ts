@@ -1,4 +1,4 @@
-import { projectWeeklyCycle, WEEK_MS } from "./weeklyAnchor";
+import { pickWeeklyAnchor, projectWeeklyCycle, WEEK_MS } from "./weeklyAnchor";
 
 /**
  * Both instants are real, taken from captured usage payloads a week apart.
@@ -7,6 +7,49 @@ import { projectWeeklyCycle, WEEK_MS } from "./weeklyAnchor";
  */
 const ANCHOR_JUL_24 = "2026-07-24T08:00:00.383291+00:00";
 const ANCHOR_JUL_31 = "2026-07-31T08:00:00.585182+00:00";
+
+describe("pickWeeklyAnchor", () => {
+	it("prefers the all-model weekly window", () => {
+		expect(
+			pickWeeklyAnchor({
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			}),
+		).toBe(ANCHOR_JUL_24);
+	});
+
+	it("falls back to a scoped window when the all-model one states nothing", () => {
+		// Without this the anchor is never learned in that payload shape, and the
+		// weekly window falls back to a Monday calendar week until some later poll
+		// happens to populate sevenDay. The alternative here is not "no anchor",
+		// it is a known-wrong one.
+		expect(
+			pickWeeklyAnchor({
+				sevenDay: { resetsAt: null },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			}),
+		).toBe(ANCHOR_JUL_31);
+	});
+
+	it("skips scoped windows that state nothing either", () => {
+		expect(
+			pickWeeklyAnchor({
+				sevenDay: null,
+				scopedWeekly: [{ resetsAt: null }, { resetsAt: ANCHOR_JUL_31 }],
+			}),
+		).toBe(ANCHOR_JUL_31);
+	});
+
+	it("returns null when no window states a reset", () => {
+		expect(
+			pickWeeklyAnchor({
+				sevenDay: { resetsAt: null },
+				scopedWeekly: [{ resetsAt: null }],
+			}),
+		).toBeNull();
+		expect(pickWeeklyAnchor({})).toBeNull();
+	});
+});
 
 describe("projectWeeklyCycle", () => {
 	it("returns null without an anchor, rather than guessing one", () => {
