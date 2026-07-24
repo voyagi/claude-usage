@@ -48,6 +48,19 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const ANCHOR_AGREEMENT_TOLERANCE_MS = 60_000;
 
 /**
+ * Bucket size for the repeat key on a disagreement warning.
+ *
+ * Deliberately the same value, because both uses need the same property:
+ * coarser than the per-response assembly jitter, finer than any real move. It
+ * is named separately so the sharing is a decision rather than a coincidence.
+ * They would part company if the tolerance were ever widened for a reason
+ * unrelated to jitter -- a benign few-minute offset turning out to be normal --
+ * since the dedupe resolution would otherwise coarsen with it and start
+ * swallowing real moves smaller than the new value.
+ */
+const ANCHOR_DEDUPE_BUCKET_MS = ANCHOR_AGREEMENT_TOLERANCE_MS;
+
+/**
  * Somewhere a warning can be sent, optionally with a key that decides whether
  * it counts as a repeat of the last one.
  *
@@ -83,6 +96,13 @@ export interface WarningSink {
  *
  * Only consecutive repeats are suppressed, so a condition that clears and
  * returns is stated again, and a genuinely different one is never swallowed.
+ *
+ * The contract on a key, stated as a rule rather than as the incident above,
+ * because the rule is what a future caller needs: it must identify the
+ * condition, and must not embed anything that varies while the condition does
+ * not. A key built per call from freshly stamped data satisfies neither, and
+ * fails silently -- every warning is emitted, every test still passes, and the
+ * only symptom is volume nobody is watching for.
  */
 export function latchRepeats(sink: WarningSink): WarningSink {
 	let previous: string | null = null;
@@ -148,13 +168,19 @@ export function pickWeeklyAnchor(
 			// needs, but it cannot double as the repeat key: the sub-second field
 			// is stamped per response, so the text differs on every poll while the
 			// condition is unchanged, and a latch keyed on it never fires. The key
-			// buckets both instants at the same resolution as the tolerance, which
-			// is by construction coarser than the jitter and finer than any real
-			// move. A pair sitting within a millisecond of a bucket edge can flip
-			// buckets and produce one extra warning; that direction is the safe
-			// one, since the failure being reported is silence.
-			const bucket = (ms: number) =>
-				Math.round(ms / ANCHOR_AGREEMENT_TOLERANCE_MS);
+			// buckets both instants at a resolution coarser than the jitter and
+			// finer than any real move.
+			//
+			// `Math.round`, not `Math.floor`, and that is not a coin toss. Reset
+			// instants land on whole minutes with the stamp adding 0-999 ms, so
+			// flooring would put every real value within a millisecond of a bucket
+			// edge, where a stamp could flip it. Rounding puts them at bucket
+			// centres instead, measured 29.0-30.0 s from either edge. A pair near
+			// an edge would emit one extra warning rather than miss one, so even
+			// the residual errs toward speaking up -- but with this data shape it
+			// cannot arise, since it would need a reset about thirty seconds past
+			// the minute.
+			const bucket = (ms: number) => Math.round(ms / ANCHOR_DEDUPE_BUCKET_MS);
 			logger.warn(
 				`The weekly and scoped limits report different reset times (${weekly} vs ${scoped}). This build assumes they share one account-wide anchor, so weekly usage totals and countdowns may now be measured over the wrong days. Please report this.`,
 				`anchor-disagreement:${bucket(weeklyMs)}|${bucket(scopedMs)}`,
