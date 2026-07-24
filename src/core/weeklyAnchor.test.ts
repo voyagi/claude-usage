@@ -237,6 +237,73 @@ describe("pickWeeklyAnchor: the shared-anchor tripwire", () => {
 		expect(sink.warn).toHaveBeenCalledTimes(2);
 	});
 
+	it("speaks again when a divergence clears and then returns", () => {
+		// A non-divergent poll calls nothing, so the latch keeps holding the old
+		// key and the same divergence returning is swallowed as a "repeat" it
+		// never consecutively was. The A/B/A unit test on latchRepeats passes
+		// because it calls warn three times; production cannot produce that
+		// sequence, because the aligned poll in the middle stays silent.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+		const divergent = {
+			sevenDay: { resetsAt: ANCHOR_JUL_24 },
+			scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+		};
+		const aligned = {
+			sevenDay: { resetsAt: "2026-07-24T08:00:00.383291+00:00" },
+			scopedWeekly: [{ resetsAt: "2026-07-24T08:00:00.383503+00:00" }],
+		};
+
+		pickWeeklyAnchor(divergent, latched);
+		pickWeeklyAnchor(aligned, latched);
+		pickWeeklyAnchor(divergent, latched);
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps holding when the pair simply cannot be compared", () => {
+		// Not the same as clearing. The scoped limit reports no reset on every
+		// poll at zero usage, so treating "cannot compare" as "resolved" would
+		// re-announce the same divergence every time usage crossed zero.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+		const divergent = {
+			sevenDay: { resetsAt: ANCHOR_JUL_24 },
+			scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+		};
+
+		pickWeeklyAnchor(divergent, latched);
+		pickWeeklyAnchor({ sevenDay: { resetsAt: ANCHOR_JUL_24 } }, latched);
+		pickWeeklyAnchor(divergent, latched);
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not treat an unreadable pair as an all-clear", () => {
+		// Both values present, so the comparison is attempted, but one is
+		// unreadable and `apart` is NaN. That is "I could not tell", not
+		// "resolved". A bare `else` here would clear the latch on it and
+		// re-announce the same divergence the moment it became readable again.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+		const divergent = {
+			sevenDay: { resetsAt: ANCHOR_JUL_24 },
+			scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+		};
+
+		pickWeeklyAnchor(divergent, latched);
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "not-a-date" },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			latched,
+		);
+		pickWeeklyAnchor(divergent, latched);
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
 	it("still returns the anchor it picked when it complains", () => {
 		// The tripwire reports; it does not change the answer. Suppressing the
 		// anchor on disagreement would trade a possibly-wrong instant for the

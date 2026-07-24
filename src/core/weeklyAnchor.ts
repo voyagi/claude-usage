@@ -72,6 +72,17 @@ const ANCHOR_DEDUPE_BUCKET_MS = ANCHOR_AGREEMENT_TOLERANCE_MS;
  */
 export interface WarningSink {
 	warn(message: string, dedupeKey?: string): void;
+	/**
+	 * Tell the sink the reported condition is over, so its return counts as news
+	 * rather than as a repeat.
+	 *
+	 * Optional, and absent on a plain logger, which is why callers invoke it as
+	 * `sink.clear?.()`. A latch needs it because it only ever hears about the
+	 * bad state: nothing calls `warn` while things are fine, so without an
+	 * explicit all-clear the latch goes on holding a key from a condition that
+	 * ended, and silently swallows the same condition returning.
+	 */
+	clear?(): void;
 }
 
 /**
@@ -94,8 +105,12 @@ export interface WarningSink {
  * literal strings the API never emits. A latch that cannot fire is worse than no
  * latch, because the code says the volume problem is handled.
  *
- * Only consecutive repeats are suppressed, so a condition that clears and
- * returns is stated again, and a genuinely different one is never swallowed.
+ * Only consecutive repeats are suppressed, so a genuinely different condition
+ * is never swallowed. "Consecutive" is measured in calls, not in polls, and the
+ * two are not the same thing: a caller that stays silent while things are fine
+ * leaves the latch holding a stale key, so a condition that ends and comes back
+ * looks like an uninterrupted repeat. That is what `clear` is for, and a caller
+ * that can tell when its condition is over is expected to say so.
  *
  * The contract on a key, stated as a rule rather than as the incident above,
  * because the rule is what a future caller needs: it must identify the
@@ -112,6 +127,9 @@ export function latchRepeats(sink: WarningSink): WarningSink {
 			if (key === previous) return;
 			previous = key;
 			sink.warn(message);
+		},
+		clear() {
+			previous = null;
 		},
 	};
 }
@@ -185,6 +203,15 @@ export function pickWeeklyAnchor(
 				`The weekly and scoped limits report different reset times (${weekly} vs ${scoped}). This build assumes they share one account-wide anchor, so weekly usage totals and countdowns may now be measured over the wrong days. Please report this.`,
 				`anchor-disagreement:${bucket(weeklyMs)}|${bucket(scopedMs)}`,
 			);
+		} else if (apart <= ANCHOR_AGREEMENT_TOLERANCE_MS) {
+			// An all-clear, and only on a comparison that actually succeeded.
+			// Nothing calls `warn` while the two agree, so without this the latch
+			// keeps holding the key of a divergence that has since ended, and
+			// swallows the same divergence returning as though it had never
+			// stopped. `apart <= tolerance` rather than a bare `else` because NaN
+			// fails both tests: an unreadable value means the comparison did not
+			// happen, and "I could not tell" must not be reported as "resolved".
+			logger.clear?.();
 		}
 	}
 
