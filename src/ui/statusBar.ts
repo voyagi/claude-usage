@@ -8,6 +8,7 @@
 import * as vscode from "vscode";
 import { shouldShowCost } from "../config/costVisibility.js";
 import { predictTimeUntilLimit } from "../core/burnRate.js";
+import { resetInstant } from "../core/resetInstant.js";
 import type { AuthState, StatusBarData } from "../types.js";
 import {
 	formatBarGraph,
@@ -109,15 +110,15 @@ export class StatusBarManager {
 			? Math.round(scopedApi.utilization * 100)
 			: (scopedLocal?.percentage ?? 0);
 
-		const sessionReset = api?.fiveHour?.resetsAt
-			? new Date(api.fiveHour.resetsAt)
-			: data.rateLimits.session5h.resetTime;
-		const weeklyReset = api?.sevenDay?.resetsAt
-			? new Date(api.sevenDay.resetsAt)
-			: data.rateLimits.weekly.resetTime;
-		const scopedReset = scopedApi?.resetsAt
-			? new Date(scopedApi.resetsAt)
-			: (scopedLocal?.resetTime ?? null);
+		const sessionReset = resetInstant(api?.fiveHour ?? null, {
+			local: data.rateLimits.session5h.resetTime,
+		});
+		const weeklyReset = resetInstant(api?.sevenDay ?? null, {
+			local: data.rateLimits.weekly.resetTime,
+		});
+		const scopedReset = resetInstant(scopedApi, {
+			local: scopedLocal?.resetTime ?? null,
+		});
 
 		// Build text for each item
 		const sCd = formatCooldownCompact(sessionReset);

@@ -240,6 +240,184 @@ describe("StatusBarManager: auth-dead display", () => {
 	});
 });
 
+// ── Countdowns must not be invented ─────────────────────────────────
+
+describe("StatusBarManager: reset countdowns", () => {
+	// Frozen so the rendered countdowns are exact. Without this the elapsed
+	// milliseconds between building a fixture and reading it back decide whether
+	// a duration truncates to "2d12h" or "2d11h", and the test flakes on timing
+	// rather than on behaviour.
+	const NOW = new Date("2026-07-24T09:47:00.000Z");
+
+	beforeEach(() => {
+		jest.useFakeTimers().setSystemTime(NOW);
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	/** A local estimate 60h out, which renders as "2d12h" if it is used. */
+	function localResetIn60h(name: string): RateLimitInfo {
+		return {
+			...makeRateLimitInfo(name, 15),
+			resetTime: new Date(NOW.getTime() + 60 * 60 * 60 * 1000),
+		};
+	}
+
+	it("shows no scoped countdown when the API reports no reset", () => {
+		// The reported bug, reproduced. Anthropic sends the scoped weekly limit
+		// with `resets_at: null` whenever nothing has accrued against it, and the
+		// bar rendered "Fa:0% 2d12h" -- the next Monday midnight, taken from the
+		// local estimate, over four days earlier than the account's real reset.
+		const { manager, scopedItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: {
+					fiveHour: { utilization: 0.13, resetsAt: null },
+					sevenDay: { utilization: 0.03, resetsAt: null },
+					scopedWeekly: [{ label: "Fable", utilization: 0, resetsAt: null }],
+					rateLimitTier: null,
+					extraUsage: null,
+					spend: null,
+					fetchedAt: new Date(),
+				},
+				rateLimits: {
+					session5h: localResetIn60h("Session (5hr)"),
+					weekly: localResetIn60h("Weekly"),
+					weeklyScoped: localResetIn60h("Weekly Fable"),
+					worstPercentage: 13,
+				},
+			}),
+		);
+
+		expect(scopedItem.text).toBe("Fa:0%");
+		expect(scopedItem.text).not.toContain("2d12h");
+	});
+
+	it("shows no session or weekly countdown when the API reports none", () => {
+		// Same rule, same fallback, two bars that happen to carry a real
+		// resets_at today. Leaving them out would relocate the bug rather than
+		// fix it, the first time the API omits one.
+		const { manager, sessionItem, weeklyItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: {
+					fiveHour: { utilization: 0.13, resetsAt: null },
+					sevenDay: { utilization: 0.03, resetsAt: null },
+					scopedWeekly: [{ label: "Fable", utilization: 0, resetsAt: null }],
+					rateLimitTier: null,
+					extraUsage: null,
+					spend: null,
+					fetchedAt: new Date(),
+				},
+				rateLimits: {
+					session5h: localResetIn60h("Session (5hr)"),
+					weekly: localResetIn60h("Weekly"),
+					weeklyScoped: localResetIn60h("Weekly Fable"),
+					worstPercentage: 13,
+				},
+			}),
+		);
+
+		expect(sessionItem.text).toBe("S:13%");
+		expect(weeklyItem.text).toBe("W:3%");
+	});
+
+	it("still uses the local estimate when the API produced no window", () => {
+		// The negative half. With no API reading the percentage is local too, so
+		// the pair is at least consistent with itself, and suppressing the
+		// countdown here would throw away the only information there is.
+		const { manager, scopedItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: null,
+				rateLimits: {
+					session5h: localResetIn60h("Session (5hr)"),
+					weekly: localResetIn60h("Weekly"),
+					weeklyScoped: localResetIn60h("Weekly Fable"),
+					worstPercentage: 15,
+				},
+			}),
+		);
+
+		expect(scopedItem.text).toBe("Fa:15% 2d12h");
+	});
+
+	it("renders the reported payload without the invented countdown", () => {
+		// Verbatim from ~/.claude/cache/usage-api.json at the moment of the bug
+		// report, which is the payload that produced "S:13% 3h12m  W:3% 6d22h
+		// Fa:0% 2d12h" on screen. The first two are what the API said. The third
+		// countdown existed nowhere in this payload.
+		jest.setSystemTime(new Date("2026-07-24T09:48:00.000Z"));
+		const { manager, sessionItem, weeklyItem, scopedItem } = createManager();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: {
+					fiveHour: {
+						utilization: 0.13,
+						resetsAt: "2026-07-24T13:00:00.585158+00:00",
+					},
+					sevenDay: {
+						utilization: 0.03,
+						resetsAt: "2026-07-31T08:00:00.585182+00:00",
+					},
+					scopedWeekly: [{ label: "Fable", utilization: 0, resetsAt: null }],
+					rateLimitTier: null,
+					extraUsage: null,
+					spend: null,
+					fetchedAt: new Date("2026-07-24T09:47:31.033Z"),
+				},
+				rateLimits: {
+					session5h: localResetIn60h("Session (5hr)"),
+					weekly: localResetIn60h("Weekly"),
+					weeklyScoped: localResetIn60h("Weekly Fable"),
+					worstPercentage: 13,
+				},
+			}),
+		);
+
+		// The two the API dated are unchanged, to the minute.
+		expect(sessionItem.text).toBe("S:13% 3h12m");
+		expect(weeklyItem.text).toBe("W:3% 6d22h");
+		// The one it did not date no longer borrows a date from anywhere.
+		expect(scopedItem.text).toBe("Fa:0%");
+	});
+
+	it("prefers the API reset over the local one when both exist", () => {
+		const { manager, scopedItem } = createManager();
+		const apiReset = new Date(NOW.getTime() + 3 * 60 * 60 * 1000).toISOString();
+
+		manager.update(
+			makeStatusBarData({
+				apiUsage: {
+					fiveHour: { utilization: 0.13, resetsAt: null },
+					sevenDay: { utilization: 0.03, resetsAt: null },
+					scopedWeekly: [
+						{ label: "Fable", utilization: 0.15, resetsAt: apiReset },
+					],
+					rateLimitTier: null,
+					extraUsage: null,
+					spend: null,
+					fetchedAt: new Date(),
+				},
+				rateLimits: {
+					session5h: localResetIn60h("Session (5hr)"),
+					weekly: localResetIn60h("Weekly"),
+					weeklyScoped: localResetIn60h("Weekly Fable"),
+					worstPercentage: 15,
+				},
+			}),
+		);
+
+		expect(scopedItem.text).toBe("Fa:15% 3h0m");
+	});
+});
+
 // ── Staleness color dimming ─────────────────────────────────────────
 
 describe("StatusBarManager: staleness dimming", () => {

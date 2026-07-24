@@ -9,8 +9,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import type { StalenessLevel, UsageCacheData } from "../types.js";
+import type {
+	ApiRateLimitWindow,
+	StalenessLevel,
+	UsageCacheData,
+} from "../types.js";
 import type { Logger } from "../utils/logger.js";
+import { parseResetsAt } from "./usageApi.js";
 
 const CACHE_DIR = path.join(os.homedir(), ".claude", "cache");
 const CACHE_FILE = path.join(CACHE_DIR, "usage-api.json");
@@ -60,6 +65,18 @@ export class UsageCache {
 				this.logger.warn("Cache missing fetchedAt, discarding");
 				return null;
 			}
+			// The cache is the one input path with no validation of its own. The
+			// fetch path normalizes `resets_at` as it parses, but this file is
+			// JSON.parse'd and cast, and it is written by whichever window polled
+			// last -- possibly an older build, and it is a plain file on disk. An
+			// unreadable reset reaching `rememberWeeklyAnchor` from here is worse
+			// than one reaching a bar: it overwrites a good anchor in durable
+			// state, and the weekly window then falls back to a calendar week,
+			// counting the previous cycle's usage against a Monday reset. That is
+			// the defect this whole change set exists to remove, arriving by a
+			// different door and recovering only at the next successful poll.
+			this.normalizeResets(parsed.apiUsage);
+
 			return parsed as UsageCacheData;
 		} catch (error) {
 			if (
@@ -74,6 +91,31 @@ export class UsageCache {
 				`Could not read usage cache: ${error instanceof Error ? error.message : error}`,
 			);
 			return null;
+		}
+	}
+
+	/**
+	 * Drop any reset the rest of the code could not read, in place.
+	 *
+	 * Mutation rather than a rebuild is deliberate: the object was just produced
+	 * by `JSON.parse` and is owned by this method until it is returned, and
+	 * rebuilding it would mean restating a shape that grows server-side. This
+	 * also gives the cache path the diagnostic the fetch path already has, which
+	 * it otherwise lacks entirely.
+	 */
+	private normalizeResets(apiUsage: {
+		fiveHour?: ApiRateLimitWindow | null;
+		sevenDay?: ApiRateLimitWindow | null;
+		scopedWeekly?: ApiRateLimitWindow[];
+	}): void {
+		const windows = [
+			apiUsage.fiveHour,
+			apiUsage.sevenDay,
+			...(Array.isArray(apiUsage.scopedWeekly) ? apiUsage.scopedWeekly : []),
+		];
+		for (const window of windows) {
+			if (!window) continue;
+			window.resetsAt = parseResetsAt(window.resetsAt, this.logger);
 		}
 	}
 

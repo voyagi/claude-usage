@@ -393,7 +393,12 @@ export function OverviewTab({ data }: OverviewTabProps) {
 						</div>
 					</>
 				) : (
-					<div className="no-data">No active session</div>
+					// Every field in this card is derived from the window start, so
+					// there is nothing to render without it. The wording must not say
+					// there is no session though: the API can decline to date a window
+					// that is running, and asserting absence is the mistake this
+					// change set exists to remove.
+					<div className="no-data">No session window reported</div>
 				)}
 
 				{/* Section 5: Burn Rate (inline with session) */}

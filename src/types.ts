@@ -90,6 +90,17 @@ export interface TimeBuckets {
 	/** Hourly buckets for sliding window calculations. Key format: "YYYY-MM-DDTHH" */
 	hourly: Map<string, AggregatedUsage>;
 	/**
+	 * Per-model hourly aggregation. Key: `${hourlyBucketKey(t)}:${model}`.
+	 *
+	 * Exists so a model-scoped limit can be measured over the account's real
+	 * reset cycle, which starts on a fixed instant no calendar week lines up
+	 * with. Optional for the same reason as `project`: persisted data written
+	 * before this level existed deserializes to an empty map, and a reader must
+	 * treat empty-but-modelWeekly-populated as "not parsed yet", never as zero
+	 * usage.
+	 */
+	modelHourly?: Map<string, AggregatedUsage>;
+	/**
 	 * Per-project aggregation. Key = friendly project name (basename of cwd).
 	 * Optional so existing empty-bucket constructions and persisted data without
 	 * it remain valid; aggregateUsage always populates it.
@@ -147,6 +158,7 @@ export interface SerializedTimeBuckets {
 	monthly: [string, AggregatedUsage][];
 	modelWeekly?: [string, AggregatedUsage][]; // Optional for backward compat with existing persisted data
 	hourly?: [string, AggregatedUsage][]; // Optional for backward compat
+	modelHourly?: [string, AggregatedUsage][]; // Optional for backward compat
 	project?: [string, AggregatedUsage][]; // Optional for backward compat
 }
 

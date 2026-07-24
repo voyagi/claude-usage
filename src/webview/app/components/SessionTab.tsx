@@ -42,8 +42,12 @@ function calculatePercentage(current: number, average: number): string {
 export function SessionTab({ data }: SessionTabProps) {
 	if (!data) return null;
 
-	const hasActiveSession =
-		data.windowStart !== null && data.currentSessionTokens > 0;
+	// Usage is what makes a session active, not whether we know when its window
+	// resets. Requiring windowStart too meant that when the API reported no
+	// reset instant, this panel claimed "No active session detected" while real
+	// tokens were being spent, and took the two figures that do not depend on
+	// the reset -- output tokens and burn rate -- down with the one that does.
+	const hasActiveSession = data.currentSessionTokens > 0;
 	const hasEnoughSessions = data.sessionCount >= 2;
 
 	return (
@@ -111,11 +115,12 @@ export function SessionTab({ data }: SessionTabProps) {
 									fontWeight: 600,
 								}}
 							>
-								{formatDuration(
-									data.timeRemainingMinutes !== null
-										? 300 - data.timeRemainingMinutes
-										: null,
-								)}
+								{/* formatDuration renders null as "0m", which would read as a
+								    session that just began rather than one whose window the
+								    API declined to date. */}
+								{data.timeRemainingMinutes !== null
+									? formatDuration(300 - data.timeRemainingMinutes)
+									: "n/a"}
 							</div>
 						</div>
 

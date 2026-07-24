@@ -11,7 +11,11 @@
 // empty module stub is enough to let the import chain resolve under Jest.
 jest.mock("vscode", () => ({}), { virtual: true });
 
-import { weeklyBucketKey } from "../aggregation/timeBuckets.js";
+import {
+	hourlyBucketKey,
+	modelHourlyBucketKey,
+	weeklyBucketKey,
+} from "../aggregation/timeBuckets.js";
 import type { AggregatedUsage, ApiUsageData, TimeBuckets } from "../types.js";
 import {
 	buildStatusBarData,
@@ -101,7 +105,9 @@ describe("calculateRateLimits: weekly scoped limit", () => {
 			weekKey,
 		);
 
-		const result = calculateRateLimits(buckets, "max5", null, "Fable");
+		const result = calculateRateLimits(buckets, "max5", null, {
+			scopedModel: "Fable",
+		});
 		expect(result.weeklyScoped).not.toBeNull();
 		expect(result.weeklyScoped?.name).toBe("Weekly Fable");
 		expect(result.weeklyScoped?.currentTokens).toBe(90_000);
@@ -112,7 +118,9 @@ describe("calculateRateLimits: weekly scoped limit", () => {
 			{ "claude-fable-5": 90_000 },
 			"1999-W01",
 		);
-		const result = calculateRateLimits(buckets, "max5", null, "Fable");
+		const result = calculateRateLimits(buckets, "max5", null, {
+			scopedModel: "Fable",
+		});
 		expect(result.weeklyScoped?.currentTokens).toBe(0);
 	});
 
@@ -132,7 +140,7 @@ describe("calculateRateLimits: weekly scoped limit", () => {
 			buckets,
 			"max5",
 			{ weeklyScopedLimit: 100_000, lastUpdated: new Date().toISOString() },
-			"Fable",
+			{ scopedModel: "Fable" },
 		);
 		expect(result.weeklyScoped?.estimatedLimit).toBe(100_000);
 		expect(result.weeklyScoped?.percentage).toBe(50);
@@ -175,15 +183,9 @@ describe("buildStatusBarData: scoped model resolution", () => {
 			{ "claude-fable-5": 10_000 },
 			currentWeekKey(),
 		);
-		const data = buildStatusBarData(
-			buckets,
-			stats,
-			"max5",
-			0,
-			null,
-			null,
-			"Fable",
-		);
+		const data = buildStatusBarData(buckets, stats, "max5", 0, null, null, {
+			scopedModel: "Fable",
+		});
 		expect(data.rateLimits.weeklyScoped?.name).toBe("Weekly Fable");
 		expect(data.rateLimits.weeklyScoped?.currentTokens).toBe(10_000);
 	});
@@ -200,7 +202,7 @@ describe("buildStatusBarData: scoped model resolution", () => {
 			0,
 			null,
 			apiWith("Sonnet"),
-			"Fable",
+			{ scopedModel: "Fable" },
 		);
 		expect(data.rateLimits.weeklyScoped?.name).toBe("Weekly Sonnet");
 		expect(data.rateLimits.weeklyScoped?.currentTokens).toBe(20_000);
@@ -217,5 +219,170 @@ describe("buildStatusBarData: scoped model resolution", () => {
 			apiWith(null),
 		);
 		expect(data.rateLimits.weeklyScoped).toBeNull();
+	});
+});
+
+/**
+ * The account's weekly cycle is anchored to a fixed instant Anthropic assigns,
+ * not to a calendar week. Two captured payloads a week apart both reset at
+ * 08:00 UTC on a Friday, and the scoped limit shared that instant rather than
+ * carrying one of its own. A Monday-to-Sunday week is the wrong phase by up to
+ * six days, so it counts usage from the wrong span and reports the wrong reset.
+ */
+describe("calculateRateLimits: the account's real weekly cycle", () => {
+	// Mid-morning on Friday the 24th, an hour after that week's 08:00Z reset.
+	const NOW = new Date("2026-07-24T12:00:00.000Z");
+	const ANCHOR = "2026-07-24T08:00:00.383291+00:00";
+
+	/** Wednesday: inside the ISO week, BEFORE the cycle that is running now. */
+	const BEFORE_CYCLE = new Date("2026-07-22T12:00:00.000Z");
+	/** Friday morning: inside both. */
+	const INSIDE_CYCLE = new Date("2026-07-24T09:00:00.000Z");
+
+	beforeEach(() => {
+		jest.useFakeTimers().setSystemTime(NOW);
+	});
+
+	afterEach(() => {
+		jest.useRealTimers();
+	});
+
+	/**
+	 * Keys are built with the shared helpers rather than restated, so the
+	 * fixture lands where the reader looks in any timezone.
+	 */
+	function bucketsWithHours(
+		hours: { at: Date; model: string; tokens: number }[],
+		isoWeekTotals: { weekly: number | null; models: Record<string, number> },
+	): TimeBuckets {
+		const hourly = new Map<string, AggregatedUsage>();
+		const modelHourly = new Map<string, AggregatedUsage>();
+		for (const { at, model, tokens } of hours) {
+			hourly.set(hourlyBucketKey(at), emptyAgg(tokens));
+			modelHourly.set(modelHourlyBucketKey(at, model), emptyAgg(tokens));
+		}
+
+		const weekKey = weeklyBucketKey(NOW);
+		const modelWeekly = new Map<string, AggregatedUsage>();
+		for (const [model, tokens] of Object.entries(isoWeekTotals.models)) {
+			modelWeekly.set(`${weekKey}:${model}`, emptyAgg(tokens));
+		}
+
+		// `null` means no weekly bucket at all, which is what an account with no
+		// history looks like. A bucket holding zero is a different state, and
+		// passing one where the other is meant sends `canMeasureCycle` down the
+		// fallback path while the test claims to be measuring the cycle.
+		const weekly = new Map<string, AggregatedUsage>();
+		if (isoWeekTotals.weekly !== null) {
+			weekly.set(weekKey, emptyAgg(isoWeekTotals.weekly));
+		}
+
+		return {
+			session: new Map(),
+			daily: new Map(),
+			weekly,
+			monthly: new Map(),
+			modelWeekly,
+			hourly,
+			modelHourly,
+			project: new Map(),
+		};
+	}
+
+	const FIXTURE = () =>
+		bucketsWithHours(
+			[
+				{ at: BEFORE_CYCLE, model: "claude-fable-5", tokens: 50_000 },
+				{ at: INSIDE_CYCLE, model: "claude-fable-5", tokens: 30_000 },
+			],
+			{ weekly: 80_000, models: { "claude-fable-5": 80_000 } },
+		);
+
+	it("reports the account's reset instant, not the next Monday", () => {
+		const result = calculateRateLimits(FIXTURE(), "max5", null, {
+			weeklyAnchor: ANCHOR,
+		});
+		expect(result.weekly.resetTime?.toISOString()).toBe(
+			"2026-07-31T08:00:00.383Z",
+		);
+	});
+
+	it("counts only usage inside the running cycle", () => {
+		// Wednesday's 50k is in the same ISO week but belongs to the cycle that
+		// already reset. Counting it is how a fresh cycle reads as two thirds
+		// spent on its first morning.
+		const result = calculateRateLimits(FIXTURE(), "max5", null, {
+			weeklyAnchor: ANCHOR,
+		});
+		expect(result.weekly.currentTokens).toBe(30_000);
+	});
+
+	it("scopes the model limit to the same cycle", () => {
+		const result = calculateRateLimits(FIXTURE(), "max5", null, {
+			weeklyAnchor: ANCHOR,
+			scopedModel: "Fable",
+		});
+		expect(result.weeklyScoped?.currentTokens).toBe(30_000);
+		expect(result.weeklyScoped?.resetTime?.toISOString()).toBe(
+			"2026-07-31T08:00:00.383Z",
+		);
+	});
+
+	it("falls back to the calendar week when no anchor has been learned", () => {
+		// Never having reached the API is the one case where a guess beats
+		// nothing, and the guess is the old behaviour unchanged.
+		const result = calculateRateLimits(FIXTURE(), "max5", null, {});
+		expect(result.weekly.currentTokens).toBe(80_000);
+		// Local midnight on Monday, which is a different UTC day in most zones --
+		// part of why this fallback disagrees with the server's fixed instant.
+		expect(result.weekly.resetTime?.getDay()).toBe(1);
+		expect(result.weekly.resetTime?.getHours()).toBe(0);
+	});
+
+	it("uses the calendar week rather than reporting zero on stale state", () => {
+		// modelHourly is newer than the persisted buckets it may be read from, so
+		// on the first activation after an upgrade it deserializes empty while
+		// modelWeekly is full. Summing the empty level would report 0% against a
+		// limit that is actually 60% spent -- silence exactly where a warning is
+		// owed. Falling back is wrong by a few days of phase instead.
+		const buckets = FIXTURE();
+		buckets.hourly = new Map();
+		buckets.modelHourly = new Map();
+
+		const result = calculateRateLimits(buckets, "max5", null, {
+			weeklyAnchor: ANCHOR,
+			scopedModel: "Fable",
+		});
+		expect(result.weekly.currentTokens).toBe(80_000);
+		expect(result.weeklyScoped?.currentTokens).toBe(80_000);
+	});
+
+	it("reports zero when the buckets are genuinely empty", () => {
+		// The other half of that guard: empty-because-nothing-happened must not
+		// be dragged onto the fallback path, or a real zero becomes unreachable.
+		const buckets = bucketsWithHours([], { weekly: null, models: {} });
+		const result = calculateRateLimits(buckets, "max5", null, {
+			weeklyAnchor: ANCHOR,
+			scopedModel: "Fable",
+		});
+		expect(result.weekly.currentTokens).toBe(0);
+		expect(result.weeklyScoped?.currentTokens).toBe(0);
+	});
+
+	it("measures the cycle when the calendar bucket is absent entirely", () => {
+		// Zero is the one answer both branches agree on, so the test above cannot
+		// tell which one ran. This one can: the calendar bucket does not exist,
+		// so only the measured path can produce a non-zero total, and a fallback
+		// would report 0 against real usage.
+		const buckets = bucketsWithHours(
+			[{ at: INSIDE_CYCLE, model: "claude-fable-5", tokens: 42_000 }],
+			{ weekly: null, models: {} },
+		);
+		const result = calculateRateLimits(buckets, "max5", null, {
+			weeklyAnchor: ANCHOR,
+			scopedModel: "Fable",
+		});
+		expect(result.weekly.currentTokens).toBe(42_000);
+		expect(result.weeklyScoped?.currentTokens).toBe(42_000);
 	});
 });

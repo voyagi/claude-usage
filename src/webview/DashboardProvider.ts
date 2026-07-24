@@ -15,6 +15,7 @@ import {
 	forecastWeeklyCap,
 	forecastWeeklyCapFromUtilization,
 } from "../core/burnRate.js";
+import { resetInstant } from "../core/resetInstant.js";
 import type {
 	AggregatedUsage,
 	RateLimitInfo,
@@ -197,7 +198,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 			percentage: apiWindow
 				? Math.round(apiWindow.utilization * 100)
 				: info.percentage,
-			resetTime: apiWindow?.resetsAt ?? info.resetTime?.toISOString() ?? null,
+			// Reaching past an API window that reported no reset would emit a
+			// guessed instant under `isEstimated: false`, i.e. a guess wearing the
+			// label of an authoritative reading. See resetInstant for why null is
+			// carried through rather than filled.
+			resetTime:
+				resetInstant(apiWindow, { local: info.resetTime })?.toISOString() ??
+				null,
 			isHit: apiWindow ? apiWindow.utilization >= 1.0 : info.isHit,
 			// Without an API window this percentage is local tokens over a plan
 			// default, which is a guess and must be labelled as one.
@@ -229,7 +236,14 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 					currentTokens: local?.currentTokens ?? 0,
 					estimatedLimit: local?.estimatedLimit ?? 0,
 					percentage: Math.round(window.utilization * 100),
-					resetTime: window.resetsAt,
+					// The fourth reader, and the one that took longest to notice.
+					// `local: null` keeps today's semantics exactly, since the API
+					// window always exists inside this loop -- the fallback arm is
+					// unreachable here. Passing the raw string through meant a
+					// malformed reset rendered as the literal text "Resets: NaNm"
+					// on this card while every other surface degraded quietly.
+					resetTime:
+						resetInstant(window, { local: null })?.toISOString() ?? null,
 					isHit: window.utilization >= 1.0,
 					isEstimated: false,
 				});
@@ -264,9 +278,13 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 		let windowExpiry: string | null = null;
 		let timeRemainingMinutes: number | null = null;
 
-		const sessionResetSource = api?.fiveHour?.resetsAt
-			? new Date(api.fiveHour.resetsAt)
-			: statusBarData.rateLimits.session5h.resetTime;
+		// The same shared rule. This card derives three further fields from the
+		// instant, so filling it from the local estimate would rebuild the whole
+		// "Current Window" panel -- start, expiry and minutes remaining -- around
+		// a guessed time, beside a session bar correctly showing none.
+		const sessionResetSource = resetInstant(api?.fiveHour ?? null, {
+			local: statusBarData.rateLimits.session5h.resetTime,
+		});
 
 		if (sessionResetSource) {
 			const resetTime = sessionResetSource;

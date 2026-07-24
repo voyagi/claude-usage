@@ -12,7 +12,13 @@ import {
 	startOfWeek,
 	subHours,
 } from "date-fns";
-import { dailyBucketKey, weeklyBucketKey } from "../aggregation/timeBuckets.js";
+import {
+	dailyBucketKey,
+	parseHourlyBucketKey,
+	sumModelOutputTokensInWindow,
+	sumOutputTokensInWindow,
+	weeklyBucketKey,
+} from "../aggregation/timeBuckets.js";
 import { getStaleness } from "../api/usageCache.js";
 import { getPlanConfig } from "../pricing/plans.js";
 import type {
@@ -25,6 +31,7 @@ import type {
 	StatusBarData,
 	TimeBuckets,
 } from "../types.js";
+import { projectWeeklyCycle } from "./weeklyAnchor.js";
 
 /**
  * Match a scoped-limit display label (e.g. "Fable") against a model id
@@ -38,19 +45,54 @@ export function modelMatchesScopeLabel(model: string, label: string): boolean {
 }
 
 /**
- * Calculate rate limit status for the session, weekly, and model-scoped limits.
+ * Facts about the account that only the API can tell us, carried across polls.
  *
- * @param scopedModelLabel Display name of the model the weekly scoped limit
- *   applies to (e.g. "Fable"), learned from the API. When absent, the scoped
- *   limit is reported as null rather than guessed -- Anthropic changes which
- *   model is scoped, so assuming one produces a confidently wrong bar.
+ * Grouped rather than passed as two adjacent nullable strings: in positional
+ * form a caller could swap them and every type check would still pass.
+ */
+export interface LearnedApiFacts {
+	/**
+	 * Display name of the model the weekly scoped limit applies to (e.g.
+	 * "Fable"). When absent the scoped limit is reported as null rather than
+	 * guessed -- Anthropic changes which model is scoped, so assuming one
+	 * produces a confidently wrong bar.
+	 */
+	scopedModel?: string | null;
+	/**
+	 * A weekly reset instant the API supplied, ISO. Anchors the account's real
+	 * cycle. When absent the calendar week is used, which is a guess: it is the
+	 * right length and almost certainly the wrong phase.
+	 */
+	weeklyAnchor?: string | null;
+}
+
+/**
+ * Whether an hourly-grained level can answer for the cycle window.
+ *
+ * A level that predates the persisted state being read deserializes to an
+ * empty map, and summing an empty map yields zero -- which reads as "no usage
+ * this cycle" rather than "not parsed yet". Falling back to the calendar-week
+ * bucket for that one render is wrong by a few days of phase; reporting zero is
+ * wrong by the entire cycle.
+ */
+function canMeasureCycle(
+	level: Map<string, AggregatedUsage> | undefined,
+	fallback: Map<string, AggregatedUsage>,
+): level is Map<string, AggregatedUsage> {
+	if (!level) return false;
+	return level.size > 0 || fallback.size === 0;
+}
+
+/**
+ * Calculate rate limit status for the session, weekly, and model-scoped limits.
  */
 export function calculateRateLimits(
 	buckets: TimeBuckets,
 	planType: PlanType,
 	refinedLimits?: RefinedLimits | null,
-	scopedModelLabel?: string | null,
+	learned?: LearnedApiFacts | null,
 ): RateLimitStatus {
+	const scopedModelLabel = learned?.scopedModel;
 	const plan = getPlanConfig(planType);
 	const now = new Date();
 
@@ -70,9 +112,8 @@ export function calculateRateLimits(
 	let oldestSessionTime: Date | null = null;
 
 	for (const [hourKey, agg] of buckets.hourly.entries()) {
-		// hourKey format: "YYYY-MM-DDTHH"
-		const hourDate = new Date(`${hourKey}:00:00`);
-		if (hourDate >= fiveHoursAgo) {
+		const hourDate = parseHourlyBucketKey(hourKey);
+		if (hourDate && hourDate >= fiveHoursAgo) {
 			sessionTokens += agg.outputTokens;
 			if (!oldestSessionTime || hourDate < oldestSessionTime) {
 				oldestSessionTime = hourDate;
@@ -93,11 +134,26 @@ export function calculateRateLimits(
 			: false,
 	};
 
-	// Weekly limit: Sum output tokens from current ISO week
+	// Weekly limit.
+	//
+	// Anthropic resets this on a fixed instant assigned to the account, not on a
+	// calendar boundary: two captured payloads a week apart both reset at 08:00
+	// UTC on a Friday. So when the API has told us that instant, both the window
+	// we count over and the reset we report come from it. The Monday-to-Sunday
+	// ISO week below is the fallback for an account we have never had a reading
+	// for, and it can be out of phase by as much as six days.
 	const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
 	const weekKey = weeklyBucketKey(now);
-	const weekData = buckets.weekly.get(weekKey);
-	const weeklyTokens = weekData?.outputTokens ?? 0;
+	const cycle = projectWeeklyCycle(learned?.weeklyAnchor, now);
+
+	const weeklyTokens =
+		cycle && canMeasureCycle(buckets.hourly, buckets.weekly)
+			? sumOutputTokensInWindow(
+					buckets.hourly,
+					cycle.cycleStart,
+					cycle.nextReset,
+				)
+			: (buckets.weekly.get(weekKey)?.outputTokens ?? 0);
 
 	const weekly: RateLimitInfo = {
 		name: "Weekly",
@@ -106,7 +162,7 @@ export function calculateRateLimits(
 		percentage: effectiveWeeklyLimit
 			? Math.min(100, Math.round((weeklyTokens / effectiveWeeklyLimit) * 100))
 			: 0,
-		resetTime: addDays(weekStart, 7),
+		resetTime: cycle ? cycle.nextReset : addDays(weekStart, 7),
 		isHit: effectiveWeeklyLimit
 			? weeklyTokens / effectiveWeeklyLimit >= 1.0
 			: false,
@@ -117,13 +173,25 @@ export function calculateRateLimits(
 	// instead of defaulting to a model that may no longer be the scoped one.
 	let weeklyScoped: RateLimitInfo | null = null;
 	if (scopedModelLabel) {
-		let scopedTokens = 0;
-		for (const [key, agg] of buckets.modelWeekly.entries()) {
-			// Key format: "RRRR-WII:model-name" (see weeklyBucketKey)
-			if (!key.startsWith(`${weekKey}:`)) continue;
-			const model = key.slice(weekKey.length + 1);
-			if (modelMatchesScopeLabel(model, scopedModelLabel)) {
-				scopedTokens += agg.outputTokens;
+		const matchesScope = (model: string) =>
+			modelMatchesScopeLabel(model, scopedModelLabel);
+
+		let scopedTokens: number;
+		if (cycle && canMeasureCycle(buckets.modelHourly, buckets.modelWeekly)) {
+			scopedTokens = sumModelOutputTokensInWindow(
+				buckets.modelHourly,
+				cycle.cycleStart,
+				cycle.nextReset,
+				matchesScope,
+			);
+		} else {
+			scopedTokens = 0;
+			for (const [key, agg] of buckets.modelWeekly.entries()) {
+				// Key format: "RRRR-WII:model-name" (see weeklyBucketKey)
+				if (!key.startsWith(`${weekKey}:`)) continue;
+				if (matchesScope(key.slice(weekKey.length + 1))) {
+					scopedTokens += agg.outputTokens;
+				}
 			}
 		}
 
@@ -134,7 +202,9 @@ export function calculateRateLimits(
 			percentage: effectiveScopedLimit
 				? Math.min(100, Math.round((scopedTokens / effectiveScopedLimit) * 100))
 				: 0,
-			resetTime: addDays(weekStart, 7),
+			// Same instant as the weekly limit above: the captured payloads show
+			// the scoped limit sharing the account's anchor, not carrying its own.
+			resetTime: cycle ? cycle.nextReset : addDays(weekStart, 7),
 			isHit: effectiveScopedLimit
 				? scopedTokens / effectiveScopedLimit >= 1.0
 				: false,
@@ -212,8 +282,9 @@ export function calculateBurnRate(buckets: TimeBuckets): number {
 /**
  * Build complete StatusBarData from time buckets
  * @param burnRateOverride - Optional EMA-smoothed burn rate (defaults to simple 10-min calculation)
- * @param lastKnownScopedModel - Persisted scoped-model label, used when the API
- *   is unreachable so the scoped bar does not vanish while offline
+ * @param learned - Facts persisted from earlier API readings, used when the API
+ *   is unreachable so the scoped bar does not vanish and the weekly window does
+ *   not fall back to a calendar week that is out of phase with the account
  */
 export function buildStatusBarData(
 	buckets: TimeBuckets,
@@ -222,7 +293,7 @@ export function buildStatusBarData(
 	burnRateOverride?: number,
 	refinedLimits?: RefinedLimits | null,
 	apiUsage?: ApiUsageData | null,
-	lastKnownScopedModel?: string | null,
+	learned?: LearnedApiFacts | null,
 ): StatusBarData {
 	const now = new Date();
 	const today = dailyBucketKey(now);
@@ -263,12 +334,11 @@ export function buildStatusBarData(
 			burnRateOverride !== undefined
 				? burnRateOverride
 				: calculateBurnRate(buckets),
-		rateLimits: calculateRateLimits(
-			buckets,
-			planType,
-			refinedLimits,
-			apiUsage?.scopedWeekly[0]?.label ?? lastKnownScopedModel ?? null,
-		),
+		rateLimits: calculateRateLimits(buckets, planType, refinedLimits, {
+			// A live reading outranks the persisted one for both facts.
+			scopedModel: apiUsage?.scopedWeekly[0]?.label ?? learned?.scopedModel,
+			weeklyAnchor: apiUsage?.sevenDay?.resetsAt ?? learned?.weeklyAnchor,
+		}),
 		apiUsage: apiUsage ?? null,
 		staleness: getStaleness(apiUsage?.fetchedAt ?? null),
 		lastUpdated: now,

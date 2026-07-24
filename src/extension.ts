@@ -19,6 +19,7 @@ import {
 } from "./core/burnRate.js";
 import { buildStatusBarData } from "./core/rateLimits.js";
 import { mapTierStringToPlanType } from "./core/tierDetection.js";
+import { pickWeeklyAnchor } from "./core/weeklyAnchor.js";
 import type { RateLimitEvent } from "./parser/incrementalParser.js";
 import { parseAllSessions } from "./parser/jsonlParser.js";
 import { refineLimitEstimate } from "./parser/rateLimitDetector.js";
@@ -60,6 +61,13 @@ let cachedApiUsage: ApiUsageData | null = null;
  * offline. Anthropic changes which model is scoped, so it is never hardcoded.
  */
 let lastKnownScopedModel: string | null = null;
+/**
+ * A weekly reset instant the API supplied, ISO. Anthropic assigns each account
+ * a fixed weekly reset and holds it there, so one reading anchors every later
+ * cycle. Persisted because the alternative while offline is a calendar week,
+ * which has the right length and the wrong phase.
+ */
+let lastKnownWeeklyAnchor: string | null = null;
 let pollingTimer: PollingTimer | null = null;
 let usageCache: UsageCache | null = null;
 const AUTH_DEAD_NOTIFY_COOLDOWN_MS = 5 * 60_000; // 5 minutes
@@ -153,6 +161,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	lastKnownScopedModel =
 		context.globalState.get<string>("lastKnownScopedModel") ?? null;
 
+	// Same reason: without an anchor the weekly window falls back to a calendar
+	// week, so a cold start offline would show a reset on the wrong day.
+	lastKnownWeeklyAnchor =
+		context.globalState.get<string>("lastKnownWeeklyAnchor") ?? null;
+
 	/** Remember the scoped model whenever the API names a new one */
 	function rememberScopedModel(data: ApiUsageData): void {
 		const label = data.scopedWeekly[0]?.label;
@@ -164,6 +177,49 @@ export async function activate(context: vscode.ExtensionContext) {
 				logger.error(`Failed to persist scoped model name: ${err}`);
 			});
 		logger.info(`Weekly scoped limit now applies to: ${label}`);
+	}
+
+	/**
+	 * Remember the weekly reset instant whenever the API states one.
+	 *
+	 * Always overwrite rather than keeping the first: re-anchoring on every
+	 * reading is what keeps the exact-seven-day projection honest, since any
+	 * drift can then only survive until the next successful poll. The API omits
+	 * this on a limit with no usage yet, and an omission is not a correction, so
+	 * a null leaves the stored anchor standing.
+	 *
+	 * The unreadable case is checked here as well as at both input boundaries,
+	 * which is not redundancy for its own sake: this is where a value stops
+	 * being one poll's data and becomes durable state that survives restarts and
+	 * is trusted precisely when the API cannot be reached. An unusable reading is
+	 * not a correction either, so it must not clobber a good stored anchor.
+	 *
+	 * A scoped weekly window is accepted as a source when the all-model one
+	 * states nothing. The captured payloads show both weekly limits carrying the
+	 * same instant, and `calculateRateLimits` already relies on that by reporting
+	 * the account anchor as the scoped limit's reset, so this only reads the
+	 * shared anchor in the other direction. The all-model window still wins
+	 * whenever it has a value, so the scoped one fills a gap rather than
+	 * competing. What makes the gap worth filling: the alternative there is not
+	 * "no anchor", it is the Monday calendar week, which is the wrong phase by
+	 * design and is the defect this change set exists to remove.
+	 */
+	function rememberWeeklyAnchor(data: ApiUsageData): void {
+		const resetsAt = pickWeeklyAnchor(data);
+		if (!resetsAt || resetsAt === lastKnownWeeklyAnchor) return;
+		if (Number.isNaN(new Date(resetsAt).getTime())) {
+			logger.warn(
+				`Ignoring an unreadable weekly reset (${JSON.stringify(resetsAt)}); keeping the stored anchor.`,
+			);
+			return;
+		}
+		lastKnownWeeklyAnchor = resetsAt;
+		context.globalState
+			.update("lastKnownWeeklyAnchor", resetsAt)
+			.then(undefined, (err) => {
+				logger.error(`Failed to persist weekly reset anchor: ${err}`);
+			});
+		logger.info(`Weekly limit resets at: ${resetsAt}`);
 	}
 
 	// Handle rate limit events from SessionWatcher
@@ -255,7 +311,10 @@ export async function activate(context: vscode.ExtensionContext) {
 				lastBurnRate,
 				getEffectiveLimits(),
 				cachedApiUsage,
-				lastKnownScopedModel,
+				{
+					scopedModel: lastKnownScopedModel,
+					weeklyAnchor: lastKnownWeeklyAnchor,
+				},
 			);
 			statusBar.update(data);
 
@@ -308,7 +367,10 @@ export async function activate(context: vscode.ExtensionContext) {
 			lastBurnRate,
 			getEffectiveLimits(),
 			cachedApiUsage,
-			lastKnownScopedModel,
+			{
+				scopedModel: lastKnownScopedModel,
+				weeklyAnchor: lastKnownWeeklyAnchor,
+			},
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -333,6 +395,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			cachedApiUsage.scopedWeekly = [];
 		}
 		rememberScopedModel(cachedApiUsage);
+		rememberWeeklyAnchor(cachedApiUsage);
 		// If cached data is old (>5 min), assume we're rate-limited until
 		// the first poll proves otherwise. Prevents brief grey flash on startup.
 		const cacheAgeMs = Date.now() - new Date(existingCache.writtenAt).getTime();
@@ -350,6 +413,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		(apiData) => {
 			cachedApiUsage = apiData;
 			rememberScopedModel(apiData);
+			rememberWeeklyAnchor(apiData);
 			statusBar.setRateLimited(false);
 
 			// Auto-detect tier from API response
@@ -420,6 +484,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			cachedApiUsage.scopedWeekly = [];
 		}
 		rememberScopedModel(cachedApiUsage);
+		rememberWeeklyAnchor(cachedApiUsage);
 		logger.info("Updated API data from shared cache (other window wrote)");
 		refreshStatusBar();
 	});
@@ -721,7 +786,10 @@ async function performInitialParse(
 			lastBurnRate,
 			getEffectiveLimits(),
 			cachedApiUsage,
-			lastKnownScopedModel,
+			{
+				scopedModel: lastKnownScopedModel,
+				weeklyAnchor: lastKnownWeeklyAnchor,
+			},
 		);
 		statusBar.update(data);
 		if (dashboardProvider) {
@@ -822,7 +890,10 @@ async function performInitialParse(
 		lastBurnRate,
 		getEffectiveLimits(),
 		cachedApiUsage,
-		lastKnownScopedModel,
+		{
+			scopedModel: lastKnownScopedModel,
+			weeklyAnchor: lastKnownWeeklyAnchor,
+		},
 	);
 	statusBar.update(data);
 
