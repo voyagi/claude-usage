@@ -28,6 +28,113 @@
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
+ * How far apart the two weekly resets may sit before they are a disagreement.
+ *
+ * Not zero, and not a round number picked for comfort. In the captured payload
+ * the all-model limit resets at `...T08:00:00.383291+00:00` and the scoped one
+ * at `...T08:00:00.383503+00:00`: the same instant, stamped 212 microseconds
+ * apart as the response was assembled. Comparing the strings would therefore
+ * report a disagreement on every poll. Comparing the parsed instants hides that
+ * particular pair, since `Date` keeps only milliseconds and both land on .383 --
+ * but only by luck of where they fell. Two stamps 212 microseconds apart
+ * straddle a millisecond boundary roughly a fifth of the time, so a zero
+ * tolerance would fire intermittently, which is worse than firing always: an
+ * intermittent warning reads as a glitch and gets ignored on the day it is real.
+ *
+ * A minute is far above that jitter and far below anything meaningful. If
+ * Anthropic ever gives the scoped limit an anchor of its own, it will differ by
+ * hours or days, not by fractions of a second.
+ */
+const ANCHOR_AGREEMENT_TOLERANCE_MS = 60_000;
+
+/**
+ * Bucket size for the repeat key on a disagreement warning.
+ *
+ * Deliberately the same value, because both uses need the same property:
+ * coarser than the per-response assembly jitter, finer than any real move. It
+ * is named separately so the sharing is a decision rather than a coincidence.
+ * They would part company if the tolerance were ever widened for a reason
+ * unrelated to jitter -- a benign few-minute offset turning out to be normal --
+ * since the dedupe resolution would otherwise coarsen with it and start
+ * swallowing real moves smaller than the new value.
+ */
+const ANCHOR_DEDUPE_BUCKET_MS = ANCHOR_AGREEMENT_TOLERANCE_MS;
+
+/**
+ * Somewhere a warning can be sent, optionally with a key that decides whether
+ * it counts as a repeat of the last one.
+ *
+ * The key exists because the message cannot serve as one. A message that quotes
+ * server timestamps is different on every poll even when the condition it
+ * reports has not changed by a microsecond, so deduplicating on message text
+ * silently never deduplicates. A plain logger satisfies this type and ignores
+ * the second argument.
+ */
+export interface WarningSink {
+	warn(message: string, dedupeKey?: string): void;
+	/**
+	 * Tell the sink the reported condition is over, so its return counts as news
+	 * rather than as a repeat.
+	 *
+	 * Optional, and absent on a plain logger, which is why callers invoke it as
+	 * `sink.clear?.()`. A latch needs it because it only ever hears about the
+	 * bad state: nothing calls `warn` while things are fine, so without an
+	 * explicit all-clear the latch goes on holding a key from a condition that
+	 * ended, and silently swallows the same condition returning.
+	 */
+	clear?(): void;
+}
+
+/**
+ * Wrap a sink so a repeat of the same condition is stated once, not endlessly.
+ *
+ * For a condition that is permanent rather than transient. A malformed
+ * timestamp is a server bug whose warning stops when the server is fixed, so
+ * repeating it is proportionate. Two weekly limits parting company would be the
+ * new normal, and at one poll every five minutes the same sentence would arrive
+ * roughly 288 times a day forever, asking its reader to report something they
+ * can report once. That is the reasoning behind the tolerance above applied to
+ * how long a warning repeats rather than how erratically it fires: a warning
+ * nobody can act on teaches its channel to be ignored.
+ *
+ * What counts as "the same" is the caller's `dedupeKey`, falling back to the
+ * message only when none is given. Keying on the message was the first attempt
+ * here and it did not work: the message embeds raw `resets_at` strings, whose
+ * sub-second field is stamped per response, so every poll produced a new message
+ * and nothing was ever suppressed. The tests passed because their fixtures fed
+ * literal strings the API never emits. A latch that cannot fire is worse than no
+ * latch, because the code says the volume problem is handled.
+ *
+ * Only consecutive repeats are suppressed, so a genuinely different condition
+ * is never swallowed. "Consecutive" is measured in calls, not in polls, and the
+ * two are not the same thing: a caller that stays silent while things are fine
+ * leaves the latch holding a stale key, so a condition that ends and comes back
+ * looks like an uninterrupted repeat. That is what `clear` is for, and a caller
+ * that can tell when its condition is over is expected to say so.
+ *
+ * The contract on a key, stated as a rule rather than as the incident above,
+ * because the rule is what a future caller needs: it must identify the
+ * condition, and must not embed anything that varies while the condition does
+ * not. A key built per call from freshly stamped data satisfies neither, and
+ * fails silently -- every warning is emitted, every test still passes, and the
+ * only symptom is volume nobody is watching for.
+ */
+export function latchRepeats(sink: WarningSink): WarningSink {
+	let previous: string | null = null;
+	return {
+		warn(message: string, dedupeKey?: string) {
+			const key = dedupeKey ?? message;
+			if (key === previous) return;
+			previous = key;
+			sink.warn(message);
+		},
+		clear() {
+			previous = null;
+		},
+	};
+}
+
+/**
  * The reset instant to anchor the account's weekly cycle to, or null.
  *
  * The all-model weekly window is the natural source and wins whenever it states
@@ -40,16 +147,75 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
  * Filling that gap matters because the alternative is not "no anchor". It is
  * the Monday calendar week, which is the wrong phase by construction and is the
  * defect this module exists to remove.
+ *
+ * That shared anchor is the single assumption the whole feature rests on, and
+ * it rests on one observation. Both windows usually carry a reset, so whenever
+ * they do this compares them and complains if they have parted company. That
+ * turns the assumption from unverified into monitored: the failure it guards
+ * against is silent by nature, because a wrong-but-plausible anchor produces a
+ * countdown that looks entirely normal and a usage total measured over the
+ * wrong days. Passing no logger simply skips the check, which keeps the
+ * function usable as a pure helper.
  */
-export function pickWeeklyAnchor(usage: {
-	sevenDay?: { resetsAt: string | null } | null;
-	scopedWeekly?: { resetsAt: string | null }[];
-}): string | null {
-	return (
-		usage.sevenDay?.resetsAt ??
-		usage.scopedWeekly?.find((window) => window.resetsAt)?.resetsAt ??
-		null
-	);
+export function pickWeeklyAnchor(
+	usage: {
+		sevenDay?: { resetsAt: string | null } | null;
+		scopedWeekly?: { resetsAt: string | null }[];
+	},
+	logger?: WarningSink,
+): string | null {
+	const weekly = usage.sevenDay?.resetsAt ?? null;
+	const scoped =
+		usage.scopedWeekly?.find((window) => window.resetsAt)?.resetsAt ?? null;
+
+	if (logger && weekly && scoped) {
+		const weeklyMs = new Date(weekly).getTime();
+		const scopedMs = new Date(scoped).getTime();
+		const apart = Math.abs(weeklyMs - scopedMs);
+		// An unreadable value makes `apart` NaN, and every NaN comparison is
+		// false, so it declines to complain on its own. That is the outcome we
+		// want and it needs no guard: the parse boundary has already named the
+		// bad value, and a second complaint here would only describe it worse.
+		// An explicit `Number.isFinite` check stood here first and was removed
+		// once a mutation showed the whole suite passing without it -- `apart` is
+		// finite or NaN, never Infinity, so the check could not change any
+		// outcome. A guard that cannot fire reads as protection and provides
+		// none, which is the pattern this file exists to keep out.
+		if (apart > ANCHOR_AGREEMENT_TOLERANCE_MS) {
+			// The message quotes the raw instants because that is what a reader
+			// needs, but it cannot double as the repeat key: the sub-second field
+			// is stamped per response, so the text differs on every poll while the
+			// condition is unchanged, and a latch keyed on it never fires. The key
+			// buckets both instants at a resolution coarser than the jitter and
+			// finer than any real move.
+			//
+			// `Math.round`, not `Math.floor`, and that is not a coin toss. Reset
+			// instants land on whole minutes with the stamp adding 0-999 ms, so
+			// flooring would put every real value within a millisecond of a bucket
+			// edge, where a stamp could flip it. Rounding puts them at bucket
+			// centres instead, measured 29.0-30.0 s from either edge. A pair near
+			// an edge would emit one extra warning rather than miss one, so even
+			// the residual errs toward speaking up -- but with this data shape it
+			// cannot arise, since it would need a reset about thirty seconds past
+			// the minute.
+			const bucket = (ms: number) => Math.round(ms / ANCHOR_DEDUPE_BUCKET_MS);
+			logger.warn(
+				`The weekly and scoped limits report different reset times (${weekly} vs ${scoped}). This build assumes they share one account-wide anchor, so weekly usage totals and countdowns may now be measured over the wrong days. Please report this.`,
+				`anchor-disagreement:${bucket(weeklyMs)}|${bucket(scopedMs)}`,
+			);
+		} else if (apart <= ANCHOR_AGREEMENT_TOLERANCE_MS) {
+			// An all-clear, and only on a comparison that actually succeeded.
+			// Nothing calls `warn` while the two agree, so without this the latch
+			// keeps holding the key of a divergence that has since ended, and
+			// swallows the same divergence returning as though it had never
+			// stopped. `apart <= tolerance` rather than a bare `else` because NaN
+			// fails both tests: an unreadable value means the comparison did not
+			// happen, and "I could not tell" must not be reported as "resolved".
+			logger.clear?.();
+		}
+	}
+
+	return weekly ?? scoped;
 }
 
 /** The weekly window containing a given moment. */

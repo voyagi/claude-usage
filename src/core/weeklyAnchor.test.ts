@@ -1,4 +1,9 @@
-import { pickWeeklyAnchor, projectWeeklyCycle, WEEK_MS } from "./weeklyAnchor";
+import {
+	latchRepeats,
+	pickWeeklyAnchor,
+	projectWeeklyCycle,
+	WEEK_MS,
+} from "./weeklyAnchor";
 
 /**
  * Both instants are real, taken from captured usage payloads a week apart.
@@ -48,6 +53,349 @@ describe("pickWeeklyAnchor", () => {
 			}),
 		).toBeNull();
 		expect(pickWeeklyAnchor({})).toBeNull();
+	});
+});
+
+/**
+ * The shared anchor is the one assumption the whole feature rests on, and it
+ * rests on a single captured payload. These pin the tripwire that would tell us
+ * if it ever stopped holding, and -- just as importantly -- that it stays quiet
+ * the rest of the time.
+ */
+describe("pickWeeklyAnchor: the shared-anchor tripwire", () => {
+	function spyLogger() {
+		return { warn: jest.fn() };
+	}
+
+	it("stays quiet on the exact instants a real payload carries", () => {
+		// Verbatim from the captured response: the same instant, stamped 212
+		// microseconds apart as the response is assembled. Comparing the strings
+		// would fire here on every poll. This pair happens to survive a zero
+		// tolerance too, because Date keeps only milliseconds and both land on
+		// .383 -- see the next test for the half of the jitter that does not.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.383291+00:00" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T08:00:00.383503+00:00" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet when that same jitter straddles a millisecond", () => {
+		// The other side of the coin, and the reason the tolerance is not zero.
+		// Two stamps this far apart land in different milliseconds roughly a fifth
+		// of the time, so a zero tolerance would complain intermittently. An
+		// intermittent warning is worse than a constant one: it reads as a glitch,
+		// and gets waved away on the day it finally means something.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.383900+00:00" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T08:00:00.384112+00:00" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet a whole second apart, still far below anything meaningful", () => {
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.000Z" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T08:00:01.000Z" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("complains when the two limits are genuinely on different cycles", () => {
+		// What a real divergence would look like: a separate anchor, days out.
+		// Silent by nature without this, because the countdown it produces looks
+		// perfectly ordinary and only the days it measures over are wrong.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		// Both values named: a divergence is only actionable if the report says
+		// which two instants parted company.
+		const message = logger.warn.mock.calls[0][0];
+		expect(message).toContain(ANCHOR_JUL_24);
+		expect(message).toContain(ANCHOR_JUL_31);
+	});
+
+	it("complains about an hour's difference, well inside a single cycle", () => {
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "2026-07-24T08:00:00.000Z" },
+				scopedWeekly: [{ resetsAt: "2026-07-24T09:00:00.000Z" }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("says nothing when only one window carries a reset", () => {
+		// Nothing to compare. This is the ordinary state at zero scoped usage, and
+		// warning here would make the signal noise from the first poll.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{ sevenDay: { resetsAt: ANCHOR_JUL_24 }, scopedWeekly: [] },
+			logger,
+		);
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: null },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("leaves an unreadable value to the parse boundary that already warned", () => {
+		// Comparing against NaN would either stay silent by luck or raise a second,
+		// confusing complaint about a value the parse layer has already named.
+		const logger = spyLogger();
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "not-a-date" },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("states one unchanged divergence once across repeated polls", () => {
+		// The test that was missing, and whose absence let a latch ship that could
+		// never fire. Each poll re-stamps the sub-second field, so the message text
+		// differs every time while the condition is identical to the second. A
+		// latch keyed on the message therefore suppressed nothing in production and
+		// suppressed everything in a fixture built from literal strings.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+
+		for (const stamp of ["383291", "591004", "712880"]) {
+			pickWeeklyAnchor(
+				{
+					sevenDay: { resetsAt: `2026-07-24T08:00:00.${stamp}+00:00` },
+					scopedWeekly: [{ resetsAt: `2026-07-31T08:00:00.${stamp}+00:00` }],
+				},
+				latched,
+			);
+		}
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("speaks again when the divergence itself moves", () => {
+		// The other half: bucketing must not be so coarse that a real change is
+		// swallowed. A move of a whole day is what an actual split would look like.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			latched,
+		);
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: "2026-08-01T08:00:00.111222+00:00" }],
+			},
+			latched,
+		);
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("speaks again when a divergence clears and then returns", () => {
+		// A non-divergent poll calls nothing, so the latch keeps holding the old
+		// key and the same divergence returning is swallowed as a "repeat" it
+		// never consecutively was. The A/B/A unit test on latchRepeats passes
+		// because it calls warn three times; production cannot produce that
+		// sequence, because the aligned poll in the middle stays silent.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+		const divergent = {
+			sevenDay: { resetsAt: ANCHOR_JUL_24 },
+			scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+		};
+		const aligned = {
+			sevenDay: { resetsAt: "2026-07-24T08:00:00.383291+00:00" },
+			scopedWeekly: [{ resetsAt: "2026-07-24T08:00:00.383503+00:00" }],
+		};
+
+		pickWeeklyAnchor(divergent, latched);
+		pickWeeklyAnchor(aligned, latched);
+		pickWeeklyAnchor(divergent, latched);
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps holding when the pair simply cannot be compared", () => {
+		// Not the same as clearing. The scoped limit reports no reset on every
+		// poll at zero usage, so treating "cannot compare" as "resolved" would
+		// re-announce the same divergence every time usage crossed zero.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+		const divergent = {
+			sevenDay: { resetsAt: ANCHOR_JUL_24 },
+			scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+		};
+
+		pickWeeklyAnchor(divergent, latched);
+		pickWeeklyAnchor({ sevenDay: { resetsAt: ANCHOR_JUL_24 } }, latched);
+		pickWeeklyAnchor(divergent, latched);
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not treat an unreadable pair as an all-clear", () => {
+		// Both values present, so the comparison is attempted, but one is
+		// unreadable and `apart` is NaN. That is "I could not tell", not
+		// "resolved". A bare `else` here would clear the latch on it and
+		// re-announce the same divergence the moment it became readable again.
+		const sink = { warn: jest.fn() };
+		const latched = latchRepeats(sink);
+		const divergent = {
+			sevenDay: { resetsAt: ANCHOR_JUL_24 },
+			scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+		};
+
+		pickWeeklyAnchor(divergent, latched);
+		pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: "not-a-date" },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			latched,
+		);
+		pickWeeklyAnchor(divergent, latched);
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("still returns the anchor it picked when it complains", () => {
+		// The tripwire reports; it does not change the answer. Suppressing the
+		// anchor on disagreement would trade a possibly-wrong instant for the
+		// certainly-wrong Monday fallback.
+		const logger = spyLogger();
+
+		const picked = pickWeeklyAnchor(
+			{
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			},
+			logger,
+		);
+
+		expect(picked).toBe(ANCHOR_JUL_24);
+	});
+
+	it("skips the comparison entirely when given no logger", () => {
+		// Keeps the function usable as a pure helper, and is why every existing
+		// caller in the tests above needs no change.
+		expect(() =>
+			pickWeeklyAnchor({
+				sevenDay: { resetsAt: ANCHOR_JUL_24 },
+				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
+			}),
+		).not.toThrow();
+	});
+});
+
+describe("latchRepeats", () => {
+	function spySink() {
+		return { warn: jest.fn() };
+	}
+
+	it("states a message once, however many times it arrives", () => {
+		// The condition it exists for is permanent: at one poll every five
+		// minutes an unlatched warning arrives ~288 times a day, forever, asking
+		// its reader to report something they can only report once.
+		const sink = spySink();
+		const latched = latchRepeats(sink);
+
+		latched.warn("anchors disagree");
+		latched.warn("anchors disagree");
+		latched.warn("anchors disagree");
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("speaks again when the message changes", () => {
+		// Latching on the message rather than a flag is the whole point: a
+		// divergence that moves is a new state of affairs, not a repeat, and a
+		// fired-once flag would swallow it.
+		const sink = spySink();
+		const latched = latchRepeats(sink);
+
+		latched.warn("anchors disagree: A vs B");
+		latched.warn("anchors disagree: A vs C");
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+		expect(sink.warn).toHaveBeenLastCalledWith("anchors disagree: A vs C");
+	});
+
+	it("re-states a message that returns after a different one", () => {
+		// Only consecutive repeats are suppressed. A condition that clears and
+		// comes back is worth hearing about again.
+		const sink = spySink();
+		const latched = latchRepeats(sink);
+
+		latched.warn("A");
+		latched.warn("B");
+		latched.warn("A");
+
+		expect(sink.warn).toHaveBeenCalledTimes(3);
+	});
+
+	it("keeps its own latch per instance", () => {
+		// The failure that would look right while being wrong: build one of these
+		// per call instead of once, and the latch resets every time, restoring
+		// the every-poll repetition it exists to prevent. `extension.ts` builds
+		// it once per activation for exactly this reason.
+		const sink = spySink();
+
+		latchRepeats(sink).warn("same message");
+		latchRepeats(sink).warn("same message");
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("passes the message through untouched", () => {
+		const sink = spySink();
+		latchRepeats(sink).warn("verbatim text, unchanged");
+		expect(sink.warn).toHaveBeenCalledWith("verbatim text, unchanged");
 	});
 });
 
