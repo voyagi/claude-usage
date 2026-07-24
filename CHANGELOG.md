@@ -2,6 +2,22 @@
 
 All notable changes to Claude Usage Monitor will be documented in this file.
 
+## [1.2.0](https://github.com/voyagi/claude-usage/compare/v1.1.0...v1.2.0) (2026-07-24)
+
+
+### Features
+
+* adapt to the new usage API shape and add usage attribution ([660d886](https://github.com/voyagi/claude-usage/commit/660d886d52066d219b44b5e5526792b96f7b6a25))
+
+
+### Bug Fixes
+
+* **deps:** bump esbuild to 0.28.1 via npm audit fix (GHSA-gv7w-rqvm-qjhr, GHSA-g7r4-m6w7-qqqr) ([#43](https://github.com/voyagi/claude-usage/issues/43)) ([8ee7c7d](https://github.com/voyagi/claude-usage/commit/8ee7c7dcd2db048b748c6ac68a76a6f5cf967af1))
+* report the account's real weekly reset instead of guessing one ([#50](https://github.com/voyagi/claude-usage/issues/50)) ([b0a9536](https://github.com/voyagi/claude-usage/commit/b0a95367292552089e8e567d59992083deec82aa))
+* run the tests in CI, load the stylesheet, stop packaging notes ([476fd2b](https://github.com/voyagi/claude-usage/commit/476fd2bc1bbdceaec6bf0fcf81638260d16d5844))
+* stop the false weekly-cap alarm and the phantom bill ([6025334](https://github.com/voyagi/claude-usage/commit/6025334dfa3e277ad1b6a5a08eaf2e3af496600e))
+* stop two calendar weeks sharing one usage bucket ([2cd8abc](https://github.com/voyagi/claude-usage/commit/2cd8abcd1c17b39c1235b3982b3bae87951bcad5))
+
 ## [1.1.0](https://github.com/voyagi/claude-usage/compare/v1.0.0...v1.1.0) (2026-06-03)
 
 
