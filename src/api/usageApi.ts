@@ -216,7 +216,7 @@ function isFiniteNumber(value: unknown): value is number {
  * where a server format change is actually diagnosable, so the complaint
  * belongs here; the guard in `resetInstant` stays as the backstop.
  */
-function parseResetsAt(
+export function parseResetsAt(
 	raw: string | null | undefined,
 	logger?: Logger,
 ): string | null {

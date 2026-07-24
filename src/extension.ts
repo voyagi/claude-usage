@@ -186,10 +186,22 @@ export async function activate(context: vscode.ExtensionContext) {
 	 * drift can then only survive until the next successful poll. The API omits
 	 * this on a limit with no usage yet, and an omission is not a correction, so
 	 * a null leaves the stored anchor standing.
+	 *
+	 * The unreadable case is checked here as well as at both input boundaries,
+	 * which is not redundancy for its own sake: this is where a value stops
+	 * being one poll's data and becomes durable state that survives restarts and
+	 * is trusted precisely when the API cannot be reached. An unusable reading is
+	 * not a correction either, so it must not clobber a good stored anchor.
 	 */
 	function rememberWeeklyAnchor(data: ApiUsageData): void {
 		const resetsAt = data.sevenDay?.resetsAt;
 		if (!resetsAt || resetsAt === lastKnownWeeklyAnchor) return;
+		if (Number.isNaN(new Date(resetsAt).getTime())) {
+			logger.warn(
+				`Ignoring an unreadable weekly reset (${JSON.stringify(resetsAt)}); keeping the stored anchor.`,
+			);
+			return;
+		}
 		lastKnownWeeklyAnchor = resetsAt;
 		context.globalState
 			.update("lastKnownWeeklyAnchor", resetsAt)
