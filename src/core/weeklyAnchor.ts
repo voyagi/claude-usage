@@ -48,6 +48,35 @@ export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const ANCHOR_AGREEMENT_TOLERANCE_MS = 60_000;
 
 /**
+ * Wrap a warning sink so an identical message is stated once, not repeatedly.
+ *
+ * For a condition that is permanent rather than transient. A malformed
+ * timestamp is a server bug whose warning stops when the server is fixed, so
+ * repeating it is proportionate. Two weekly limits parting company would be the
+ * new normal, and at one poll every five minutes the same sentence would arrive
+ * roughly 288 times a day forever, asking its reader to report something they
+ * can report once. That is the reasoning behind the tolerance above applied to
+ * how long a warning repeats rather than how erratically it fires: a warning
+ * nobody can act on teaches its channel to be ignored.
+ *
+ * Latching on the message rather than a flag is what keeps it honest. If the
+ * instants change, the message changes, and the new state of affairs is said
+ * out loud instead of being swallowed by a latch that already fired.
+ */
+export function latchRepeats(sink: { warn: (message: string) => void }): {
+	warn: (message: string) => void;
+} {
+	let previous: string | null = null;
+	return {
+		warn(message: string) {
+			if (message === previous) return;
+			previous = message;
+			sink.warn(message);
+		},
+	};
+}
+
+/**
  * The reset instant to anchor the account's weekly cycle to, or null.
  *
  * The all-model weekly window is the natural source and wins whenever it states
@@ -85,11 +114,16 @@ export function pickWeeklyAnchor(
 		const apart = Math.abs(
 			new Date(weekly).getTime() - new Date(scoped).getTime(),
 		);
-		// NaN when either value is unreadable, which is not this check's business
-		// -- the parse boundary already warned about that, and comparing against
-		// NaN here would either stay silent by luck or report a second, confusing
-		// complaint about the same bad value.
-		if (Number.isFinite(apart) && apart > ANCHOR_AGREEMENT_TOLERANCE_MS) {
+		// An unreadable value makes `apart` NaN, and every NaN comparison is
+		// false, so it declines to complain on its own. That is the outcome we
+		// want and it needs no guard: the parse boundary has already named the
+		// bad value, and a second complaint here would only describe it worse.
+		// An explicit `Number.isFinite` check stood here first and was removed
+		// once a mutation showed the whole suite passing without it -- `apart` is
+		// finite or NaN, never Infinity, so the check could not change any
+		// outcome. A guard that cannot fire reads as protection and provides
+		// none, which is the pattern this file exists to keep out.
+		if (apart > ANCHOR_AGREEMENT_TOLERANCE_MS) {
 			logger.warn(
 				`The weekly and scoped limits report different reset times (${weekly} vs ${scoped}). This build assumes they share one account-wide anchor, so weekly usage totals and countdowns may now be measured over the wrong days. Please report this.`,
 			);

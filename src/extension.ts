@@ -19,7 +19,7 @@ import {
 } from "./core/burnRate.js";
 import { buildStatusBarData } from "./core/rateLimits.js";
 import { mapTierStringToPlanType } from "./core/tierDetection.js";
-import { pickWeeklyAnchor } from "./core/weeklyAnchor.js";
+import { latchRepeats, pickWeeklyAnchor } from "./core/weeklyAnchor.js";
 import type { RateLimitEvent } from "./parser/incrementalParser.js";
 import { parseAllSessions } from "./parser/jsonlParser.js";
 import { refineLimitEstimate } from "./parser/rateLimitDetector.js";
@@ -204,11 +204,17 @@ export async function activate(context: vscode.ExtensionContext) {
 	 * "no anchor", it is the Monday calendar week, which is the wrong phase by
 	 * design and is the defect this change set exists to remove.
 	 */
+	// Built once per activation, deliberately. Rebuilding it per call would reset
+	// the latch every time and restore the every-poll repetition it exists to
+	// prevent -- the one way this could be wrong while still looking right.
+	const anchorTripwire = latchRepeats(logger);
+
 	function rememberWeeklyAnchor(data: ApiUsageData): void {
-		// The logger is what arms the shared-anchor tripwire inside. This is the
-		// right place for it: it runs on every fresh reading, from the poll and
-		// from the cache alike, so a divergence is noticed wherever it arrives.
-		const resetsAt = pickWeeklyAnchor(data, logger);
+		// Passing a sink is what arms the shared-anchor tripwire inside. This is
+		// the right place for it: it runs on every fresh reading, from the poll
+		// and from the cache alike, so a divergence is noticed wherever it
+		// arrives, and `latchRepeats` keeps a permanent one from repeating.
+		const resetsAt = pickWeeklyAnchor(data, anchorTripwire);
 		if (!resetsAt || resetsAt === lastKnownWeeklyAnchor) return;
 		if (Number.isNaN(new Date(resetsAt).getTime())) {
 			logger.warn(

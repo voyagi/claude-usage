@@ -1,4 +1,9 @@
-import { pickWeeklyAnchor, projectWeeklyCycle, WEEK_MS } from "./weeklyAnchor";
+import {
+	latchRepeats,
+	pickWeeklyAnchor,
+	projectWeeklyCycle,
+	WEEK_MS,
+} from "./weeklyAnchor";
 
 /**
  * Both instants are real, taken from captured usage payloads a week apart.
@@ -212,6 +217,72 @@ describe("pickWeeklyAnchor: the shared-anchor tripwire", () => {
 				scopedWeekly: [{ resetsAt: ANCHOR_JUL_31 }],
 			}),
 		).not.toThrow();
+	});
+});
+
+describe("latchRepeats", () => {
+	function spySink() {
+		return { warn: jest.fn() };
+	}
+
+	it("states a message once, however many times it arrives", () => {
+		// The condition it exists for is permanent: at one poll every five
+		// minutes an unlatched warning arrives ~288 times a day, forever, asking
+		// its reader to report something they can only report once.
+		const sink = spySink();
+		const latched = latchRepeats(sink);
+
+		latched.warn("anchors disagree");
+		latched.warn("anchors disagree");
+		latched.warn("anchors disagree");
+
+		expect(sink.warn).toHaveBeenCalledTimes(1);
+	});
+
+	it("speaks again when the message changes", () => {
+		// Latching on the message rather than a flag is the whole point: a
+		// divergence that moves is a new state of affairs, not a repeat, and a
+		// fired-once flag would swallow it.
+		const sink = spySink();
+		const latched = latchRepeats(sink);
+
+		latched.warn("anchors disagree: A vs B");
+		latched.warn("anchors disagree: A vs C");
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+		expect(sink.warn).toHaveBeenLastCalledWith("anchors disagree: A vs C");
+	});
+
+	it("re-states a message that returns after a different one", () => {
+		// Only consecutive repeats are suppressed. A condition that clears and
+		// comes back is worth hearing about again.
+		const sink = spySink();
+		const latched = latchRepeats(sink);
+
+		latched.warn("A");
+		latched.warn("B");
+		latched.warn("A");
+
+		expect(sink.warn).toHaveBeenCalledTimes(3);
+	});
+
+	it("keeps its own latch per instance", () => {
+		// The failure that would look right while being wrong: build one of these
+		// per call instead of once, and the latch resets every time, restoring
+		// the every-poll repetition it exists to prevent. `extension.ts` builds
+		// it once per activation for exactly this reason.
+		const sink = spySink();
+
+		latchRepeats(sink).warn("same message");
+		latchRepeats(sink).warn("same message");
+
+		expect(sink.warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("passes the message through untouched", () => {
+		const sink = spySink();
+		latchRepeats(sink).warn("verbatim text, unchanged");
+		expect(sink.warn).toHaveBeenCalledWith("verbatim text, unchanged");
 	});
 });
 
